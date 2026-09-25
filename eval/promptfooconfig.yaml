@@ -1,0 +1,26 @@
+# ADR-014 eval harness: golden-set regression testing for the tailoring
+# engine. `npm run eval` runs every apps/api/tailoring/engine.py change
+# against golden.csv's 30 JD/facts pairs — the exit criterion PRD.md §11
+# sets for Phase 3 ("eval harness can diff two prompt versions and report
+# a pass/fail").
+#
+# Two independent gates per row, not one blended score:
+#   1. truth_check.py (hard gate) — zero tolerance for unsupported claims,
+#      ADR-006's core invariant. A prompt change that reads better but
+#      leaks a fabricated claim must fail, full stop.
+#   2. llm-rubric (soft gate, per-row __expected in golden.csv) — is the
+#      output actually relevant and well-formed for that specific JD.
+description: "Job Copilot — tailoring engine golden-set eval (ADR-014)"
+
+prompts:
+  - "Tailor a resume for: {{jd_title}} at {{jd_company}}"
+
+providers:
+  - id: file://providers/tailor_provider.py:call_api
+
+tests: file://golden.csv
+
+defaultTest:
+  assert:
+    - type: python
+      value: file://assertions/truth_check.py:no_unsupported_claims

@@ -1,0 +1,6 @@
+# CI-only dependencies (Linux GitHub Actions runner). Not installed on local Windows
+# dev machines — garak fails to build there (see requirements.txt for why). Install
+# alongside requirements.txt: pip install -r requirements.txt -r requirements-ci.txt
+-r requirements.txt
+
+garak==0.10.3.1

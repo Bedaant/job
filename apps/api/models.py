@@ -1,0 +1,237 @@
+import uuid
+import enum
+from datetime import datetime
+
+import sqlalchemy
+from sqlalchemy import (
+    Column, String, Text, DateTime, Boolean, ForeignKey, Enum, JSON, UniqueConstraint, Numeric, BigInteger
+)
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+from pgvector.sqlalchemy import Vector
+
+from database import Base
+
+EMBEDDING_DIM = 512  # voyage-3-lite — smaller/cheaper, good enough for matching at this scale
+
+
+def gen_uuid():
+    return str(uuid.uuid4())
+
+
+class ApplicationStatus(str, enum.Enum):
+    saved = "saved"
+    applied = "applied"
+    oa = "oa"                # online assessment
+    recruiter = "recruiter"
+    interview = "interview"
+    offer = "offer"
+    rejected = "rejected"
+
+
+class Persona(str, enum.Enum):
+    developer = "developer"
+    product_manager = "product_manager"
+    marketing = "marketing"
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    email = Column(String, unique=True, nullable=False)
+    password_hash = Column(String, nullable=True)  # null when Google-only (later)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
+
+    profiles = relationship("Profile", back_populates="user", cascade="all, delete-orphan")
+
+
+class Profile(Base):
+    __tablename__ = "profiles"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    persona = Column(Enum(Persona), nullable=False, default=Persona.developer)
+    headline = Column(String, nullable=True)
+    location = Column(String, nullable=True)
+    prefs = Column(JSON, default=dict)
+    fact_centroid = Column(Vector(EMBEDDING_DIM), nullable=True)  # mean of fact embeddings, F6 matching
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="profiles")
+    resume_facts = relationship("ResumeFact", back_populates="profile", cascade="all, delete-orphan")
+    applications = relationship("Application", back_populates="profile", cascade="all, delete-orphan")
+    matches = relationship("Match", back_populates="profile", cascade="all, delete-orphan")
+
+    __table_args__ = (UniqueConstraint("user_id", "persona", name="uq_profile_user_persona"),)
+
+
+class Job(Base):
+    __tablename__ = "jobs"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    source = Column(String, nullable=False)          # remotive | greenhouse | lever | ashby
+    external_id = Column(String, nullable=False)      # id from the source, for dedupe
+    canonical_hash = Column(String, nullable=False, unique=True)   # cross-source dedupe key, SPEC.md §3.1
+    title = Column(String, nullable=False)
+    company = Column(String, nullable=False)
+    location = Column(String, nullable=True)
+    remote = Column(Boolean, default=True)
+    salary = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    apply_url = Column(String, nullable=False)
+    tags = Column(JSON, default=list)
+    skills = Column(JSON, default=list)  # extracted keywords, for skill_coverage scoring
+    seniority = Column(String, nullable=True)  # intern|junior|mid|senior|staff|lead, inferred from title
+    embedding = Column(Vector(EMBEDDING_DIM), nullable=True)
+    posted_at = Column(DateTime, nullable=True)
+    fetched_at = Column(DateTime, default=datetime.utcnow)
+    last_seen_at = Column(DateTime, default=datetime.utcnow)
+
+    applications = relationship("Application", back_populates="job")
+    matches = relationship("Match", back_populates="job", cascade="all, delete-orphan")
+
+    __table_args__ = (UniqueConstraint("source", "external_id", name="uq_job_source_external_id"),)
+
+
+class Application(Base):
+    __tablename__ = "applications"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    profile_id = Column(UUID(as_uuid=False), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    job_id = Column(UUID(as_uuid=False), ForeignKey("jobs.id"), nullable=False)
+    status = Column(Enum(ApplicationStatus), default=ApplicationStatus.saved)
+    portal = Column(String, nullable=True)  # e.g. "Wellfound", "Turing", "Direct"
+    notes = Column(Text, nullable=True)
+    tailored_resume_json = Column(JSON, nullable=True)
+    tailored_cover_letter = Column(Text, nullable=True)
+    applied_at = Column(DateTime, nullable=True)
+    next_follow_up_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    profile = relationship("Profile", back_populates="applications")
+    job = relationship("Job", back_populates="applications")
+
+    __table_args__ = (UniqueConstraint("profile_id", "job_id", name="uq_application_profile_job"),)
+
+
+class ResumeFact(Base):
+    """
+    Atomic, verifiable facts about the candidate. The tailoring engine may only
+    rewrite/reorder/select from these — never invent new ones.
+    """
+    __tablename__ = "resume_facts"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    profile_id = Column(UUID(as_uuid=False), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    category = Column(String, nullable=False)   # experience | project | skill | certification | education
+    achievement = Column(Text, nullable=False)   # the factual claim, in plain language
+    proof = Column(Text, nullable=True)          # what it's backed by (project/role name)
+    metric = Column(String, nullable=True)       # e.g. "10x throughput", "27% productivity"
+    tags = Column(JSON, default=list)            # e.g. ["automation", "PM", "SQL", "fintech"]
+    period_from = Column(sqlalchemy.Date, nullable=True)
+    period_to = Column(sqlalchemy.Date, nullable=True)  # null = present (SPEC.md §1)
+    embedding = Column(Vector(EMBEDDING_DIM), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    profile = relationship("Profile", back_populates="resume_facts")
+
+
+class Match(Base):
+    """F6 matching (SPEC.md §3.2). Hard filters run in SQL before this; score
+    is 0.55*semantic + 0.30*skill_coverage + 0.15*recency.
+    """
+    __tablename__ = "matches"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    profile_id = Column(UUID(as_uuid=False), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    job_id = Column(UUID(as_uuid=False), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    score = Column(Numeric(5, 2), nullable=False)
+    breakdown = Column(JSON, nullable=False)  # {semantic, skill_coverage, recency, matched_skills, missing_skills}
+    state = Column(String, nullable=False, default="new")  # new | dismissed | saved
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    profile = relationship("Profile", back_populates="matches")
+    job = relationship("Job", back_populates="matches")
+
+    __table_args__ = (UniqueConstraint("profile_id", "job_id", name="uq_match_profile_job"),)
+
+
+class Event(Base):
+    """Transactional outbox (ADR-012, SPEC.md §1/ARCHITECTURE.md §4.6). Written
+    in the SAME transaction as the business row it announces; the relay worker
+    (events/relay.py) publishes unpublished rows to Redis, then stamps
+    published_at. `id` is monotonic and doubles as the SSE Last-Event-ID.
+    """
+    __tablename__ = "events"
+
+    # SQLite (unit-test engine) only treats an exact "INTEGER" column as its
+    # autoincrementing rowid alias — BIGINT doesn't qualify, so id inserts
+    # come back NULL there unless BigInteger is downgraded to Integer for
+    # that dialect specifically. Postgres (real DB) is unaffected.
+    id = Column(BigInteger().with_variant(sqlalchemy.Integer, "sqlite"), primary_key=True, autoincrement=True)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    type = Column(String, nullable=False)  # match.new|application.status_changed|resume.parsed|notification.created
+    payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    published_at = Column(DateTime, nullable=True)  # null = not yet relayed to Redis
+
+
+class Notification(Base):
+    """SPEC.md §2.6. status tracks delivery (pending -> sent|failed|skipped);
+    'seen' is a fifth value for the in-app read receipt (PATCH /notifications/{id})
+    — the SPEC's endpoint table and its DDL disagreed on this (DDL's CHECK only
+    listed the four delivery states), resolved by extending the CHECK rather than
+    adding a separate column, see WORKLOG.
+    """
+    __tablename__ = "notifications"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    trigger = Column(String, nullable=False)  # weekly_digest|follow_up_nudge|application_status
+    channel = Column(String, nullable=False)  # email|in_app
+    template = Column(String, nullable=False)
+    payload = Column(JSON, default=dict)
+    status = Column(String, nullable=False, default="pending")
+    sent_at = Column(DateTime, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ConnectorRun(Base):
+    """SPEC.md §1. Generic run-log for anything that fetches from the outside
+    world on a schedule. F5's unknown-ATS classification (connectors/discovery.py
+    ::discover_ats_for_domain) is the first real writer — a proposed ATS
+    pattern goes in `notes` as JSON for the owner to review and manually
+    promote into ATS_PATTERNS (decided: no new table/admin UI for that review
+    surface, this is it).
+    """
+    __tablename__ = "connector_runs"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    source = Column(String, nullable=False)
+    token = Column(String, nullable=True)
+    fetched = Column(sqlalchemy.Integer, nullable=False, default=0)
+    inserted = Column(sqlalchemy.Integer, nullable=False, default=0)
+    failed = Column(sqlalchemy.Integer, nullable=False, default=0)
+    error = Column(Text, nullable=True)
+    notes = Column(JSON, nullable=True)  # structured payload, e.g. F5's proposed-pattern review row
+    duration_ms = Column(sqlalchemy.Integer, nullable=True)
+    ran_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ResumeUpload(Base):
+    """Tracks one resume-parsing run (SPEC.md §2.1). The raw file is never
+    persisted — only the parsed draft facts, until the user confirms them via
+    facts:bulk (ADR-009: the resume blob is never the generation source).
+    """
+    __tablename__ = "resume_uploads"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    profile_id = Column(UUID(as_uuid=False), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    status = Column(String, nullable=False, default="parsing")  # parsing | ready | failed
+    draft_facts = Column(JSON, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

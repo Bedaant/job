@@ -1,0 +1,170 @@
+[
+  {
+    "category": "experience",
+    "achievement": "Owned end-to-end product for the OneExclusive Execution Platform supporting 150+ campaigns monthly and 1,800+ launches annually",
+    "proof": "OneCard (FPL Technologies) - Product Manager",
+    "metric": "150+ campaigns/month, 1,800+ launches/year",
+    "tags": ["product ownership", "fintech", "scale"]
+  },
+  {
+    "category": "experience",
+    "achievement": "Built a Merchant Offer Automation Engine on Frappe that moved merchant onboarding from 5-6 uploads in 2 days to 25 merchants/day",
+    "proof": "OneCard - Merchant Offer Automation Engine",
+    "metric": "~10x throughput jump, 27% productivity lift",
+    "tags": ["automation", "workflow", "Frappe", "PM"]
+  },
+  {
+    "category": "experience",
+    "achievement": "Designed and shipped a notification governance layer across WhatsApp, Push, SMS, and RCS for a 15 lakh user base, capping per-user daily comms at 3",
+    "proof": "OneCard - Notification Governance Layer",
+    "metric": "15L+ users",
+    "tags": ["CRM", "lifecycle automation", "notifications governance"]
+  },
+  {
+    "category": "experience",
+    "achievement": "Built a Nudge Intelligence content tool scoring marketing drafts across SMS/WhatsApp/RCS/Push for expected CTR, timing fit, and content quality, with rewrite suggestions",
+    "proof": "OneCard - Nudge Intelligence Tool",
+    "metric": "Lifted average SMS CTR from 20% to 22%",
+    "tags": ["AI tooling", "CRM", "growth", "A/B testing"]
+  },
+  {
+    "category": "experience",
+    "achievement": "Automated the LCM offer creation and execution flow, letting PMs/marketers auto-generate offers and select audiences in one flow",
+    "proof": "OneCard - LCM Offer Automation",
+    "metric": "Cycle time dropped from 3 days to ~10 minutes",
+    "tags": ["automation", "lifecycle marketing", "PM"]
+  },
+  {
+    "category": "experience",
+    "achievement": "Built a monthly Rewards Savings Potential email engine surfacing earned points, missed category rewards, and unrealized offer points",
+    "proof": "OneCard - Rewards Savings Potential Engine",
+    "metric": "Activation rose from 60% to 65% in 4 months; never-transacted users grew 7%",
+    "tags": ["lifecycle marketing", "email automation", "activation"]
+  },
+  {
+    "category": "experience",
+    "achievement": "Led GTM for the in-app Flights & Hotels launch, covering positioning, onboarding nudges, and rewards integration",
+    "proof": "OneCard - Flights & Hotels GTM",
+    "metric": "30+ daily transactions within first weeks of go-live",
+    "tags": ["GTM", "launch strategy", "fintech"]
+  },
+  {
+    "category": "experience",
+    "achievement": "Defined API contracts and JSON schemas enabling consistent campaign rendering across mobile apps, removing engineering dependency for new campaign setup",
+    "proof": "OneCard - API Contract Design",
+    "metric": null,
+    "tags": ["API design", "JSON schema", "engineering collaboration"]
+  },
+  {
+    "category": "experience",
+    "achievement": "Managed monthly GMV across Amazon, Flipkart, Zepto, Swiggy Instamart, and Myntra for clients including MamyPoko, Sebamed, and ITC",
+    "proof": "Dentsu - Business Analyst",
+    "metric": "₹2.2 Cr+ monthly GMV",
+    "tags": ["e-commerce", "digital marketing", "client management"]
+  },
+  {
+    "category": "experience",
+    "achievement": "Designed and led a competitor retargeting framework identifying shoppers buying competing SKUs and running conversion campaigns against them",
+    "proof": "Dentsu - Competitor Retargeting Framework",
+    "metric": "23% incremental sales growth, ~4% competitor market share captured every 4 months",
+    "tags": ["growth", "retargeting", "e-commerce"]
+  },
+  {
+    "category": "experience",
+    "achievement": "Built a Helium10-integrated keyword management system with real-time dashboards, eliminating manual reporting cycles",
+    "proof": "Dentsu - Keyword Management System",
+    "metric": null,
+    "tags": ["Helium10", "dashboards", "reporting automation"]
+  },
+  {
+    "category": "experience",
+    "achievement": "Translated platform requirements into prioritized Jira epics and sprint deliverables for accounts with monthly ad spends exceeding ₹1 Cr",
+    "proof": "Dentsu - Business Analyst",
+    "metric": "₹1 Cr+ monthly ad spend accounts",
+    "tags": ["Jira", "sprint planning", "requirements"]
+  },
+  {
+    "category": "experience",
+    "achievement": "Cut requirement-to-development handoff time by surfacing bottlenecks early in stakeholder reviews",
+    "proof": "Dentsu - Business Analyst",
+    "metric": "~20% reduction in handoff time",
+    "tags": ["process improvement", "stakeholder management"]
+  },
+  {
+    "category": "experience",
+    "achievement": "Built Tableau and Power BI dashboards used by stakeholders for campaign monitoring and optimization; recognized as Employee of the Quarter",
+    "proof": "Dentsu - Business Analyst",
+    "metric": "20+ stakeholders",
+    "tags": ["Tableau", "Power BI", "dashboards"]
+  },
+  {
+    "category": "experience",
+    "achievement": "Cleaned and standardized datasets from multiple sources; ran exploratory and statistical analysis to surface trends and insights",
+    "proof": "MeriSkill - Data Analyst Intern",
+    "metric": null,
+    "tags": ["data cleaning", "statistical analysis"]
+  },
+  {
+    "category": "experience",
+    "achievement": "Supported execution of digital marketing campaigns and maintained performance trackers; identified market trends and competitor activity",
+    "proof": "Passionate Futurist - Digital Marketing Analyst Intern",
+    "metric": "Awarded Best Intern",
+    "tags": ["digital marketing", "competitor analysis"]
+  },
+  {
+    "category": "project",
+    "achievement": "PowerPulse AI: turns 8-12 weeks of user reviews into a weekly product pulse, auto-clustering feedback into themes, pulling representative quotes, drafting action recommendations, and emailing a stakeholder-ready note",
+    "proof": "Side project - PowerPulse AI",
+    "metric": null,
+    "tags": ["AI agents", "product feedback", "automation"]
+  },
+  {
+    "category": "project",
+    "achievement": "Rexi (rexi.pro): B2C legal intelligence platform that breaks down contracts/insurance policies into plain English and auto-highlights hidden risks and red flags",
+    "proof": "Side project - Rexi",
+    "metric": null,
+    "tags": ["legal tech", "B2C", "AI"]
+  },
+  {
+    "category": "project",
+    "achievement": "Trubo (trubo.app): connects to WhatsApp, Gmail, Slack, Zoom, Meet, Telegram, Discord, and Teams to auto-capture casual promises and surface what's owed to/by the user daily",
+    "proof": "Side project - Trubo",
+    "metric": null,
+    "tags": ["productivity", "AI agents", "integrations"]
+  },
+  {
+    "category": "project",
+    "achievement": "Jobby (Nexus Alpha): autonomous SEO/marketing agent that crawls and fixes a site, pushes code fixes to GitHub, writes/publishes SEO content, and posts across social platforms in a human voice, built around 5 specialized agents",
+    "proof": "Side project - Jobby",
+    "metric": null,
+    "tags": ["SEO", "AI agents", "marketing automation"]
+  },
+  {
+    "category": "project",
+    "achievement": "GitStack (gitstack.pro): translates open-source repos into plain-English summaries and auto-generates an AI-powered tool stack from a founder's idea, with full PRD and India-first pricing",
+    "proof": "Side project - GitStack",
+    "metric": "₹299/month Pro tier",
+    "tags": ["dev tools", "PRD", "pricing strategy"]
+  },
+  {
+    "category": "skill",
+    "achievement": "Core PM and analytical skillset",
+    "proof": "Across OneCard and Dentsu roles",
+    "metric": null,
+    "tags": ["Product Discovery", "Roadmap Prioritization", "API Contract Design", "JSON Schema Definition", "Lifecycle/CRM/LCM Automation", "GTM", "A/B Testing", "Stakeholder Management", "Agile/Scrum", "Build vs Buy Analysis", "SQL", "Tableau", "Power BI", "Jira", "Frappe", "Helium10", "Workflow Automation", "UX Collaboration"]
+  },
+  {
+    "category": "education",
+    "achievement": "Bachelor of Business Administration (BBA)",
+    "proof": "Amity University",
+    "metric": null,
+    "tags": ["education"]
+  },
+  {
+    "category": "certification",
+    "achievement": "Postgraduate Diploma in Project Management & Business Analysis (UpGrad); Jira Project Management; Google Digital Marketing; Alteryx Foundation Micro Credential Level 2; Project Management Virtual Experience",
+    "proof": "Certifications",
+    "metric": null,
+    "tags": ["certification"]
+  }
+]

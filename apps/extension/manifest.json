@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Job Copilot",
+  "description": "Review and capture job listings while browsing — companion to the Job Copilot dashboard.",
+  "version": "0.1.0",
+  "action": {
+    "default_popup": "index.html"
+  },
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["http://localhost:8000/*"],
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "exclude_matches": ["*://*.linkedin.com/*"],
+      "js": ["src/content/formFill.content.ts"],
+      "run_at": "document_idle"
+    }
+  ]
+}

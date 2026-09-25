@@ -1,0 +1,12 @@
+{
+  "name": "job-copilot-eval",
+  "private": true,
+  "description": "Golden-set prompt regression eval harness for the tailoring engine (ADR-014). Run via `npm run eval` after adding promptfoo config + golden fixtures.",
+  "scripts": {
+    "eval": "promptfoo eval",
+    "eval:view": "promptfoo view"
+  },
+  "devDependencies": {
+    "promptfoo": "0.120.19"
+  }
+}
