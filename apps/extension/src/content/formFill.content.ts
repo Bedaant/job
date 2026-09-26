@@ -7,6 +7,22 @@
 import { decideFieldActions } from "./fieldDecision.mjs";
 import { API_BASE_URL } from "../apiConfig";
 
+// ADR-001 runtime guard, defense-in-depth alongside the static source-text
+// scan (architectureInvariants.test.mjs): MV3 content scripts execute in an
+// isolated JS world with their own copy of built-in prototypes, sharing only
+// the DOM with the host page — patching HTMLFormElement.prototype here
+// affects this content script's own calls (the actual threat model) without
+// touching the host page's own JS. Catches a dynamically-constructed call
+// (e.g. el["submit"]()) that a source-text regex scan could miss. The human
+// always clicks the ATS's own Submit button; this script never does.
+for (const method of ["submit", "requestSubmit"] as const) {
+  HTMLFormElement.prototype[method] = function () {
+    throw new Error(
+      `Job Copilot: form.${method}() is forbidden by ADR-001 — this extension never submits a form.`,
+    );
+  };
+}
+
 interface FieldDescriptor {
   field_id: string;
   label_text: string | null;

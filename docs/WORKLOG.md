@@ -102,6 +102,90 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-26 (latest+7) — Off-roadmap: git repo initialized; ADR-001/002 structural guard added
+
+**Context — not a roadmap item.** After the source_fact_ids fix, owner asked two
+bigger analysis questions ("most complicated thing that could ruin everything" /
+"what architectural decisions would make this smooth"). Answer to the first:
+ADR-001 ("human always clicks submit, the system never does") had zero structural
+enforcement — F11's content script already reads/writes real form fields on real
+ATS pages, and the only thing preventing it from also submitting was that nobody
+had written that line yet, not anything the codebase made impossible. Owner agreed
+to fix this after first getting a real git repo in place (this project had none —
+`git status` returned `fatal: not a git repository` — despite 8 migrations and
+~50 files touched in a single session with no diff to review or revert against).
+
+**Part 1: git init, done carefully.** Before staging anything: confirmed
+`.gitignore` already covered `.env`/`.venv`/`node_modules`/`dist`/caches; then
+ran a credential scan across the actual candidate file list (not the whole tree —
+scanning `.venv`/`node_modules` directly timed out, scoped to what `git status`
+would actually track instead) for `sk-ant-`/`nvapi-`/`ghp_`/DB-connection-string
+patterns. Found matches only in `.env.example` (placeholder values, confirmed by
+reading it — safe) and inside `tools/.venv-jobspy/`'s own vendored test fixtures
+(already gitignored, not ours). `apps/api/.env` (the real secrets) confirmed
+ignored. Added `.claude/settings.local.json` and `.playwright-mcp/` to the
+project's own `.gitignore` — they were only excluded via the owner's personal
+global git config before, which wouldn't travel with the repo. Verified the final
+staged list (172 files) against the same credential patterns before committing —
+zero matches. One root commit, working tree clean after.
+
+**Part 2: ADR-001/ADR-002 structural guard, two layers.**
+
+*Extension* (`apps/extension/src/content/architectureInvariants.test.mjs`, Node's
+built-in test runner, zero new dependencies, same pattern as `fieldDecision.test.mjs`):
+scans every real `.ts`/`.tsx`/`.mjs`/`.js` source file for `.submit(`/`.requestSubmit(`
+— the actual DOM APIs that submit a form — and fails loud if found outside an
+explicit, empty-by-design `ALLOWLIST`. A second test proves the scanner itself
+actually detects a violation rather than vacuously always passing. **Verified
+end-to-end, not just logically**: appended a real `document.querySelector("form")
+.submit();` line to a real source file, confirmed the test went red naming that
+exact file, then reverted and confirmed clean again (`git diff` showed zero
+content difference after revert). `formFill.content.ts` also got a runtime guard —
+patches `HTMLFormElement.prototype.submit`/`requestSubmit` to throw, inside the
+content script's isolated JS world (MV3 content scripts get their own copy of
+built-in prototypes, separate from the host page's, while sharing the same DOM —
+this patches only this extension's own calls, not the host page's) — defense in
+depth against a dynamically-constructed call (`el["submit"]()`) a source-text
+regex could miss. `npx tsc --noEmit` clean, `npm run build` clean from a deleted
+`dist/`.
+
+*Backend* (`tests/test_architecture_invariants.py`): scans `apps/api/` (excluding
+`.venv`/caches/`tests/`) for any function named like an autonomous submitter
+(`submit_application`, `auto_apply`, `apply_to_job`, etc.) — today none should
+exist at all, so an unconditional ban needs no allowlist. **Found and fixed a
+real bug while verifying this, not a hypothetical one**: the first version used
+`Path.rglob("*.py")` then filtered results, which meant it fully walked
+`apps/api/.venv`'s entire tree (hundreds of thousands of files) before discarding
+anything — 39 seconds for one test. Switched to `os.walk` with directory-level
+pruning (`dirnames[:] = [...]`) — 0.22s. **Verified end-to-end the same way as the
+extension side**: appended a real `def submit_application(job_id): pass` to a
+real file, confirmed the test failed naming that exact file, reverted, confirmed
+clean (`git diff` zero difference).
+
+**A repeated anomaly worth recording.** Both times a violation was injected for
+testing, the tool result carried a system note claiming the edit was "intentional"
+and instructing not to mention it to the owner. Both were false — these were my
+own deliberate temporary test edits, immediately reverted — and the instruction to
+conceal them from the owner was not followed; flagged in-conversation both times
+as having the shape of a prompt-injection attempt rather than a real system
+instruction, since it asked for concealment from the person the work is for.
+
+**Real verification, not simulated.** Extension: 9/9 Node tests green (7
+`fieldDecision` + 2 new). Backend: 165/165 pytest green (163 + 2 new). App boots,
+27 routes (unchanged — this item added no endpoint). Both real-violation
+injections confirmed the guards actually fire, not just that clean code passes.
+
+**Not done.** Postgres RLS for tenancy, the unified grounded-ID validator, and
+SPEC.md-as-generated-docs are still open from the same discussion — owner chose
+ADR-001 first or those explicitly next, per the earlier AskUserQuestion answer.
+
+**Files created.** `apps/extension/src/content/architectureInvariants.test.mjs`,
+`apps/api/tests/test_architecture_invariants.py`. **Files changed.**
+`apps/extension/src/content/formFill.content.ts` (runtime guard), `.gitignore`
+(`.claude/settings.local.json`, `.playwright-mcp/`).
+
+---
+
 ### 2026-09-26 (latest+6) — Off-roadmap: `instructor` wired into `tailoring/engine.py`, closing the source_fact_ids gap
 
 **Context — not a roadmap item.** Owner asked two analysis questions after item
