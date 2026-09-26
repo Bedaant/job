@@ -27,12 +27,57 @@ class AtsPattern:
     regex: re.Pattern
 
 
+# The single ATS pattern table. `detect_ats` (company domain -> board token) and
+# `apply_target.resolve_apply_target` (aggregator link -> real apply form) both
+# read this list; a second competing table is how the two drift apart.
+#
+# Host shapes adopted from kalil0321/ats-scrapers (MIT, Copyright (c) 2026 Kalil
+# Bouzigues) — specifically `src/ats_scrapers/resolve.py`'s `_PATH_HOSTS`,
+# `_SUBDOMAIN_SUFFIXES` and `_WORKDAY_HOST_RE`/`_ICIMS_HOST_RE`. See
+# DEPENDENCIES.md §3. The regexes themselves are written for this table's
+# one-capture-group contract, not copied verbatim.
+
+
+# Vendor-owned subdomains that are never a tenant slug. Found the hard way: a
+# live Arbeitnow page mentioning `app.recruitee.com` (Recruitee's own console)
+# was reported as company "app" on Recruitee. ats-scrapers guards the same class
+# of bug with per-ATS reserved-segment sets; one shared list is enough here.
+_RESERVED_SUBDOMAINS = (
+    "www|app|apps|api|jobs|job|careers|career|admin|secure|static|cdn|assets"
+    "|help|support|blog|docs|my|hire|hiring|recruiting|resources|status|mail"
+)
+
+
+def _subdomain_tenant(ats_type: str, suffix: str) -> "AtsPattern":
+    """`{slug}.{suffix}` tenants. The lookbehind stops a rejected reserved label
+    from being salvaged by restarting mid-word (`app.` -> `pp.`), which would
+    reintroduce the bug it is there to prevent.
+    """
+    return AtsPattern(ats_type, re.compile(
+        rf"(?<![a-zA-Z0-9_.-])(?!(?:{_RESERVED_SUBDOMAINS})\.)([a-zA-Z0-9_-]+)\.{suffix}"
+    ))
+
+
 ATS_PATTERNS = [
-    AtsPattern("greenhouse", re.compile(r"boards\.greenhouse\.io/([a-zA-Z0-9_-]+)")),
-    AtsPattern("lever", re.compile(r"jobs\.lever\.co/([a-zA-Z0-9_-]+)")),
+    AtsPattern("greenhouse", re.compile(r"(?:boards|job-boards)(?:\.eu)?\.greenhouse\.io/([a-zA-Z0-9_-]+)")),
+    AtsPattern("lever", re.compile(r"jobs(?:\.eu)?\.lever\.co/([a-zA-Z0-9_-]+)")),
     AtsPattern("ashby", re.compile(r"jobs\.ashbyhq\.com/([a-zA-Z0-9_-]+)")),
     AtsPattern("workable", re.compile(r"apply\.workable\.com/([a-zA-Z0-9_-]+)")),
-    AtsPattern("smartrecruiters", re.compile(r"careers\.smartrecruiters\.com/([a-zA-Z0-9_-]+)")),
+    AtsPattern("smartrecruiters", re.compile(r"(?:careers|jobs)\.smartrecruiters\.com/([a-zA-Z0-9_-]+)")),
+    # Workday's tenant lives in the hostname, not the path, and the wdN instance
+    # number is load-bearing for any later API call.
+    _subdomain_tenant("workday", r"wd\d+\.myworkdayjobs\.com"),
+    AtsPattern("jobvite", re.compile(r"jobs\.jobvite\.com/(?:careers/)?([a-zA-Z0-9_-]+)")),
+    AtsPattern("icims", re.compile(r"(?:careers-)?([a-zA-Z0-9-]+)\.icims\.com")),
+    _subdomain_tenant("recruitee", r"recruitee\.com"),
+    _subdomain_tenant("teamtailor", r"teamtailor\.com"),
+    _subdomain_tenant("breezy", r"breezy\.hr"),
+    _subdomain_tenant("bamboohr", r"bamboohr\.com"),
+    _subdomain_tenant("personio", r"jobs\.personio\.(?:com|de)"),
+    _subdomain_tenant("pinpoint", r"pinpointhq\.com"),
+    _subdomain_tenant("jazzhr", r"applytojob\.com"),
+    AtsPattern("gem", re.compile(r"jobs\.gem\.com/([a-zA-Z0-9_-]+)")),
+    AtsPattern("rippling", re.compile(r"ats\.rippling\.com/([a-zA-Z0-9_-]+)")),
 ]
 
 

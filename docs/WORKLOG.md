@@ -102,6 +102,123 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+18) — ATS apply-target resolver: the aggregator link becomes the real form, and the SSRF guard learns to check every hop
+
+**Context.** Phase 1 left the driver opening whatever `apply_url` a feed handed
+it. That is almost never the application form: RemoteOK gives its own listing
+page, Working Nomads gives a `/job/go/{id}/` bounce. The driver then tries to
+fill a page that has no form on it. Resolving the link first is the difference
+between a Greenhouse form we can fill from `deterministic_fields` and a guess.
+
+**The licence gate came first (ADR-010), and it passed.** Read
+`kalil0321/ats-scrapers`'s actual LICENSE file via the GitHub API, not GitHub's
+sidebar label: `MIT License / Copyright (c) 2026 Kalil Bouzigues`, standard
+unmodified MIT text. So adoption is permitted, and `DEPENDENCIES.md` §3's row
+moves from "study only" to partial adoption — **that verdict was correct when it
+was written and is now wrong for a specific reason**: it was correct under
+ADR-002, which forbade scraping and therefore left nothing here worth taking.
+ADR-015 lifted that, and a URL→ATS catalogue became a product requirement.
+What was adopted is **facts, not files**: the host→ATS mapping from
+`src/ats_scrapers/resolve.py`. Its scrapers, registry, and models were not taken.
+Its ~63k-company slug directory was **deliberately not vendored** — 47 CSVs,
+~6.7 MB, to answer a question this project never asks; reasoning recorded in
+`DEPENDENCIES.md` rather than decided silently.
+
+**One pattern table, extended, not a second one.** `discovery.ATS_PATTERNS` went
+from 5 ATS types to 17 (+ workday, jobvite, icims, recruitee, teamtailor, breezy,
+bamboohr, personio, pinpoint, jazzhr, gem, rippling; plus Greenhouse's
+`job-boards`/`.eu` hosts and Lever's `.eu` host, which we were previously blind
+to). `detect_ats` reads the same list, so F5 board discovery got all of it for
+free. The origin + copyright line sits in a comment directly above the table,
+which is the MIT attribution obligation discharged where someone will actually
+see it.
+
+**`connectors/apply_target.py` — `resolve_apply_target(url) -> {final_url,
+ats_type, board_token, resolved}`.** It walks the redirect chain **by hand**,
+`follow_redirects=False`, one hop at a time, because `is_safe_url` has to run
+before *every* request. Handing the chain to httpx would check the first URL and
+then cheerfully follow a 302 into `169.254.169.254` — the guard's entire purpose,
+defeated. Three tests cover that (metadata endpoint, loopback, RFC1918), and they
+mock **DNS, not the guard**: `connectors.discovery.socket.gethostbyname` is
+patched with a host→IP map so the real `is_safe_url` executes on every hop.
+Patching `is_safe_url` itself would have made the per-hop property untestable,
+which is exactly the bug being guarded against. A URL that already names its ATS
+returns with **zero** network calls. `resolved` means "we reached a real
+destination", not "we recognised the ATS" — `ats_type` can be None on a resolved
+result, because landing on the company's own page still beats handing the driver
+a redirector.
+
+**Caching.** Redis by URL, `apply_target:v1:` prefix, 7-day TTL — an ATS URL for
+a live posting is stable for weeks. `get_redis_connection` is imported *inside*
+the function: `workers.jobs` imports half of `connectors/`, so a module-level
+import is a cycle. Redis down at connect time, on `get`, or on `setex` all fall
+through to a plain resolution. **No DB column and no migration** — `0014` belongs
+to another agent and the chain must not collide.
+
+**Work-queue integration is additive.** `WorkQueueItemOut` gains
+`original_apply_url`, `ats_type`, `board_token`; `apply_url` now carries the
+*resolved* target when resolution succeeded and the original when it did not, so
+the shipped driver benefits with no change at all. A resolver exception is caught
+per row and degrades to the original URL: resolution is an optimisation and must
+never be able to empty the queue. That has its own test.
+
+**The live check, and what it actually found.** `fetch_remoteok_jobs()` returned
+**99 real rows, 99 with an `apply_url`** — and resolution found a real ATS on
+**1 of 99** (`ashby`/`stickermule`). Not a resolver bug: RemoteOK's `apply_url`
+*is* its own listing page (it 200s, and `remoteok.com/l/{id}` 302s right back to
+it), and the outbound apply link is behind a JS/login wall — the served HTML
+mentions greenhouse/lever/ashby/workable/workday **zero** times. Working Nomads
+is the opposite and is where the value is: **15/15 sampled `/job/go/` links
+resolved to a genuinely different destination, 4 of 15 to a named ATS**, e.g.
+`https://www.workingnomads.com/job/go/1878435/` →
+`https://jobs.ashbyhq.com/lemon-io/4dc7dd66-…` (`ashby`/`lemon-io`). Himalayas:
+0/15. So the honest summary is that this pays off per-feed, not uniformly.
+
+**What broke, found by the live run and not by any mock.** The first version
+reported an Arbeitnow page as company **"app" on Recruitee** — the subdomain
+regex had matched `app.recruitee.com`, Recruitee's own console. That URL would
+have sent the driver to a login screen and burned a submission attempt on a real
+application. Fixed with one shared `_RESERVED_SUBDOMAINS` guard (generalised from
+ats-scrapers' own per-ATS reserved-segment sets), including a lookbehind so a
+rejected reserved label cannot be salvaged by restarting mid-word (`app.` → `pp.`)
+— which would have reintroduced the bug. Verified red first: the pre-fix regex
+demonstrably captures `app`. Cost of the fix: Teamtailor went 4 → 0 on the same
+sample, i.e. some of those "hits" were vendor URLs too. A false negative is the
+right trade here — an unresolved link is handled; a confidently wrong ATS is not.
+
+**Second thing that broke.** Adding a network collaborator to
+`/extension/work-queue` silently put the eleven existing work-queue tests on the
+live internet. Fixed with one autouse fixture in `tests/conftest.py` patching
+`main.resolve_apply_target` to a pass-through; tests that care patch it
+themselves and the inner patch wins.
+
+**Files.** `apps/api/connectors/apply_target.py` (new),
+`apps/api/connectors/discovery.py` (`ATS_PATTERNS` extended,
+`_subdomain_tenant`/`_RESERVED_SUBDOMAINS` added), `apps/api/main.py`
+(`/extension/work-queue`), `apps/api/schemas.py` (`WorkQueueItemOut`),
+`apps/api/tests/test_apply_target.py` (new, 29 tests),
+`apps/api/tests/conftest.py`, `docs/DEPENDENCIES.md` §3.
+
+**Verification.** Red-before-green (the whole file failed collection first; the
+reserved-subdomain fix was proven red separately). **310 → 339 backend tests, all
+passing.** Every unit test is offline — `httpx` mocked throughout — and the one
+live check is the RemoteOK/Working Nomads run above.
+
+**Deliberately left out.** No per-ATS field schemas (the other half of "Phase 2"
+in the previous entry's Next) — `POST /extension/map-fields` still reads the real
+page, which is the correct order: knowing it is Greenhouse does not tell you
+which Greenhouse questions this posting asks. No resolution at ingestion time; it
+happens on work-queue read, cached, which keeps it off the connector hot path.
+No LLM fallback for unrecognised pages — `classify_unknown_ats` already exists
+for the domain-discovery path and pointing it at aggregator links would spend
+tokens per queue item. No headless browser, so RemoteOK's JS-gated apply link
+stays out of reach.
+
+**Next.** Field schemas per ATS; wire the resume docx to file inputs; and the
+standing blocker is unchanged — `ANTHROPIC_API_KEY` is still a placeholder.
+
+---
+
 ### 2026-09-27 (latest+17) — ADR-015 Phase 1: the execution loop closes, and `submitting` stops a silent lie
 
 **Context.** After the campaign model landed, `run_campaign_task` produced

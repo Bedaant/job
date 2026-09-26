@@ -436,6 +436,14 @@ class WorkQueueItemOut(BaseModel):
     apply_url: str
     company: str
     title: str
+    # ADR-015 Phase 2, additive only — the shipped driver reads the five fields
+    # above and must keep working untouched. `apply_url` is the *resolved* target
+    # when resolution succeeded and the original aggregator link when it did not,
+    # so the driver needs no change to benefit. `original_apply_url` is kept for
+    # debugging "which link did we actually start from".
+    original_apply_url: Optional[str] = None
+    ats_type: Optional[str] = None
+    board_token: Optional[str] = None
 
 
 class SubmissionResultIn(BaseModel):

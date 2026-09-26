@@ -24,3 +24,20 @@ def db_session():
     finally:
         session.close()
         engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def no_live_apply_target_resolution():
+    """`GET /extension/work-queue` resolves each aggregator `apply_url` to its
+    real ATS (ADR-015 Phase 2), which costs an HTTP round trip. The whole suite
+    must stay offline, so the default here is a no-op pass-through. Tests that
+    care about resolution patch `main.resolve_apply_target` themselves and that
+    inner patch wins.
+    """
+    from unittest.mock import patch
+
+    def passthrough(url: str) -> dict:
+        return {"final_url": url, "ats_type": None, "board_token": None, "resolved": False}
+
+    with patch("main.resolve_apply_target", side_effect=passthrough):
+        yield
