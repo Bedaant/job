@@ -27,6 +27,7 @@ from parsing.extract import extract_text_from_docx, extract_text_from_pdf
 from parsing.llm_extract import extract_basics, extract_facts_from_text
 from workers.jobs import discover_jobs_task, get_queue, get_redis_connection, prepare_applications_task
 from matching.embeddings import embed_texts, compute_centroid
+from matching.keyword_gap import compute_keyword_gap
 from matching.service import build_matches
 from parsing.jsonresume_export import facts_to_jsonresume
 
@@ -547,6 +548,38 @@ def update_profile_basics(
 @app.get("/matches", response_model=list[schemas.MatchOut])
 def list_matches(profile: models.Profile = Depends(get_owned_profile), db: Session = Depends(get_db)):
     return build_matches(db, profile)
+
+
+@app.get("/matches/{match_id}/keyword-gap", response_model=schemas.KeywordGapOut)
+def get_match_keyword_gap(
+    match_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """ATS keyword targeting for one match (matching/keyword_gap.py).
+
+    `documents/ats_safety.py` already guarantees the DOCX is *parseable*; this
+    is the other half of "more interview calls" — which of the JD's keywords
+    the user's real facts actually surface. Deterministic and free (regex +
+    rapidfuzz, no model call), so it can be called on every match.
+
+    ADR-009: `missing` keywords are reported but never suggested. Every
+    suggestion points at a `ResumeFact` the user already owns and only ever
+    reorders, surfaces, or rewords it.
+    """
+    match = (
+        db.query(models.Match)
+        .join(models.Profile)
+        .filter(models.Match.id == match_id, models.Profile.user_id == current_user.id)
+        .first()
+    )
+    if not match:
+        raise HTTPException(404, "Match not found")
+
+    facts = db.query(models.ResumeFact).filter(models.ResumeFact.profile_id == match.profile_id).all()
+    return compute_keyword_gap(
+        match.job.description, facts, job_skills=match.job.skills, job_title=match.job.title
+    )
 
 
 @app.get("/profiles/{profile_id}/resume.docx")

@@ -1,6 +1,6 @@
 import re
 from datetime import date, datetime
-from typing import Optional, List
+from typing import Optional, List, Union
 from pydantic import BaseModel, EmailStr, field_validator
 
 
@@ -247,6 +247,43 @@ class MatchOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class KeywordMatchOut(BaseModel):
+    keyword: str
+    evidence_fact_id_or_index: Union[str, int]
+    match_type: str  # exact | fuzzy | synonym
+    importance: str  # high | medium | low
+
+
+class KeywordMissingOut(BaseModel):
+    keyword: str
+    importance: str
+
+
+class KeywordWeakOut(BaseModel):
+    keyword: str
+    evidence_fact_id_or_index: Union[str, int]
+    reason: str  # metadata_only | single_mention
+
+
+class KeywordSuggestionOut(BaseModel):
+    action: str  # surface | reword — never "add": a suggestion may only move or
+                 # reword a fact the user already has (ADR-009).
+    fact_id_or_index: Union[str, int]
+    keyword: str
+    rationale: str
+
+
+class KeywordGapOut(BaseModel):
+    """matching/keyword_gap.py's output. `missing` is advisory only — nothing in
+    `suggestions` ever references a keyword listed there.
+    """
+    coverage: float
+    matched: List[KeywordMatchOut]
+    missing: List[KeywordMissingOut]
+    weak: List[KeywordWeakOut]
+    suggestions: List[KeywordSuggestionOut]
 
 
 class NotificationOut(BaseModel):
