@@ -61,6 +61,32 @@ export interface Match {
   state: "new" | "dismissed" | "saved";
 }
 
+export interface TailoredBullet {
+  text: string;
+  source_fact_ids: string[];
+}
+
+export interface ReviewMatchBreakdown {
+  semantic: number;
+  skill_coverage: number;
+  recency: number;
+  matched_skills: string[];
+  missing_skills: string[];
+}
+
+export interface ReviewApplication {
+  id: string;
+  job: Job;
+  match_score: number | null;
+  match_breakdown: ReviewMatchBreakdown | null;
+  status: string;
+  tailored_summary: string | null;
+  tailored_bullets: TailoredBullet[];
+  tailored_cover_letter: string | null;
+  flagged_unsupported_claims: string[];
+  created_at: string;
+}
+
 class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -130,6 +156,19 @@ export const api = {
     }),
   listFacts: (profileId: string) => request<ResumeFact[]>(`/resume-facts?profile_id=${profileId}`),
   listMatches: (profileId: string) => request<Match[]>(`/matches?profile_id=${profileId}`),
+  listReviewQueue: (profileId: string) =>
+    request<ReviewApplication[]>(`/applications/review-queue?profile_id=${profileId}`),
+  batchApprove: (applicationIds: string[]) =>
+    request<{ approved: string[] }>("/applications/batch-approve", {
+      method: "POST",
+      body: JSON.stringify({ application_ids: applicationIds }),
+    }),
+  dismissApplication: (applicationId: string) =>
+    request<ReviewApplication>(`/applications/${applicationId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "dismissed" }),
+    }),
+  resumeDocxUrl: (profileId: string) => `${API_URL}/profiles/${profileId}/resume.docx`,
 };
 
 export { ApiError };
