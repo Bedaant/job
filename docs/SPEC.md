@@ -16,234 +16,141 @@ All IDs are `uuid` with `gen_random_uuid()` default (pgcrypto). All timestamps a
 `timestamptz`, stored UTC, serialized ISO-8601. Money is integer minor units with an
 explicit currency column — never float.
 
-```sql
-CREATE TABLE users (
-  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  email          citext UNIQUE NOT NULL,
-  password_hash  text,                      -- null when Google-only
-  plan           text NOT NULL DEFAULT 'free',
-  created_at     timestamptz NOT NULL DEFAULT now(),
-  deleted_at     timestamptz
-);
+<!-- BEGIN GENERATED SCHEMA (apps/api/scripts/generate_spec_schema.py) -->
 
-CREATE TYPE persona AS ENUM ('developer', 'product_manager', 'marketing');
+This block is generated from `apps/api/models.py` by `apps/api/scripts/generate_spec_schema.py` — do not hand-edit it, run the script instead (`--check` verifies it's current, no args regenerates).
+Types are compiled against the real Postgres dialect (Neon). Enum columns (`persona`, `applicationstatus`) become native Postgres ENUM types, not VARCHAR+CHECK. Comments after `--` describe app-level (ORM) defaults honestly instead of inventing a SQL DEFAULT that doesn't exist.
 
-CREATE TABLE profiles (
-  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id      uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  persona      persona NOT NULL,
-  headline     text,
-  location     text,
-  work_auth    text[] NOT NULL DEFAULT '{}',   -- ['US-citizen','EU-permit']
-  prefs        jsonb NOT NULL DEFAULT '{}',    -- see §1.1
-  fact_centroid vector(1536),                  -- mean of fact embeddings, for matching
-  created_at   timestamptz NOT NULL DEFAULT now(),
+```text
+users:
+  id  UUID  NOT NULL  PRIMARY KEY  -- default: app-level callable gen_uuid() — not a DB DEFAULT, set by the ORM on insert
+  email  VARCHAR  NOT NULL  UNIQUE
+  password_hash  VARCHAR  NULL
+  created_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
+  deleted_at  TIMESTAMP WITHOUT TIME ZONE  NULL
+
+profiles:
+  id  UUID  NOT NULL  PRIMARY KEY  -- default: app-level callable gen_uuid() — not a DB DEFAULT, set by the ORM on insert
+  user_id  UUID  NOT NULL  -- FK -> users.id ON DELETE CASCADE
+  persona  persona  NOT NULL  -- default <Persona.developer: 'developer'> (app-level, not a DB DEFAULT)
+  headline  VARCHAR  NULL
+  location  VARCHAR  NULL
+  prefs  JSON  NULL  -- default: app-level callable dict() — not a DB DEFAULT, set by the ORM on insert
+  full_name  VARCHAR  NULL
+  phone  VARCHAR  NULL
+  website_url  VARCHAR  NULL
+  street_address  VARCHAR  NULL
+  city  VARCHAR  NULL
+  region  VARCHAR  NULL
+  country_code  VARCHAR(2)  NULL
+  postal_code  VARCHAR  NULL
+  network_profiles  JSON  NULL  -- default: app-level callable list() — not a DB DEFAULT, set by the ORM on insert
+  work_auth  JSON  NULL  -- default: app-level callable list() — not a DB DEFAULT, set by the ORM on insert
+  fact_centroid  VECTOR(512)  NULL
+  created_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
   UNIQUE (user_id, persona)
-);
 
-CREATE TABLE resume_facts (
-  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  profile_id   uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  category     text NOT NULL CHECK (category IN
-                 ('experience','project','skill','certification','education')),
-  claim        text NOT NULL,
-  proof        text,
-  metric       text,
-  period_from  date,
-  period_to    date,                            -- null = present
-  tags         text[] NOT NULL DEFAULT '{}',
-  confidence   text NOT NULL DEFAULT 'self_reported'
-                 CHECK (confidence IN ('verified','self_reported')),
-  embedding    vector(1536),
-  created_at   timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX ON resume_facts (profile_id);
-CREATE INDEX ON resume_facts USING ivfflat (embedding vector_cosine_ops) WITH (lists=100);
-
-CREATE TABLE companies (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name        text NOT NULL,
-  domain      citext UNIQUE,
-  ats_type    text,                             -- greenhouse|lever|ashby|workable|...
-  ats_token   text,
-  dossier     jsonb,
-  dossier_at  timestamptz,
-  created_at  timestamptz NOT NULL DEFAULT now()
-);
-CREATE UNIQUE INDEX ON companies (ats_type, ats_token) WHERE ats_token IS NOT NULL;
-
-CREATE TABLE jobs (
-  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  company_id      uuid NOT NULL REFERENCES companies(id),
-  canonical_hash  char(64) UNIQUE NOT NULL,     -- sha256(company|title|location)
-  title           text NOT NULL,
-  title_normalized text NOT NULL,
-  seniority       text,                          -- intern|junior|mid|senior|staff|lead
-  location        text,
-  remote_type     text NOT NULL DEFAULT 'unknown'
-                    CHECK (remote_type IN ('remote','hybrid','onsite','unknown')),
-  salary_min      integer,
-  salary_max      integer,
-  currency        char(3),
-  description     text NOT NULL,
-  skills          text[] NOT NULL DEFAULT '{}',  -- extracted, for coverage scoring
-  apply_url       text NOT NULL,
-  embedding       vector(1536),
-  search_vector   tsvector GENERATED ALWAYS AS (
-                    setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
-                    setweight(to_tsvector('english', array_to_string(skills, ' ')), 'B')
-                  ) STORED,
-  posted_at       timestamptz,
-  first_seen_at   timestamptz NOT NULL DEFAULT now(),
-  last_seen_at    timestamptz NOT NULL DEFAULT now(),
-  closed_at       timestamptz
-);
-CREATE INDEX ON jobs (posted_at DESC) WHERE closed_at IS NULL;
-CREATE INDEX ON jobs USING ivfflat (embedding vector_cosine_ops) WITH (lists=200);
-CREATE INDEX ON jobs USING gin (search_vector);
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE INDEX ON jobs USING gin (title gin_trgm_ops);  -- typo-tolerant title search
-
-CREATE TABLE job_sources (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  job_id      uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-  source      text NOT NULL,
-  external_id text NOT NULL,
-  raw_url     text NOT NULL,
-  fetched_at  timestamptz NOT NULL DEFAULT now(),
+jobs:
+  id  UUID  NOT NULL  PRIMARY KEY  -- default: app-level callable gen_uuid() — not a DB DEFAULT, set by the ORM on insert
+  source  VARCHAR  NOT NULL
+  external_id  VARCHAR  NOT NULL
+  canonical_hash  VARCHAR  NOT NULL  UNIQUE
+  title  VARCHAR  NOT NULL
+  company  VARCHAR  NOT NULL
+  location  VARCHAR  NULL
+  remote  BOOLEAN  NULL  -- default True (app-level, not a DB DEFAULT)
+  salary  VARCHAR  NULL
+  description  TEXT  NULL
+  apply_url  VARCHAR  NOT NULL
+  tags  JSON  NULL  -- default: app-level callable list() — not a DB DEFAULT, set by the ORM on insert
+  skills  JSON  NULL  -- default: app-level callable list() — not a DB DEFAULT, set by the ORM on insert
+  seniority  VARCHAR  NULL
+  embedding  VECTOR(512)  NULL
+  posted_at  TIMESTAMP WITHOUT TIME ZONE  NULL
+  fetched_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
+  last_seen_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
   UNIQUE (source, external_id)
-);
 
-CREATE TABLE matches (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  profile_id  uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  job_id      uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-  score       numeric(5,2) NOT NULL,
-  breakdown   jsonb NOT NULL,                   -- see §3.2
-  state       text NOT NULL DEFAULT 'new'
-                CHECK (state IN ('new','dismissed','saved')),
-  created_at  timestamptz NOT NULL DEFAULT now(),
+applications:
+  id  UUID  NOT NULL  PRIMARY KEY  -- default: app-level callable gen_uuid() — not a DB DEFAULT, set by the ORM on insert
+  profile_id  UUID  NOT NULL  -- FK -> profiles.id ON DELETE CASCADE
+  job_id  UUID  NOT NULL  -- FK -> jobs.id
+  status  applicationstatus  NULL  -- default <ApplicationStatus.saved: 'saved'> (app-level, not a DB DEFAULT)
+  portal  VARCHAR  NULL
+  notes  TEXT  NULL
+  tailored_resume_json  JSON  NULL
+  tailored_cover_letter  TEXT  NULL
+  applied_at  TIMESTAMP WITHOUT TIME ZONE  NULL
+  next_follow_up_at  TIMESTAMP WITHOUT TIME ZONE  NULL
+  created_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
+  updated_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
   UNIQUE (profile_id, job_id)
-);
-CREATE INDEX ON matches (profile_id, score DESC) WHERE state = 'new';
 
-CREATE TYPE application_status AS ENUM
-  ('draft','ready_for_review','approved','applied','oa','recruiter',
-   'interview','offer','rejected','withdrawn');
+resume_facts:
+  id  UUID  NOT NULL  PRIMARY KEY  -- default: app-level callable gen_uuid() — not a DB DEFAULT, set by the ORM on insert
+  profile_id  UUID  NOT NULL  -- FK -> profiles.id ON DELETE CASCADE
+  category  VARCHAR  NOT NULL
+  achievement  TEXT  NOT NULL
+  proof  TEXT  NULL
+  metric  VARCHAR  NULL
+  tags  JSON  NULL  -- default: app-level callable list() — not a DB DEFAULT, set by the ORM on insert
+  period_from  DATE  NULL
+  period_to  DATE  NULL
+  embedding  VECTOR(512)  NULL
+  created_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
 
-CREATE TABLE applications (
-  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  profile_id       uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  job_id           uuid NOT NULL REFERENCES jobs(id),
-  status           application_status NOT NULL DEFAULT 'draft',
-  submitted_via    text,                        -- extension|manual|ats_api
-  artifacts        jsonb NOT NULL DEFAULT '{}', -- {resume_key, pdf_key, screenshot_key}
-  applied_at       timestamptz,
-  next_follow_up_at timestamptz,
-  notes            text,
-  created_at       timestamptz NOT NULL DEFAULT now(),
-  updated_at       timestamptz NOT NULL DEFAULT now(),
+matches:
+  id  UUID  NOT NULL  PRIMARY KEY  -- default: app-level callable gen_uuid() — not a DB DEFAULT, set by the ORM on insert
+  profile_id  UUID  NOT NULL  -- FK -> profiles.id ON DELETE CASCADE
+  job_id  UUID  NOT NULL  -- FK -> jobs.id ON DELETE CASCADE
+  score  NUMERIC(5, 2)  NOT NULL
+  breakdown  JSON  NOT NULL
+  state  VARCHAR  NOT NULL  -- default 'new' (app-level, not a DB DEFAULT)
+  created_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
   UNIQUE (profile_id, job_id)
-);
 
-CREATE TABLE generations (
-  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  application_id uuid NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
-  pass           smallint NOT NULL CHECK (pass IN (1,2,3)),
-  attempt        smallint NOT NULL DEFAULT 1,     -- retry counter within one prepare run
-  model          text NOT NULL,
-  prompt_version text NOT NULL,
-  output         jsonb NOT NULL,
-  flags          jsonb NOT NULL DEFAULT '[]',
-  input_tokens   integer,
-  output_tokens  integer,
-  cost_usd       numeric(8,5),
-  created_at     timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (application_id, pass, attempt)   -- idempotency backstop, see §3.6
-);
+events:
+  id  BIGINT  NOT NULL  PRIMARY KEY
+  user_id  UUID  NOT NULL  -- FK -> users.id ON DELETE CASCADE
+  type  VARCHAR  NOT NULL
+  payload  JSON  NOT NULL
+  created_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
+  published_at  TIMESTAMP WITHOUT TIME ZONE  NULL
 
--- Outbox: every state change worth telling the frontend about is written here in the
--- SAME transaction as the business row. A relay worker publishes unpublished rows to
--- Redis for SSE fan-out, then marks them published. See ARCHITECTURE.md §4.6.
-CREATE TABLE events (
-  id           bigserial PRIMARY KEY,       -- monotonic, used as the SSE Last-Event-ID
-  user_id      uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  type         text NOT NULL,               -- match.new|application.status_changed|resume.parsed|notification.created
-  payload      jsonb NOT NULL,
-  created_at   timestamptz NOT NULL DEFAULT now(),
-  published_at timestamptz                  -- null = not yet relayed to Redis
-);
-CREATE INDEX ON events (user_id, id) WHERE published_at IS NULL;   -- relay poll
-CREATE INDEX ON events (user_id, id DESC);                          -- reconnect replay
+notifications:
+  id  UUID  NOT NULL  PRIMARY KEY  -- default: app-level callable gen_uuid() — not a DB DEFAULT, set by the ORM on insert
+  user_id  UUID  NOT NULL  -- FK -> users.id ON DELETE CASCADE
+  trigger  VARCHAR  NOT NULL
+  channel  VARCHAR  NOT NULL
+  template  VARCHAR  NOT NULL
+  payload  JSON  NULL  -- default: app-level callable dict() — not a DB DEFAULT, set by the ORM on insert
+  status  VARCHAR  NOT NULL  -- default 'pending' (app-level, not a DB DEFAULT)
+  sent_at  TIMESTAMP WITHOUT TIME ZONE  NULL
+  error  TEXT  NULL
+  created_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
 
-CREATE TABLE notifications (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  trigger     text NOT NULL,                -- weekly_digest|follow_up_nudge|application_status
-  channel     text NOT NULL CHECK (channel IN ('email','in_app')),
-  template    text NOT NULL,                -- template registry key + version
-  payload     jsonb NOT NULL DEFAULT '{}',  -- template render data
-  status      text NOT NULL DEFAULT 'pending'
-                CHECK (status IN ('pending','sent','failed','skipped')),
-  sent_at     timestamptz,
-  error       text,
-  created_at  timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX ON notifications (user_id, created_at DESC);
-CREATE INDEX ON notifications (status) WHERE status = 'pending';
+connector_runs:
+  id  UUID  NOT NULL  PRIMARY KEY  -- default: app-level callable gen_uuid() — not a DB DEFAULT, set by the ORM on insert
+  source  VARCHAR  NOT NULL
+  token  VARCHAR  NULL
+  fetched  INTEGER  NOT NULL  -- default 0 (app-level, not a DB DEFAULT)
+  inserted  INTEGER  NOT NULL  -- default 0 (app-level, not a DB DEFAULT)
+  failed  INTEGER  NOT NULL  -- default 0 (app-level, not a DB DEFAULT)
+  error  TEXT  NULL
+  notes  JSON  NULL
+  duration_ms  INTEGER  NULL
+  ran_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
 
-CREATE TABLE outreach (
-  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  application_id uuid NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
-  to_email       citext NOT NULL,
-  to_name        text,
-  hook_type      text NOT NULL,   -- alumni|ex_colleague|oss|wrote_about|employee
-  subject        text NOT NULL,
-  body           text NOT NULL,
-  gmail_thread_id text,
-  sent_at        timestamptz,
-  replied_at     timestamptz,
-  follow_up_at   timestamptz,
-  created_at     timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE TABLE suppressions (        -- global, cross-tenant. never scoped to a user.
-  email      citext PRIMARY KEY,
-  reason     text NOT NULL,        -- opt_out|bounce|complaint|manual
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE TABLE connector_runs (
-  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  source     text NOT NULL,
-  token      text,
-  fetched    integer NOT NULL DEFAULT 0,
-  inserted   integer NOT NULL DEFAULT 0,
-  failed     integer NOT NULL DEFAULT 0,
-  error      text,
-  duration_ms integer,
-  ran_at     timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX ON connector_runs (source, ran_at DESC);
-
--- The learning loop (ADR-014). Every generation and every match score is already
--- persisted (generations, matches). What was missing was a durable link from those to
--- the eventual OUTCOME, so prompt/weight changes can be judged against reality instead
--- of vibes. No new outcome table needed — applications.status IS the outcome signal;
--- this table just snapshots WHICH weight config produced which outcome, so a later
--- weight change doesn't retroactively corrupt the historical record it's compared against.
-CREATE TABLE match_weight_history (
-  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  semantic_weight        numeric(4,3) NOT NULL,
-  skill_coverage_weight  numeric(4,3) NOT NULL,
-  recency_weight         numeric(4,3) NOT NULL,
-  fitted_from    daterange NOT NULL,   -- outcome data window used for this fit
-  sample_size    integer NOT NULL,
-  notes          text,                 -- e.g. "scikit-learn LogisticRegression, AUC=0.71"
-  active_from    timestamptz NOT NULL DEFAULT now(),
-  CHECK (semantic_weight + skill_coverage_weight + recency_weight = 1.000)
-);
+resume_uploads:
+  id  UUID  NOT NULL  PRIMARY KEY  -- default: app-level callable gen_uuid() — not a DB DEFAULT, set by the ORM on insert
+  profile_id  UUID  NOT NULL  -- FK -> profiles.id ON DELETE CASCADE
+  status  VARCHAR  NOT NULL  -- default 'parsing' (app-level, not a DB DEFAULT)
+  draft_facts  JSON  NULL
+  error  TEXT  NULL
+  created_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
 ```
+
+<!-- END GENERATED SCHEMA -->
 
 ### 1.1 `profiles.prefs` shape
 
