@@ -19,6 +19,7 @@ from database import session_scope
 
 import models
 from batch_prep import prepare_application_for_review
+from campaigns import run_campaign
 
 
 def get_redis_connection() -> Redis:
@@ -102,3 +103,29 @@ def prepare_applications_task(application_ids: list[str]) -> dict:
                 failed.append(application_id)
                 db.rollback()
     return {"prepared": prepared, "failed": failed}
+
+
+def run_campaign_task(campaign_id: str, run_id: str | None = None) -> dict:
+    """ADR-015 §2 — one autonomous run of a campaign, inside its approved bounds.
+
+    run_id (same two-layer idempotency as discover_jobs_task): layer 1 is the
+    enqueue-side `unique=True` on a per-minute job_id in main.py; this is
+    layer 2, the execution claim, so a retried or duplicated execution of the
+    same run can't double-create. The real cap guarantee does NOT depend on
+    this claim — campaigns.remaining_quota recounts the campaign's
+    applications for today inside the run itself (test_campaigns.py's
+    double-run test deliberately lets both claims succeed to prove that). The
+    claim only avoids the wasted LLM work.
+    """
+    if run_id is not None:
+        claimed = get_redis_connection().set(
+            f"idempotency:campaign:{run_id}", "1", nx=True, ex=600
+        )
+        if not claimed:
+            return {"skipped": True, "reason": "already claimed"}
+
+    with session_scope() as db:
+        campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
+        if campaign is None:
+            return {"skipped": True, "reason": "campaign not found", "created": 0, "prepared": 0}
+        return run_campaign(db, campaign)

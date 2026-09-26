@@ -32,6 +32,13 @@ class ApplicationStatus(str, enum.Enum):
     rejected = "rejected"
 
 
+class CampaignStatus(str, enum.Enum):
+    draft = "draft"
+    active = "active"
+    paused = "paused"
+    archived = "archived"  # DELETE /campaigns/{id} lands here — never a hard delete
+
+
 class Persona(str, enum.Enum):
     developer = "developer"
     product_manager = "product_manager"
@@ -89,6 +96,7 @@ class Profile(Base):
     resume_facts = relationship("ResumeFact", back_populates="profile", cascade="all, delete-orphan")
     applications = relationship("Application", back_populates="profile", cascade="all, delete-orphan")
     matches = relationship("Match", back_populates="profile", cascade="all, delete-orphan")
+    campaigns = relationship("Campaign", back_populates="profile", cascade="all, delete-orphan")
 
     __table_args__ = (UniqueConstraint("user_id", "persona", name="uq_profile_user_persona"),)
 
@@ -121,12 +129,62 @@ class Job(Base):
     __table_args__ = (UniqueConstraint("source", "external_id", name="uq_job_source_external_id"),)
 
 
+class Campaign(Base):
+    """ADR-015 §2 — the unit of approval. The user approves a campaign once
+    (which roles/sources, the caps, the tailoring instructions) and the agents
+    discover -> tailor -> apply autonomously inside those bounds. This replaces
+    ADR-001's per-application gate (superseded).
+
+    `daily_cap` is ADR-015's non-negotiable rail. There is deliberately NO
+    counter column and no campaign_runs table: the cap is derived from this
+    campaign's `applications` rows created today (campaigns.py::
+    remaining_quota), which is the only number that can't drift out of sync
+    with what actually went out.
+    """
+    __tablename__ = "campaigns"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    profile_id = Column(UUID(as_uuid=False), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String, nullable=False)
+    status = Column(Enum(CampaignStatus), nullable=False, default=CampaignStatus.draft)
+
+    # Bounds the user approved. Empty list = no restriction on that axis
+    # (empty `sources` means every enabled source, per the campaign contract).
+    roles = Column(JSON, default=list)        # title keywords
+    locations = Column(JSON, default=list)
+    remote_only = Column(Boolean, nullable=False, default=True)
+    sources = Column(JSON, default=list)      # Job.source values
+
+    # 0..1 fraction. Match.score is stored 0..100 (matching/scoring.py), so the
+    # comparison in campaigns.py scales by 100 — kept as a fraction here because
+    # that is the contract the campaign UI was built against.
+    min_match_score = Column(Numeric(4, 3), nullable=False, default=0.7)
+    daily_cap = Column(sqlalchemy.Integer, nullable=False, default=10)
+    auto_submit = Column(Boolean, nullable=False, default=False)
+    # The user's own instructions to the tailor. Never a source of facts —
+    # ADR-006/ADR-009 stand: only ResumeFacts can ground a claim.
+    tailoring_notes = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_run_at = Column(DateTime, nullable=True)
+
+    profile = relationship("Profile", back_populates="campaigns")
+    applications = relationship("Application", back_populates="campaign")
+
+
 class Application(Base):
     __tablename__ = "applications"
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
     profile_id = Column(UUID(as_uuid=False), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
     job_id = Column(UUID(as_uuid=False), ForeignKey("jobs.id"), nullable=False)
+    # Nullable + SET NULL on purpose: applications created by hand have no
+    # campaign, and a deleted campaign must not take the user's real
+    # application history with it. This column is the daily-cap source of truth.
+    campaign_id = Column(
+        UUID(as_uuid=False), ForeignKey("campaigns.id", ondelete="SET NULL"), nullable=True
+    )
     status = Column(Enum(ApplicationStatus), default=ApplicationStatus.saved)
     portal = Column(String, nullable=True)  # e.g. "Wellfound", "Turing", "Direct"
     notes = Column(Text, nullable=True)
@@ -144,6 +202,7 @@ class Application(Base):
 
     profile = relationship("Profile", back_populates="applications")
     job = relationship("Job", back_populates="applications")
+    campaign = relationship("Campaign", back_populates="applications")
 
     __table_args__ = (UniqueConstraint("profile_id", "job_id", name="uq_application_profile_job"),)
 
