@@ -102,6 +102,96 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-26 (latest+11) — SPEC.md §1 schema is now generated from models.py, not hand-written
+
+**Why.** Three separate times this session, SPEC.md §1's hand-written DDL was
+found to have drifted from the real `apps/api/models.py`: `resume_facts`
+missing `period_from`/`period_to`, `notifications.status`'s CHECK disagreeing
+with the API's own `"seen"` value, `profiles.work_auth` documented as
+`text[]` but actually a JSON column. Each was caught by an agent doing
+something unrelated — the fix is to make this class of drift structurally
+impossible instead of eventually-caught.
+
+**`apps/api/scripts/generate_spec_schema.py` (new).** Introspects
+`models.Base.metadata.tables` directly — no DB connection, ever; only
+`models.py`'s Python class definitions are read. Column types are compiled
+against the real Postgres dialect (`sqlalchemy.dialects.postgresql`, since
+Neon is Postgres) so `Enum(Persona)` correctly renders as the native
+`persona` enum type rather than a generic VARCHAR. Never fabricates a SQL
+`DEFAULT` for a Python-side default it can't map cleanly: `gen_uuid`,
+`dict`, `list`, `datetime.utcnow` defaults are rendered as an honest comment
+("app-level callable, not a DB DEFAULT") instead of invented SQL. Two modes:
+no args regenerates the block between
+`<!-- BEGIN GENERATED SCHEMA (apps/api/scripts/generate_spec_schema.py) -->`
+/ `<!-- END GENERATED SCHEMA -->` markers now wrapping SPEC.md §1's DDL block
+in place; `--check` diffs in-memory against what's currently between the
+markers and exits 1 without writing anything if stale — the runnable-check
+half of the task.
+
+**Real discrepancies found, beyond the 3 already known (confirmed by diffing
+generated output against the old hand-written block for real, not guessed):**
+SPEC.md's hand-written DDL describes a schema several tables larger than
+what actually exists — `companies`, `job_sources`, `generations`, `outreach`,
+`suppressions`, and `match_weight_history` are all documented there but
+**do not exist anywhere in `models.py`**; conversely `resume_uploads`
+(F1 resume upload tracking) exists in the real schema and was **never
+documented in SPEC.md §1 at all**. `jobs` in SPEC.md has `company_id` FK to a
+`companies` table, `title_normalized`, `salary_min`/`salary_max`/`currency`,
+a generated `search_vector` tsvector column, and no `source`/`external_id`
+columns (those live on the undocumented `job_sources` table instead) — the
+real `Job` model has none of that: `source`/`external_id` are directly on
+`jobs`, salary is a single freeform `salary` text column, no search vector.
+`applications.status` in SPEC.md is a 10-value enum
+(`draft, ready_for_review, approved, applied, oa, recruiter, interview,
+offer, rejected, withdrawn`) — the real `ApplicationStatus` enum has 7
+values and neither `draft` nor `ready_for_review`/`approved`/`withdrawn`
+exist in code. SPEC.md's `applications` also has `submitted_via`/`artifacts`
+columns that don't exist; the real model has `portal`/`tailored_resume_json`/
+`tailored_cover_letter` instead. `resume_facts.claim` in SPEC.md is
+`achievement` in the real model, and the real model has no `confidence`
+column at all (SPEC.md's `verified`/`self_reported` CHECK is fictional).
+None of this was invented for the generated output — it's just what's
+actually in `models.py` versus what SPEC.md's prose claimed; the generated
+block only asserts the former. `profiles.work_auth`'s real column type is
+plain SQLAlchemy `JSON` (not `postgresql.JSONB` — no JSONB import exists
+anywhere in `models.py`), so even the "JSONB" framing used to describe this
+gap earlier this session overstated it; it compiles to Postgres `json`, one
+step short of `jsonb`, and is not `text[]` either way.
+
+**Verification, not simulated.** `--check` run against the actual current
+SPEC.md/models.py pair correctly reported STALE with a real diff (the 6
+extra tables, the enum drift, etc., all showed up in the printed diff before
+any write). The real regeneration was then run for real (no args) and
+`--check` immediately after reported OK. Ran it a second time in a row —
+`write_generated_block` produced byte-identical output, confirmed idempotent.
+2 new tests (`tests/test_generate_spec_schema.py`): one asserts the generated
+block contains the real column names/types for `users`/`profiles`/
+`resume_facts` (including the once-missing `period_from`/`period_to`) and
+that no fabricated `DEFAULT gen_random_uuid()` appears; one builds a
+synthetic stale SPEC.md fixture and confirms the diff logic actually flags
+the mismatch, then confirms `write_generated_block` produces a match and
+leaves prose outside the markers untouched. Full suite: 216/216 green (214
+prior + 2 new). Confirmed no DB connection happens by construction —
+`generate_schema_block()` only touches `Base.metadata`, never calls
+`engine.connect()`.
+
+**Files created.** `apps/api/scripts/generate_spec_schema.py`,
+`apps/api/tests/test_generate_spec_schema.py`. **Files changed.**
+`docs/SPEC.md` (§1's DDL wrapped in BEGIN/END markers, content between them
+now generated — prose before/after, §1.1 onward, and every other section
+untouched).
+
+**Not done, by design.** The 6 SPEC.md-only tables (`companies`,
+`job_sources`, `generations`, `outreach`, `suppressions`,
+`match_weight_history`) are real product surface described elsewhere in
+SPEC.md/PRD.md that was simply never implemented — this task's job was to
+make the *documented-vs-real* comparison honest and automatic, not to decide
+whether those tables should now be built or the prose describing them
+deleted. That's a real, larger followup for whoever owns the next roadmap
+slice, flagged here rather than silently resolved either direction.
+
+---
+
 ### 2026-09-26 (latest+10) — Roadmap sub-project #1: deterministic known-ATS field maps, live-verified
 
 **Context.** The "too much manual effort" analysis decomposed into four
