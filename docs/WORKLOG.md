@@ -102,6 +102,172 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+15) - Onboarding wizard (`/onboarding`): landing to a running campaign, ADR-015 approve-once
+
+**What changed.** Built the multi-step onboarding flow the owner described as "one portal,
+my portal, where a user can come, fill out every form and do the onboarding, everything,
+from first to last" - five steps from resume upload to a live campaign. This is also the
+first page in `apps/web` that actually uses the shadcn/Kibo UI kit installed back in
+latest+6; every prior page was inline styles or unstyled Tailwind (see the real bug below).
+
+The five steps, and what each one really talks to:
+1. **Upload your resume** - Kibo UI's `Dropzone` (already installed, first real use) ->
+   `POST /profiles/{id}/resume`. Shows the parsed fact count and the first three facts,
+   and says plainly that nothing is saved yet. 5MB / .pdf / .docx limits mirror
+   `MAX_RESUME_UPLOAD_BYTES` and the format check in `apps/api/main.py` so the user gets
+   told before the round trip, not by a 413/422 after it.
+2. **Confirm your facts** - renders the *draft* `basics` the upload endpoint already
+   returns (`ResumeUploadOut.basics`, which `lib/api.ts` was not previously typed for)
+   alongside the draft facts. Both are editable. Persisted only on leaving this step, via
+   `PUT /profiles/{id}/basics` then `POST /profiles/{id}/facts:bulk` - the same
+   "parsed output is never silently trusted" rule those two endpoints already enforce
+   server-side (SPEC.md S2.1). The ADR-009 stakes are stated at the top of the step in
+   plain words ("this list is the whole truth we work from... anything you delete here can
+   never appear in an application; anything wrong here can") rather than left implicit.
+   The client-side validators in `lib/onboarding.ts` mirror `schemas.ApplicantBasics`
+   field-for-field - placeholder names, the reserved fictional 555-01XX phone range,
+   scheme-less URLs, non-alpha2 country codes - so the user sees the problem next to the
+   input instead of a 422 after pressing Continue. That is UX; the server still re-validates.
+3. **What you're looking for** - roles, locations, remote-only, salary floor.
+4. **Create your campaign** - the ADR-015 approve-once step: sources, min match score,
+   daily cap, auto-submit. Framed honestly: the cap is described as a hard stop rather
+   than a target, and switching auto-submit on reveals a real warning naming the number of
+   applications per day that will reach real employers with no further prompt, that it can
+   be switched off, and that anything already sent stays sent.
+5. **Done** - campaign summary, `GET /campaigns/{id}/stats` counters, first five matches
+   from the existing `GET /matches`, and links onward to `/matches`, `/review`, `/facts`.
+
+**Why now.** `/review` (latest+14) gave Phase 3 a human checkpoint but there was no way to
+*get* to a state where anything was in it - no profile setup, no preferences, no campaign.
+This is the front half of that same coordinated piece of work.
+
+**Built against a contract, not against a running backend.** A parallel agent is building
+the campaign API. `POST /campaigns`, `GET /campaigns`, `POST /campaigns/{id}/run`,
+`GET /campaigns/{id}/stats` are all typed and wired in `lib/api.ts` from the agreed
+contract; none of them exist in `apps/api` yet, and a 404 is the expected response today.
+Every one of those call sites renders a named failure notice saying which endpoint 404'd
+and that the backend is not deployed yet - never a silent empty screen - and the campaign
+that was created is not discarded if only the follow-up `run` fails.
+
+**ADR-015 is not in `docs/DECISIONS.md`.** Checked: the file ends at ADR-014, and there is
+no uncommitted change to it in this worktree. The pivot (approval happens once at campaign
+level, not per application) was taken from the task framing and implemented accordingly,
+and it is consistent with ADR-001's "human approves, machine executes" - the approval just
+moves up a level. Whoever owns ADR-015 still needs to write it down; this UI is currently
+the only place that behaviour is described.
+
+**Two pre-existing bugs found on the way, both real, neither mine.**
+1. **`tailwind.config.js`'s `content` globs never included `./app`** - only `./pages` and
+   `./components`. Every app-router page built since Phase 1 (`/facts`, `/login`,
+   `/matches`, and latest+14's `/review`, which is written entirely in Tailwind classes)
+   has therefore been rendering with *zero* generated utilities. It builds clean, which is
+   exactly why nobody caught it: a missing content path is not a build error, it is a
+   silently empty stylesheet. Added `./app/**/*.{js,ts,jsx,tsx}`. `/review` should be
+   eyeballed by whoever owns it - it has never actually been seen styled.
+2. **`vitest` was installed with no config at all**, which is why three prior entries
+   correctly reported "no test runner wired up". Added `vitest.config.mts` (`.mts`, not
+   `.ts` - Vite's native config loader warns on ESM syntax in a file it loads as CJS) and
+   an `npm test` script.
+
+**Tests - 25, and the reason they are not component tests.** `@testing-library/react` is
+installed but **neither `jsdom` nor `happy-dom` is**, and neither is in the lockfile
+(checked, not assumed). Installing one needs owner approval per ADR-010, so rather than
+stall or install unilaterally, the wizard's decision logic was factored out of the
+components into `lib/onboarding.ts` and tested there under `environment: "node"`:
+step gating (`canAdvance` - will not leave the resume step with no parsed facts, will not
+leave facts with an emptied one, will not leave preferences without a role, but accepts
+`remote_only` in place of a location), the facts-editor round-trip (`editFact` replaces only
+the edited fact, does not mutate the original, and `validateFacts` reports the offending
+index so the error can be shown inline), basics validation, campaign bounds, and
+`buildCampaignBody`. `lib/campaigns.test.ts` asserts via **msw** that `POST /campaigns`
+sends exactly the contract body - key-for-key, no extras - that the documented defaults
+(0.7 / 10 / false) go over the wire, and that a 404 surfaces as an `ApiError` rather than
+resolving empty. Red-before-green was real: the first run failed with
+`Cannot find module './onboarding'` before any implementation existed.
+**Left open:** rendering tests for focus-on-step-change and the auto-submit warning
+appearing. Those genuinely need a DOM. One `npm i -D jsdom` closes it - ask first.
+
+**Accessibility decisions.** Every input is a real `<input>`/`<textarea>` with a real
+`<label htmlFor>` (the wiring lives in one `Field`/`Chips` pair in
+`components/onboarding/fields.tsx` precisely so it is not written thirteen times and wrong
+in three of them); errors are `role="alert"` and joined to their input by
+`aria-describedby` + `aria-invalid`; progress is an `<ol>` with `aria-current="step"`, so
+the step count and position are available without sight; source and auto-submit groups are
+real `<fieldset>`/`<legend>`; the step panel is `tabIndex={-1}` and takes focus on every
+step change (a wizard that swaps its whole panel without moving focus strands a keyboard
+user on a button that no longer exists), skipping the first render so it does not steal
+focus on load; one `aria-live="polite"` region announces step changes and blocked advances.
+**Continue is deliberately not disabled when the step is invalid** - a disabled button
+gives a keyboard or screen-reader user no way to learn *why* - it stays pressable, reveals
+the errors, and returns focus to the panel. Errors stay hidden until the first attempt to
+advance, so the form does not shout at someone who has not typed anything yet. No
+div-as-button anywhere; Enter inside the chips input is `preventDefault`-ed so it adds a
+chip instead of submitting the step.
+
+**Dependencies added.** None. Used Kibo UI's dropzone, shadcn's Checkbox/Input/Label/
+Textarea/Badge, radix via the existing `radix-ui` umbrella, and lucide icons - all already
+installed. Kibo UI's **combobox was deliberately not used** for roles/locations: it wants a
+fixed option list and those fields are genuinely open-ended, so a plain input plus
+removable chips is both smaller and more honest about what is accepted. `@dnd-kit` turns
+out to be in `package.json` already (pulled in with the Kibo kanban), contrary to the
+standing note that it was missing - nothing here needs it either way. Tailwind stayed
+pinned at 3.4.4 and no v4 syntax was introduced.
+
+**Honest gaps, not silently dropped.**
+- **No separate landing route.** `/` is still the legacy pages-router dashboard
+  (`pages/index.js`) and Next cannot have both routers own the same path, so the wizard
+  lives at `/onboarding` and `/` got one link into it. A real marketing landing page is a
+  separate piece of work.
+- **Salary floor has no home in the campaign contract.** It is collected and passed through
+  `tailoring_notes` as a note, and the field says so out loud - "we pass this along as a
+  note on the campaign rather than filter on it - it is not a hard cutoff yet". The
+  alternatives were inventing a contract field the backend agent is not building, or
+  dropping a field the task asked for. If salary should actually filter, it needs a real
+  contract field.
+- **Preferences are not persisted anywhere except the campaign body.** There is no
+  `PATCH /profiles/{id}` and `Profile.prefs` is only writable at creation, so roles/
+  locations/remote-only live on the campaign. Reloading mid-wizard loses them.
+- **The source list is mirrored, not fetched.** No endpoint enumerates connectors, so
+  `AVAILABLE_SOURCES` in `lib/onboarding.ts` hardcodes the six real ones read out of
+  `apps/api/connectors/` (`jobspy_google` is labelled "currently returning no results",
+  which is true per latest+6). Adding a connector means editing this list.
+- **The wizard does not resume.** Reload and you start at step 1. Nothing is lost that was
+  already persisted (facts and basics are saved at step 2), but the in-flight draft is.
+- **Not verified in a browser.** The campaigns endpoints do not exist yet, so a dev server
+  would only demonstrate the 404 path. Loading/error/empty branches were verified by
+  reading the JSX against React Query's flag semantics, as in latest+14.
+- **The global `body` rule in `styles/globals.css` still hardcodes the old dark-green
+  scheme**, which fights shadcn's light `--background`. Worked around rather than fixed:
+  `/onboarding` wraps itself in `bg-background text-foreground`. Fixing it properly means
+  deciding what the app's actual palette is, which is a design call, not a build fix.
+
+**Files created.** `apps/web/app/onboarding/page.tsx` (wizard shell, focus management,
+step gating, mutations), `apps/web/components/onboarding/{fields,StepResume,StepFacts,
+StepPreferences,StepCampaign,StepDone}.tsx`, `apps/web/lib/onboarding.ts` (steps,
+validation, `buildCampaignBody`), `apps/web/lib/{onboarding,campaigns}.test.ts`,
+`apps/web/vitest.config.mts`.
+**Files changed.** `apps/web/lib/api.ts` (`ApplicantBasics`/`NetworkProfile` types,
+`ResumeUploadResult.basics`, `Campaign`/`CampaignCreate`/`CampaignStats`, and
+`listCampaigns`/`createCampaign`/`runCampaign`/`getCampaignStats`/`getBasics`/`putBasics`),
+`apps/web/tailwind.config.js` (the `./app` content fix), `apps/web/package.json`
+(`test` script), `apps/web/pages/index.js` (one link to `/onboarding`).
+**Not touched:** `apps/api/` and `docs/DECISIONS.md`, both owned by parallel agents.
+
+**Verification.** `npm run build` clean - 9 static pages, `/onboarding` at 21.9 kB
+(150 kB First Load JS), no new warnings beyond Next's pre-existing multi-lockfile
+workspace-root notice. `npm test` - 2 files, 25 tests, all passing. Ran `next build` via
+`node node_modules/next/dist/bin/next build` again, same reason as latest+14 (`next` not
+on `.bin` after `npm ci` in a worktree). Did *not* need the `rm -rf .next` trick this time
+- the build was green first try after the Tailwind fix - but cleared it before trusting
+the baseline, per the standing note.
+
+**Next.** Merge the campaigns backend and the 404 notices turn into real data with no
+frontend change. Then: `npm i -D jsdom` (needs approval) to close the rendering-test gap;
+look at `/review` with styles actually applied for the first time; write ADR-015 down;
+decide the palette so `globals.css`'s `body` rule can stop fighting the design tokens.
+
+---
+
 ### 2026-09-26 (latest+12) — Roadmap sub-projects #2 + #4: batch prep pipeline and gated execution, live-verified
 
 **Context.** Owner asked to finish all remaining decomposed sub-projects at
