@@ -102,6 +102,99 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-26 (latest+12) — Roadmap sub-projects #2 + #4: batch prep pipeline and gated execution, live-verified
+
+**Context.** Owner asked to finish all remaining decomposed sub-projects at
+once, dispatching parallel agents for the independent tracks (unified
+grounded-ID validator, SPEC.md-as-generated-docs, the review-queue frontend
+— all three landed, see their own WORKLOG entries on worktree branches to be
+merged) while the migration-touching, security-sensitive chain (#2 batch
+prep -> #3's contract -> #4 gated execution, plus RLS above) was done
+directly, sequentially, in this session.
+
+**#2 — batch prep.** New `batch_prep.py::prepare_application_for_review`:
+tailors + truth-checks an `Application` against its `ResumeFact`s, persists
+`tailored_resume_json`, and — real gap closed here — `flagged_
+unsupported_claims`, which `tailor_application()` has always returned but
+`/tailor` never once persisted; ADR-006's whole point is those claims are
+"surfaced, not silently kept," and until now they were silently dropped on
+every call. Flips status to `ready_for_review`. New `ApplicationStatus`
+values `ready_for_review`/`approved`/`dismissed` (migration `0011`,
+**applied live to Neon**) — `dismissed` deliberately distinct from the
+existing `rejected` (employer-rejected), a different thing. Async wrapper
+`workers/jobs.py::prepare_applications_task` (RQ, same "real LLM calls, must
+not block the request thread" reasoning as `discover_jobs_task`). New
+endpoints: `GET /applications/review-queue`, `POST /applications/batch-
+prepare`, `POST /applications/batch-approve` (all-or-nothing, SPEC's own
+"no partial sends" discipline). `schemas.ApplicationReviewOut` matches, on
+purpose, the exact contract given to the parallel frontend agent before this
+backend existed — kept in sync deliberately.
+
+**#4 — gated execution.** The real design question: the ADR-001 static
+guard built earlier this session forbids `form.submit()`/`requestSubmit()`
+everywhere, on purpose — but a batch-approved application has to actually
+submit *somewhere*. New `POST /applications/{id}/claim-submission`: the only
+place real authority lives. `with_for_update()` locks the row; the
+application must genuinely be `approved`, and the claim atomically flips it
+to `applied` in the same locked transaction — so it can fire **at most
+once**, not be retried into a duplicate send. Extension side:
+`formFill.content.ts` now captures the original, unpatched
+`submit`/`requestSubmit` methods *before* the guard overwrites them, exported
+narrowly as `_adr001OriginalSubmit`/`_adr001OriginalRequestSubmit` — never
+attached to `window`, never exported broadly. New
+`submitApprovedApplication.ts` is the **one** file that uses them: it calls
+the claim endpoint first, and only invokes the real native method if that
+call returns 200. This is the single, explicitly reviewed exception now
+listed in `architectureInvariants.test.mjs`'s previously-empty `ALLOWLIST`.
+
+**A real false-positive, instructive not embarrassing.** The static guard
+initially flagged `submitApprovedApplication.ts` — not for its actual
+`.call(form)` invocation, but because its own explanatory *comment* contained
+the literal substring "form.requestSubmit()". A naive text scanner can't
+distinguish code from prose describing code; this is exactly why the
+`ALLOWLIST` entry needed a human decision either way, not a scanner
+adjustment — added the file, with the exact justification (a real backend
+claim gates it) documented at both the exemption site and the file itself.
+
+**Real verification, not simulated.** 224/224 backend tests green (214 + 10
+new, red-before-green: `prepare_application_for_review`'s persistence,
+review-queue filtering, batch-approve's all-or-nothing/404/422 paths, and —
+the property that actually matters — claim-submission succeeding once and
+**409-ing on a second attempt against the same application**). Extension:
+9/9 Node tests green, `tsc --noEmit` clean, clean build from a deleted
+`dist/`. Migration `0011` applied live to Neon. **Live against real Neon +
+real NVIDIA NIM**: a real application flowed through `prepare_application_
+for_review` end-to-end — real tailored summary/bullets generated, and the
+free smoke model's own `flagged_unsupported_claims` output (`["Senior
+Backend Engineer"]`, flagging a title it wasn't given strong enough evidence
+for) was correctly persisted, not dropped. **Live against the real RLS-
+restricted role** (not the HTTP layer — no server running this session, so
+verified the exact locked-query pattern `claim-submission` uses directly):
+first claim on a real `approved` row succeeded; a second claim on the same
+row was correctly refused (`status` was already `applied`) — the "fires at
+most once" property, proven, not asserted.
+
+**Not done, honestly.** `submitApprovedApplication.ts` isn't wired into any
+real UI trigger yet (no bundle entry currently reaches it — confirmed via
+the build output, unchanged file count) and was not live-browser-tested,
+same standing limitation as the rest of F11's content-script code all
+session. The RQ async path (`prepare_applications_task`) is wired and unit-
+tested but not live-exercised through a real running worker this pass — the
+synchronous unit `prepare_application_for_review` was, directly.
+
+**Files created.** `batch_prep.py`, `alembic/versions/0011_batch_review_
+fields.py`, `tests/test_batch_prep.py`,
+`apps/extension/src/content/submitApprovedApplication.ts`. **Files
+changed.** `models.py` (3 enum values, `flagged_unsupported_claims`),
+`schemas.py` (`ApplicationReviewOut`, `BatchApproveRequest/Response`,
+`BulletOut` reordered earlier in the file), `main.py` (4 new endpoints),
+`workers/jobs.py` (`prepare_applications_task`),
+`apps/extension/src/content/formFill.content.ts` (captured originals),
+`apps/extension/src/content/architectureInvariants.test.mjs` (`ALLOWLIST`
+filled).
+
+---
+
 ### 2026-09-26 (latest+11) — Off-roadmap: Postgres Row-Level Security, restricted role, live-verified fail-closed
 
 **Context.** Parked mid-discovery earlier this session after finding

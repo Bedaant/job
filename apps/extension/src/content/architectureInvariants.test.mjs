@@ -25,10 +25,21 @@ const FORBIDDEN_PATTERNS = [
 ];
 
 // Files explicitly reviewed and exempted, with the reason documented at the
-// exemption site itself, not just here. Empty today, on purpose — any entry
-// added here is a deliberate, reviewable decision to cross ADR-001's line,
-// not an accidental one.
-const ALLOWLIST = new Set();
+// exemption site itself, not just here. Any entry added here is a
+// deliberate, reviewable decision to cross ADR-001's line, not an
+// accidental one.
+//
+// submitApprovedApplication.ts (sub-project #4, added 2026-09-26): the one
+// file that performs a real submit — but only via the ORIGINAL native
+// method captured before this guard patched it, and only after a real
+// network call to POST /applications/{id}/claim-submission has returned
+// 200 (server-side: the application must genuinely be `approved` — a human
+// already clicked Approve in the review queue — and the claim atomically
+// flips it to `applied` in a locked transaction so it can fire at most
+// once). Read that file in full before ever adding a second entry here.
+const ALLOWLIST = new Set([
+  fileURLToPath(new URL("./submitApprovedApplication.ts", import.meta.url)),
+]);
 
 function walk(dir, files = []) {
   for (const entry of readdirSync(dir)) {

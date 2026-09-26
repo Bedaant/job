@@ -21,6 +21,9 @@ def gen_uuid():
 
 class ApplicationStatus(str, enum.Enum):
     saved = "saved"
+    ready_for_review = "ready_for_review"  # batch-prepared (tailored + truth-checked), awaiting human approval
+    approved = "approved"    # ADR-001: human clicked approve; not yet submitted — sub-project #4's job
+    dismissed = "dismissed"  # user declined during review — distinct from `rejected` (employer rejected)
     applied = "applied"
     oa = "oa"                # online assessment
     recruiter = "recruiter"
@@ -129,6 +132,11 @@ class Application(Base):
     notes = Column(Text, nullable=True)
     tailored_resume_json = Column(JSON, nullable=True)
     tailored_cover_letter = Column(Text, nullable=True)
+    # ADR-006's truth-check pass already computes this (tailoring/engine.py
+    # ::tailor_application returns flagged_unsupported_claims) but /tailor
+    # never persisted it before sub-project #2 — silently dropped on every
+    # call. Surfaced, not silently kept, is the whole point of the check.
+    flagged_unsupported_claims = Column(JSON, default=list)
     applied_at = Column(DateTime, nullable=True)
     next_follow_up_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

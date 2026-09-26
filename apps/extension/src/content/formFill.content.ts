@@ -15,6 +15,17 @@ import { API_BASE_URL } from "../apiConfig";
 // touching the host page's own JS. Catches a dynamically-constructed call
 // (e.g. el["submit"]()) that a source-text regex scan could miss. The human
 // always clicks the ATS's own Submit button; this script never does.
+//
+// Sub-project #4: the ORIGINAL native methods are captured here, before
+// patching, and exported ONLY for submitApprovedApplication.ts — the one
+// file explicitly allowlisted in architectureInvariants.test.mjs's static
+// scan — to call after it has confirmed a real backend claim succeeded
+// (POST /applications/{id}/claim-submission). Real authority lives
+// server-side; this export is the mechanical trigger, never used directly
+// by anything else, never attached to window/globalThis.
+export const _adr001OriginalSubmit = HTMLFormElement.prototype.submit;
+export const _adr001OriginalRequestSubmit = HTMLFormElement.prototype.requestSubmit;
+
 for (const method of ["submit", "requestSubmit"] as const) {
   HTMLFormElement.prototype[method] = function () {
     throw new Error(

@@ -297,14 +297,39 @@ class FieldMappingOut(BaseModel):
     value: Optional[str] = None
 
 
-class TailorRequest(BaseModel):
-    job_id: str
-    profile_id: str
-
-
 class BulletOut(BaseModel):
     text: str
     source_fact_ids: List[str] = []  # SPEC.md §3.3 — empty only on the nvidia_smoke dev path
+
+
+class ApplicationReviewOut(BaseModel):
+    """Sub-project #2/#3's exact contract — the review-queue frontend
+    (apps/web/app/review/page.tsx) was built against this shape before this
+    backend existed; keep them in sync deliberately, don't drift.
+    """
+    id: str
+    job: JobOut
+    match_score: Optional[float] = None
+    match_breakdown: Optional[dict] = None
+    status: str
+    tailored_summary: Optional[str] = None
+    tailored_bullets: List[BulletOut] = []
+    tailored_cover_letter: Optional[str] = None
+    flagged_unsupported_claims: List[str] = []
+    created_at: datetime
+
+
+class BatchApproveRequest(BaseModel):
+    application_ids: List[str]
+
+
+class BatchApproveResponse(BaseModel):
+    approved: List[str]
+
+
+class TailorRequest(BaseModel):
+    job_id: str
+    profile_id: str
 
 
 class TailorResponse(BaseModel):

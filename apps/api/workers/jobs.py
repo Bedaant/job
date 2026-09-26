@@ -16,6 +16,9 @@ from connectors.remotive import fetch_remotive_jobs
 from core.config import get_settings
 from database import session_scope
 
+import models
+from batch_prep import prepare_application_for_review
+
 
 def get_redis_connection() -> Redis:
     return Redis.from_url(get_settings().redis_url)
@@ -63,3 +66,25 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
         inserted, skipped = upsert_jobs(db, all_jobs)
 
     return {"fetched": len(all_jobs), "inserted": inserted, "skipped_duplicates": skipped}
+
+
+def prepare_applications_task(application_ids: list[str]) -> dict:
+    """Sub-project #2's async batch-prep entrypoint — tailors + truth-checks
+    each application and flips it to ready_for_review. Runs in an RQ worker
+    process, same reasoning as discover_jobs_task: this can be slow (real
+    LLM calls per application) and must not block the request thread.
+    """
+    prepared, failed = 0, []
+    with session_scope() as db:
+        for application_id in application_ids:
+            application = db.query(models.Application).filter(models.Application.id == application_id).first()
+            if application is None:
+                failed.append(application_id)
+                continue
+            try:
+                prepare_application_for_review(db, application)
+                prepared += 1
+            except Exception as exc:
+                failed.append(application_id)
+                db.rollback()
+    return {"prepared": prepared, "failed": failed}

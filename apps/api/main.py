@@ -25,7 +25,7 @@ from events.sse import event_stream
 from formfill.map_fields import build_profile_summary, map_form_fields
 from parsing.extract import extract_text_from_docx, extract_text_from_pdf
 from parsing.llm_extract import extract_basics, extract_facts_from_text
-from workers.jobs import discover_jobs_task, get_queue, get_redis_connection
+from workers.jobs import discover_jobs_task, get_queue, get_redis_connection, prepare_applications_task
 from matching.embeddings import embed_texts, compute_centroid
 from matching.service import build_matches
 from parsing.jsonresume_export import facts_to_jsonresume
@@ -116,6 +116,147 @@ def list_applications(profile: models.Profile = Depends(get_owned_profile), db: 
         .order_by(models.Application.created_at.desc())
         .all()
     )
+
+
+# ---------- Review queue (sub-projects #2/#3, ADR-001's approval checkpoint) ----------
+
+@app.get("/applications/review-queue", response_model=list[schemas.ApplicationReviewOut])
+def list_review_queue(profile: models.Profile = Depends(get_owned_profile), db: Session = Depends(get_db)):
+    rows = (
+        db.query(models.Application)
+        .filter(
+            models.Application.profile_id == profile.id,
+            models.Application.status == models.ApplicationStatus.ready_for_review,
+        )
+        .order_by(models.Application.created_at.desc())
+        .all()
+    )
+    matches_by_job_id = {
+        m.job_id: m
+        for m in db.query(models.Match).filter(models.Match.profile_id == profile.id).all()
+    }
+
+    result = []
+    for row in rows:
+        match = matches_by_job_id.get(row.job_id)
+        tailored = row.tailored_resume_json or {}
+        result.append(schemas.ApplicationReviewOut(
+            id=row.id,
+            job=row.job,
+            match_score=float(match.score) if match else None,
+            match_breakdown=match.breakdown if match else None,
+            status=row.status.value,
+            tailored_summary=tailored.get("summary"),
+            tailored_bullets=tailored.get("bullets", []),
+            tailored_cover_letter=row.tailored_cover_letter,
+            flagged_unsupported_claims=row.flagged_unsupported_claims or [],
+            created_at=row.created_at,
+        ))
+    return result
+
+
+@app.post("/applications/batch-prepare")
+def batch_prepare_applications(
+    payload: schemas.BatchApproveRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Enqueues sub-project #2's async prep job — real LLM calls per
+    application, must not block the request thread (same reasoning as
+    /discover/run). Validates ownership up front so a malicious id can't be
+    smuggled into the RQ job payload.
+    """
+    owned_count = (
+        db.query(models.Application)
+        .join(models.Profile)
+        .filter(
+            models.Application.id.in_(payload.application_ids),
+            models.Profile.user_id == current_user.id,
+        )
+        .count()
+    )
+    if owned_count != len(payload.application_ids):
+        raise HTTPException(404, "One or more applications not found")
+
+    job = get_queue().enqueue(prepare_applications_task, payload.application_ids)
+    return {"task_id": job.id, "status": job.get_status()}
+
+
+@app.post("/applications/batch-approve", response_model=schemas.BatchApproveResponse)
+def batch_approve_applications(
+    payload: schemas.BatchApproveRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """All-or-nothing (SPEC.md's own '"no partial sends" discipline, already
+    used for outreach): every id must belong to the caller and be
+    ready_for_review, or nothing transitions at all.
+    """
+    rows = (
+        db.query(models.Application)
+        .join(models.Profile)
+        .filter(
+            models.Application.id.in_(payload.application_ids),
+            models.Profile.user_id == current_user.id,
+        )
+        .all()
+    )
+    if len(rows) != len(payload.application_ids):
+        raise HTTPException(404, "One or more applications not found")
+    if any(row.status != models.ApplicationStatus.ready_for_review for row in rows):
+        raise HTTPException(422, "One or more applications are not ready for review")
+
+    approved_ids = []
+    for row in rows:
+        row.status = models.ApplicationStatus.approved
+        write_event(
+            db, current_user.id, "application.approved",
+            {"application_id": row.id},
+        )
+        approved_ids.append(row.id)
+    db.commit()
+    return schemas.BatchApproveResponse(approved=approved_ids)
+
+
+@app.post("/applications/{application_id}/claim-submission")
+def claim_submission(
+    application_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Sub-project #4 — the ONLY gate that lets the extension's bounded
+    submit path (apps/extension/src/content/submitApprovedApplication.ts,
+    the single reviewed exception in the ADR-001 static guard's ALLOWLIST)
+    proceed. Real authority lives here, server-side — the extension-side
+    code is just the mechanical trigger; it always calls this first and
+    only touches the native submit API if this returns 200.
+
+    `with_for_update()` locks the row for the transaction so two concurrent
+    claims on the same application can't both succeed — a real correctness
+    requirement, not decorative, since this is a one-time, irreversible
+    action (ADR-001: the human already approved once; this must fire at
+    most once per application, not be retriable into a duplicate send).
+    """
+    application = (
+        db.query(models.Application)
+        .join(models.Profile)
+        .filter(models.Application.id == application_id, models.Profile.user_id == current_user.id)
+        .with_for_update()
+        .first()
+    )
+    if not application:
+        raise HTTPException(404, "Application not found")
+    if application.status != models.ApplicationStatus.approved:
+        raise HTTPException(409, "Application is not in an approved, claimable state")
+
+    application.status = models.ApplicationStatus.applied
+    application.applied_at = datetime.utcnow()
+    write_event(
+        db, current_user.id, "application.status_changed",
+        {"application_id": application.id, "status": "applied"},
+    )
+    db.commit()
+    return {"claimed": True, "application_id": application.id}
 
 
 @app.patch("/applications/{application_id}", response_model=schemas.ApplicationOut)
