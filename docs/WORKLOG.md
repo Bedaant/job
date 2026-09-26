@@ -359,6 +359,94 @@ make the *documented-vs-real* comparison honest and automatic, not to decide
 whether those tables should now be built or the prose describing them
 deleted. That's a real, larger followup for whoever owns the next roadmap
 slice, flagged here rather than silently resolved either direction.
+### 2026-09-26 (latest+14) — Review queue screen (F-approval-batch): frontend built against the not-yet-built backend contract
+
+**What changed.** Built the human-approval review screen ADR-001 exists to serve: a new
+`GET /review` route listing "ready for review" applications with a batch-approve flow,
+per-card dismiss, and per-bullet grounding against the resume-facts KB. This is the
+frontend half of a coordinated piece of work — the three backend endpoints it calls
+(`GET /applications/review-queue`, `POST /applications/batch-approve`,
+`PATCH /applications/{id}` with `status: "dismissed"`) do not exist in `apps/api` yet and
+were built against purely from the given contract, matching `JobOut` field-for-field.
+
+**Why.** Phase 3's matching/tailoring work has no human checkpoint in the UI yet — ADR-001
+is a hard rule with nowhere to land. This screen is that landing point: batch approval so
+twenty applications take minutes, not two hours, with the truth-check's flagged claims
+surfaced (never a silent drop, never a hard gate on the approve button) and every diff a
+real diff, never a fake one.
+
+**Files created.**
+- `apps/web/app/review/page.tsx` — fetch/loading/empty/error states, select-all, batch
+  approve (optimistic list update, `setQueryData` to strip approved ids on success, a
+  visible non-dismissable error message on failure — a 404 from batch-approve's
+  all-or-nothing contract never silently drops the batch), per-card dismiss via the
+  existing `PATCH /applications/{id}` pattern.
+- `apps/web/components/review/ApplicationCard.tsx` — one card per application: job
+  title/company/location, match score badge, tailored summary, per-bullet grounding, the
+  flagged-unsupported-claims warning callout (amber, non-blocking per the task's ADR-006
+  framing for this screen), resume-download link, dismiss button.
+- `apps/web/components/ui/checkbox.tsx` — thin shadcn-style wrapper around radix-ui's
+  `Checkbox` primitive (already a dependency via the `radix-ui` umbrella package used by
+  every other `components/ui/*` file) — no new dependency, followed the same pattern as
+  `dialog.tsx`.
+
+**Files changed.**
+- `apps/web/lib/api.ts` — added `ReviewApplication`, `TailoredBullet`,
+  `ReviewMatchBreakdown` types and `listReviewQueue`, `batchApprove`,
+  `dismissApplication`, `resumeDocxUrl` to the `api` object, following the existing
+  `request()`/`ApiError` pattern used by every other endpoint here.
+
+**Dependencies added.** None. Used `diff` (jsdiff, already installed) for the real
+per-bullet diff and `radix-ui`'s `Checkbox` (already installed, already the pattern
+`dialog.tsx`/`badge.tsx` use) for selection.
+
+**The diff view — did the real thing, not the honest placeholder.** The task's brief
+allowed for a placeholder ("grounded in N facts") if threading in real fact text wasn't
+feasible in the time budget. It was feasible: `GET /resume-facts` already exists and
+`api.listFacts` already wraps it (used by the facts page). `ApplicationCard` now fetches
+that profile's facts (`useQuery(["facts", profile.id], ...)` — same query key the facts
+page uses, so it's a cache hit rather than a duplicate round-trip if that page was already
+visited this session), matches each bullet's `source_fact_ids` against it, and renders a
+real `diffWords` (jsdiff) diff of the tailored bullet against the concatenated source
+fact text when every cited id resolves. The placeholder ("grounded in N fact(s)", a
+`FileTextIcon` + count, `// TODO` comment in `ApplicationCard.tsx`) only fires when a
+bullet cites facts that don't resolve — a fact deleted or edited after tailoring ran, or
+the facts fetch still loading/failed. That's the one honestly-left gap: it can't be closed
+further without inventing data, since a diff needs two real strings and this frontend has
+no way to reconstruct a fact that's gone.
+
+**Tests.** None added — confirmed (again) that `apps/web` has no test runner wired up at
+all (no jest/vitest config; `@testing-library/*` are listed devDependencies with nothing
+that invokes them). This is the same explicitly-tracked gap prior entries have noted, not
+a new one. Per instruction, did not install a runner unilaterally. If asked to close this
+gap: add Vitest + `@testing-library/react` + `jsdom` (both already implied by the
+devDependency list) and write component tests for `ApplicationCard`'s three render paths
+(diffed bullet, placeholder bullet, flagged-claims callout) plus a `page.test.tsx` for the
+batch-approve optimistic-update and 404-error-surfaced paths — that's the concrete ask,
+left undone rather than guessed at.
+
+**Build verification.** `npm run build` (via `node node_modules/next/dist/bin/next
+build` — `next` wasn't on PATH/`.bin` after a fresh `npm ci` in this worktree, direct
+invocation worked) compiled and type-checked cleanly: `/review` built at 14.6 kB
+(136 kB First Load JS) alongside the four existing routes, zero new errors or warnings
+beyond Next's pre-existing multi-lockfile workspace-root warning (unrelated, pre-existing).
+
+**No live UI verification.** Did not start the dev server against a real backend — the
+three endpoints this screen calls don't exist in `apps/api` yet (expected; that's the
+coordinated backend work this was built ahead of), so hitting them would only demonstrate
+a fetch failure, not the loading/empty/populated states. The empty-state, loading-state,
+and error-state branches were verified by reading the JSX against React Query's
+documented `isLoading`/`isSuccess`/`isError` flag semantics, not by rendering them.
+
+**Problems hit.** `npm ci` in this worktree didn't populate `node_modules/.bin/next`
+(Windows symlink quirk under this git-worktree layout) — worked around by invoking
+`node node_modules/next/dist/bin/next build` directly rather than `npm run build`. Worth
+knowing if the next session hits the same thing in a different worktree.
+
+**Next.** Once the backend's `review-queue`/`batch-approve` endpoints land, smoke-test
+this screen against them for real — in particular the batch-approve 404 (all-or-nothing)
+path, which the frontend surfaces but has never actually seen fire. The test-runner gap
+above is the other open item.
 
 ---
 
