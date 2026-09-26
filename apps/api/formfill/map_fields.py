@@ -9,6 +9,48 @@ from tailoring.engine import call_llm
 
 CONFIDENCE_THRESHOLD = 0.75
 
+# Applicant-identity fields handed to the mapping model, mirroring
+# schemas.ApplicantBasics — these are the columns that actually make a form
+# fillable (added 2026-09-26; before that only `email` resolved, so name,
+# phone, location and links always came back `unknown`).
+_BASICS_FIELDS = (
+    "full_name",
+    "phone",
+    "website_url",
+    "street_address",
+    "city",
+    "region",
+    "country_code",
+    "postal_code",
+)
+
+
+def build_profile_summary(profile, email: str) -> dict:
+    """The profile view handed to the mapping model.
+
+    Only non-empty values are included, deliberately: sending `"phone": null`
+    invites the model to "map" a field to a value that doesn't exist, whereas an
+    absent key makes the gap unambiguous. Same reasoning as the null-over-guess
+    rule in parsing/llm_extract.py's extraction prompt.
+    """
+    summary: dict = {"email": email}
+
+    for name in _BASICS_FIELDS:
+        value = getattr(profile, name, None)
+        if value:
+            summary[name] = value
+
+    if getattr(profile, "network_profiles", None):
+        summary["network_profiles"] = profile.network_profiles
+    if getattr(profile, "work_auth", None):
+        summary["work_auth"] = profile.work_auth
+    if getattr(profile, "headline", None):
+        summary["headline"] = profile.headline
+    if getattr(profile, "resume_facts", None):
+        summary["resume_fact_categories"] = sorted({f.category for f in profile.resume_facts})
+
+    return summary
+
 FORBIDDEN_LABEL_KEYWORDS = [
     "race", "ethnicity", "gender", "veteran status", "disability status",
     "sexual orientation", "why do you want to work", "why are you interested",

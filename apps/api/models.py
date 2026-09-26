@@ -56,6 +56,29 @@ class Profile(Base):
     headline = Column(String, nullable=True)
     location = Column(String, nullable=True)
     prefs = Column(JSON, default=dict)
+
+    # Applicant identity — the data an application form actually asks for.
+    # Field names mirror JSON Resume's `basics` block (this project's existing
+    # export target, parsing/jsonresume_export.py) so the mapping is lossless.
+    # Validated on the way in by schemas.ApplicantBasics.
+    #
+    # `location` above is kept deliberately: it's the freeform preference/display
+    # string already exposed by ProfileOut, whereas city/region/country_code are
+    # the structured fields a form needs. Removing it would break existing
+    # serialization for no gain.
+    #
+    # No email column: login identity is User.email and there is no case yet for
+    # a separate contact address.
+    full_name = Column(String, nullable=True)        # basics.name
+    phone = Column(String, nullable=True)            # basics.phone
+    website_url = Column(String, nullable=True)      # basics.url
+    street_address = Column(String, nullable=True)   # basics.location.address
+    city = Column(String, nullable=True)             # basics.location.city
+    region = Column(String, nullable=True)           # basics.location.region
+    country_code = Column(String(2), nullable=True)  # basics.location.countryCode, ISO 3166-1 alpha-2
+    postal_code = Column(String, nullable=True)      # basics.location.postalCode
+    network_profiles = Column(JSON, default=list)    # basics.profiles[] -> [{network, username, url}]
+    work_auth = Column(JSON, default=list)           # SPEC.md §1 profiles.work_auth
     fact_centroid = Column(Vector(EMBEDDING_DIM), nullable=True)  # mean of fact embeddings, F6 matching
     created_at = Column(DateTime, default=datetime.utcnow)
 

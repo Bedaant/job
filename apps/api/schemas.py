@@ -1,6 +1,7 @@
+import re
 from datetime import date, datetime
 from typing import Optional, List
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 
 
 class UserCreate(BaseModel):
@@ -20,6 +21,114 @@ class UserOut(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+# ---------- Applicant identity (JSON Resume `basics`) ----------
+# The data an application form actually asks for. Field names mirror JSON
+# Resume's `basics` block (already this project's export target, see
+# parsing/jsonresume_export.py) so the mapping stays lossless.
+#
+# `email` is deliberately NOT here — it lives on User.email (login identity).
+# Revisit only if a user needs a different contact address than their login.
+#
+# Every field is Optional and defaults to None on purpose: a resume genuinely
+# may not state a phone or a website, and if null weren't freely available the
+# extraction model would be pushed toward inventing something. The validators
+# below enforce "null rather than a plausible guess" — a fabricated name or
+# phone number gets typed into a real application sent to a real employer,
+# which is direct harm to the user, so this is checked, not merely requested
+# in the prompt.
+
+_PLACEHOLDER_NAMES = {
+    "john doe", "jane doe", "john smith", "jane smith", "your name", "full name",
+    "first last", "firstname lastname", "n/a", "na", "none", "unknown", "candidate name",
+}
+
+# 555-0100..555-0199 is the reserved fictional US range (NANP). A model filling
+# a gap with a "realistic looking" number lands in it surprisingly often.
+_FICTIONAL_PHONE_RE = re.compile(r"555-?01\d{2}")
+
+_MIN_PHONE_DIGITS = 7   # shortest real national number
+_MAX_PHONE_DIGITS = 15  # ITU-T E.164 ceiling
+
+
+def _require_url_scheme(value: Optional[str], field_name: str) -> Optional[str]:
+    if value is None:
+        return None
+    if not value.startswith(("http://", "https://")):
+        raise ValueError(f"{field_name} must include an http(s):// scheme, got {value!r}")
+    return value
+
+
+class NetworkProfile(BaseModel):
+    """One professional profile link — JSON Resume `basics.profiles[]`."""
+
+    network: str                        # "LinkedIn" | "GitHub" | "Portfolio" | ...
+    username: Optional[str] = None
+    url: Optional[str] = None
+
+    @field_validator("url")
+    @classmethod
+    def url_needs_scheme(cls, value: Optional[str]) -> Optional[str]:
+        return _require_url_scheme(value, "network profile url")
+
+
+class ApplicantBasics(BaseModel):
+    full_name: Optional[str] = None       # basics.name
+    phone: Optional[str] = None           # basics.phone
+    website_url: Optional[str] = None     # basics.url
+    street_address: Optional[str] = None  # basics.location.address
+    city: Optional[str] = None            # basics.location.city
+    region: Optional[str] = None          # basics.location.region
+    country_code: Optional[str] = None    # basics.location.countryCode, ISO 3166-1 alpha-2
+    postal_code: Optional[str] = None     # basics.location.postalCode
+    network_profiles: List[NetworkProfile] = []   # basics.profiles[]
+    work_auth: List[str] = []             # SPEC.md §1 profiles.work_auth
+
+    @field_validator("full_name")
+    @classmethod
+    def reject_placeholder_names(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        if value.strip().lower() in _PLACEHOLDER_NAMES:
+            raise ValueError(
+                f"full_name looks like a placeholder, not a real name: {value!r} — return null instead"
+            )
+        return value
+
+    @field_validator("phone")
+    @classmethod
+    def phone_must_be_plausible(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        digits = re.sub(r"\D", "", value)
+        if not _MIN_PHONE_DIGITS <= len(digits) <= _MAX_PHONE_DIGITS:
+            raise ValueError(
+                f"phone has {len(digits)} digits, expected {_MIN_PHONE_DIGITS}-{_MAX_PHONE_DIGITS} "
+                f"— return null instead of a partial number"
+            )
+        if _FICTIONAL_PHONE_RE.search(value) or _FICTIONAL_PHONE_RE.search(digits):
+            raise ValueError(
+                f"phone is in the reserved fictional 555-01XX range: {value!r} — return null instead"
+            )
+        return value
+
+    @field_validator("website_url")
+    @classmethod
+    def website_needs_scheme(cls, value: Optional[str]) -> Optional[str]:
+        return _require_url_scheme(value, "website_url")
+
+    @field_validator("country_code")
+    @classmethod
+    def country_code_must_be_alpha2(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        candidate = value.strip()
+        if not re.fullmatch(r"[A-Za-z]{2}", candidate):
+            raise ValueError(
+                f"country_code must be ISO 3166-1 alpha-2 (two letters, e.g. US, IN), got {value!r}"
+            )
+        return candidate.upper()
 
 
 class ProfileCreate(BaseModel):
@@ -116,6 +225,12 @@ class ResumeUploadOut(BaseModel):
     upload_id: str
     status: str
     facts: List[FactDraft] = []
+    # Draft identity extracted alongside the facts. Not persisted here on
+    # purpose — the client reviews it and commits via PUT /profiles/{id}/basics,
+    # mirroring how draft facts require facts:bulk confirmation (SPEC.md §2.1).
+    # None when extraction failed or produced nothing; a failed identity
+    # extraction never fails the whole upload.
+    basics: Optional[ApplicantBasics] = None
     error: Optional[str] = None
 
 

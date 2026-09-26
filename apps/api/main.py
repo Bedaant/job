@@ -22,9 +22,9 @@ from documents.generate_docx import generate_resume_docx
 from documents.parse_back import parse_back_check
 from events.outbox import write_event
 from events.sse import event_stream
-from formfill.map_fields import map_form_fields
+from formfill.map_fields import build_profile_summary, map_form_fields
 from parsing.extract import extract_text_from_docx, extract_text_from_pdf
-from parsing.llm_extract import extract_facts_from_text
+from parsing.llm_extract import extract_basics, extract_facts_from_text
 from workers.jobs import discover_jobs_task, get_queue, get_redis_connection
 from matching.embeddings import embed_texts, compute_centroid
 from matching.service import build_matches
@@ -272,6 +272,17 @@ async def upload_resume(
     except Exception as exc:
         upload = models.ResumeUpload(profile_id=profile.id, status="failed", error=str(exc))
 
+    # Identity extraction is a separate, non-fatal step: the facts KB is the
+    # thing ADR-009 actually requires, so a failed or unvalidatable identity
+    # extraction must not throw away a successful facts parse. Returned as a
+    # draft for the user to review — never persisted from parsing alone.
+    basics_draft = None
+    if upload.status == "ready":
+        try:
+            basics_draft = extract_basics(text)
+        except Exception:
+            basics_draft = None
+
     db.add(upload)
     db.commit()
     db.refresh(upload)
@@ -280,6 +291,7 @@ async def upload_resume(
         upload_id=upload.id,
         status=upload.status,
         facts=upload.draft_facts or [],
+        basics=basics_draft,
         error=upload.error,
     )
 
@@ -338,6 +350,55 @@ def confirm_facts_bulk(
     for fact in created:
         db.refresh(fact)
     return created
+
+
+# ---------- Applicant identity (JSON Resume `basics`) ----------
+
+@app.get("/profiles/{profile_id}/basics", response_model=schemas.ApplicantBasics)
+def get_profile_basics(profile: models.Profile = Depends(get_owned_profile)):
+    """The identity data an application form asks for. Built explicitly rather
+    than via model_validate so a null JSON column (pre-migration rows, or the
+    SQLite test engine) reads as [] instead of failing validation.
+    """
+    return schemas.ApplicantBasics(
+        full_name=profile.full_name,
+        phone=profile.phone,
+        website_url=profile.website_url,
+        street_address=profile.street_address,
+        city=profile.city,
+        region=profile.region,
+        country_code=profile.country_code,
+        postal_code=profile.postal_code,
+        network_profiles=profile.network_profiles or [],
+        work_auth=profile.work_auth or [],
+    )
+
+
+@app.put("/profiles/{profile_id}/basics", response_model=schemas.ApplicantBasics)
+def update_profile_basics(
+    payload: schemas.ApplicantBasics,
+    profile: models.Profile = Depends(get_owned_profile),
+    db: Session = Depends(get_db),
+):
+    """Identity is persisted only here, after the user has reviewed it — parsed
+    resume output is never silently trusted (same rule as facts:bulk, SPEC.md
+    §2.1). Validation in schemas.ApplicantBasics rejects placeholder names,
+    fictional phone numbers, non-ISO country codes and scheme-less URLs, so a
+    bad extraction cannot reach a real application form through this endpoint
+    either.
+    """
+    profile.full_name = payload.full_name
+    profile.phone = payload.phone
+    profile.website_url = payload.website_url
+    profile.street_address = payload.street_address
+    profile.city = payload.city
+    profile.region = payload.region
+    profile.country_code = payload.country_code
+    profile.postal_code = payload.postal_code
+    profile.network_profiles = [p.model_dump() for p in payload.network_profiles]
+    profile.work_auth = payload.work_auth
+    db.commit()
+    return payload
 
 
 # ---------- Matching (Phase 3, SPEC.md §3.2) ----------
@@ -405,12 +466,7 @@ def extension_map_fields(
     """
     profile = resolve_profile_ownership(db, current_user, payload.profile_id)
 
-    profile_summary = {
-        "email": current_user.email,
-        "headline": profile.headline,
-        "location": profile.location,
-        "resume_fact_categories": sorted({f.category for f in profile.resume_facts}),
-    }
+    profile_summary = build_profile_summary(profile, current_user.email)
     fields = [f.model_dump() for f in payload.fields]
     return map_form_fields(fields, profile_summary)
 

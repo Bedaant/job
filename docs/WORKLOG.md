@@ -102,6 +102,132 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-26 (latest+8) — Off-roadmap: applicant identity model (JSON Resume `basics`) — the actual blocker under "too much manual effort"
+
+**Why this, and not the review queue.** Owner's complaint was that the end user
+has to do too much manual work per application. We spent a long stretch
+designing *volume* fixes for that (batch approve, deterministic ATS field maps,
+review queue, gated execution — decomposed as sub-projects 1-4) and I was one
+message from writing the review-queue spec. Owner then asked to re-examine what
+the right problem actually was. It was not volume.
+
+Re-reading my own live F11 output from earlier today:
+
+```
+{'field_id': 'f1', 'maps_to': 'profile.email', 'confidence': 1.0}   <- worked
+{'field_id': 'f3', 'maps_to': 'unknown',       'confidence': 0.0}   <- "Full name"
+```
+
+I had logged that as "the code correctly declined to invent a name," which was
+true and also a serious under-read. **`Profile` had no name column.** No phone,
+no structured city/region/country (only a freeform `location` string), no
+LinkedIn/GitHub. Every application form opens with name/email/phone/location and
+this product could fill exactly one of the four. That is not UX friction — the
+form-filler was structurally incapable of filling a form, which also blocks
+sub-project 1 (field maps have nothing to map *to*), 2 (batch-prep would prepare
+incomplete applications), 3 (the queue would render holes) and 4 (execution
+would submit blanks). Root of the chain, not a link in it.
+
+**Repo search first, per this project's convention — and it found the answer
+already inside the project.** Verified `Liam-Frost/AutoApply` (PolyForm
+Noncommercial 1.0.0 — decoded the actual LICENSE file; GitHub's `NOASSERTION`
+was a classifier artifact. It explicitly forbids "bundling into a commercial
+product", a hard blocker) and `OmkarPathak/ResumeParser` (real MIT, mature, but
+a full Django app whose extraction is a ~1GB local Qwen2.5 via llama-cpp —
+exactly the multi-GB local-inference weight class `garak` and
+`esco-skill-extractor` were already rejected for, and it would not have added
+the missing *columns* anyway). Neither adopted. The schema that fits is **JSON
+Resume `basics`**, which this project has depended on since 2026-08-16
+(`parsing/jsonresume_export.py`) — we were already exporting to a schema we
+could not populate.
+
+**Schema.** Migration `0009_applicant_basics.py` adds to `profiles`:
+`full_name`, `phone`, `website_url`, `street_address`, `city`, `region`,
+`country_code` (`varchar(2)`), `postal_code`, plus `network_profiles` and
+`work_auth` as JSONB. **Applied for real to live Neon**, confirmed
+`0008 -> 0009`. Field names mirror JSON Resume `basics` so the mapping stays
+lossless. Two deliberate calls: `work_auth` is JSONB not SPEC.md §1's `text[]`
+(matches this project's existing `Job.tags`/`Job.skills`/`Profile.prefs` JSON
+convention and migrations 0006/0007 — documented in the migration); and
+freeform `Profile.location` is **kept**, since `ProfileOut` already exposes it
+and removing it would break serialization for no gain.
+
+**The part that matters most: null-over-guess is enforced, not requested.**
+A hallucinated name or phone number here gets typed into a real application sent
+to a real employer — direct harm to the user, so `schemas.ApplicantBasics`
+validates rather than trusts. Every field is Optional/None-by-default *on
+purpose* (a resume genuinely may not state a phone; if null were not freely
+available the model gets pushed toward inventing something), and validators
+reject: known placeholder names (`John Doe`, `Your Name`, `N/A`, ...), phone
+numbers in the reserved fictional NANP `555-0100..555-0199` range, phone digit
+counts outside 7-15 (ITU-T E.164), non-ISO-3166-1-alpha-2 country codes
+(`USA`/`United States` rejected, `us` normalized to `US`), and scheme-less URLs.
+`instructor` (wired in earlier today) enforces these on the model's own output
+with a bounded retry, so a violation is caught and retried rather than shipped.
+
+**Prompt engineering, since the failure mode is specific.**
+`BASICS_SYSTEM_PROMPT` (1) states the stakes so the model knows why precision
+matters, (2) makes null the explicitly *preferred* answer rather than a fallback
+("an incomplete-but-correct result is a success; a complete-but-invented one is
+a failure"), (3) names the exact placeholder patterns models reach for when
+filling gaps, (4) forbids expansion of partial data (resume says "SF" ->
+`city="SF"`, do NOT infer region/country), and (5) gives per-field formats that
+the schema *also* enforces.
+
+**Wiring.** `formfill/map_fields.py::build_profile_summary(profile, email)` is
+now the single source of truth for what the mapping model sees, and it **omits
+empty values entirely** rather than sending `"phone": null` — an absent key
+makes the gap unambiguous, a null invites a confident mapping to a value that
+does not exist. New `GET`/`PUT /profiles/{id}/basics`; identity is persisted
+only via the PUT after the user reviews it, never from parsing alone (same rule
+`facts:bulk` already enforces per SPEC.md §2.1). Resume upload now returns a
+`basics` draft alongside draft facts, extracted in a **non-fatal** try/except —
+a failed identity extraction must not throw away a successful facts parse, since
+the Facts KB is what ADR-009 actually requires.
+
+**Real verification, not simulated.** Full suite 192/192 green (165 + 27 new,
+red-before-green throughout). App boots, 29 routes (up from 27 — the two new
+basics endpoints). Migration applied live to Neon. **Live end-to-end against
+real Neon + real NVIDIA NIM**, a real profile through the real mapping path:
+
+```
+Full name             -> profile.full_name        conf=1.0  'Bedaant Srivastav'
+Email                 -> profile.email            conf=1.0
+Phone number          -> profile.phone            conf=1.0  '+91 98765 43210'
+City                  -> profile.city             conf=1.0  'Bengaluru'
+LinkedIn profile URL  -> profile.network_profiles  conf=0.9
+What is your gender?  -> unknown                  conf=0.0  None
+```
+
+Five of six fields now resolve above the 0.75 auto-fill threshold where
+previously only `email` did; the demographic field correctly stayed `unknown`
+without ever reaching the model, so the F11 forbidden-label guard still holds.
+Test rows cleaned up.
+
+**Known limitation, recorded not worked around.** `parsing/llm_extract.py` is
+anthropic-only — it has never carried the `nvidia_smoke` dev branch that
+`tailoring/engine.py` has, so `extract_basics` cannot be live-exercised until a
+real `ANTHROPIC_API_KEY` exists (unchanged project-wide blocker). Its
+validators, the novel and risky part, are fully unit-tested; the LLM call path is
+thin. The *consumption* side (`build_profile_summary` -> `map_form_fields`) was
+live-verified above via nvidia_smoke.
+
+**Still open from the same discussion.** Sub-projects 1-4 (field maps, batch
+prep, review queue, gated execution) are now genuinely unblocked but unbuilt.
+Postgres RLS (started, then correctly parked — found `neondb_owner` has
+`rolbypassrls=True`, so RLS needs a separate restricted role to mean anything),
+the unified grounded-ID validator, and SPEC.md-as-generated-docs also remain.
+
+**Files created.** `alembic/versions/0009_applicant_basics.py`,
+`tests/test_applicant_basics.py`. **Files changed.** `models.py` (10 Profile
+columns), `schemas.py` (`NetworkProfile`, `ApplicantBasics` + validators,
+`ResumeUploadOut.basics`), `parsing/llm_extract.py` (`extract_basics` +
+`BASICS_SYSTEM_PROMPT` + instructor client), `formfill/map_fields.py`
+(`build_profile_summary`), `main.py` (two endpoints, summary-builder wiring,
+non-fatal basics extraction on upload).
+
+---
+
 ### 2026-09-26 (latest+7) — Off-roadmap: git repo initialized; ADR-001/002 structural guard added
 
 **Context — not a roadmap item.** After the source_fact_ids fix, owner asked two
