@@ -102,6 +102,110 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-26 (latest+13) — ADR-015's campaign model: the pivot's core, cap enforced in one place
+
+**Context.** ADR-015 §2 replaces ADR-001's per-application approval gate with a
+single campaign-level approval: the user approves roles / sources / caps /
+template once, and the agents discover → tailor → apply inside those bounds.
+The campaign model did not exist at all — this is the piece the rest of the
+pivot hangs off. A parallel frontend agent was building against a fixed
+contract while this was written, so the shapes below were held exactly, with
+the two deviations called out at the end.
+
+**`campaigns` table + `applications.campaign_id`** (migration `0012`, **not
+applied — the owner applies migrations**, command in the report). `Campaign`
+holds the approved bounds: `roles`/`locations`/`sources` (JSONB, empty = no
+restriction on that axis), `remote_only`, `min_match_score`, `daily_cap`,
+`auto_submit`, `tailoring_notes`, and a `CampaignStatus` enum
+draft|active|paused|archived. `DELETE /campaigns/{id}` sets `archived` — never
+a hard delete, the campaign is the record of what the user actually authorized.
+
+**The daily cap has exactly one implementation, deliberately.**
+`campaigns.py::remaining_quota(db, campaign)` is `max(0, daily_cap -
+applied_today)`, and `applied_today` counts this campaign's `applications` rows
+created in the current UTC day. Both callers — `run_campaign` and
+`GET /campaigns/{id}/stats` — go through it; nothing recomputes it. No counter
+column and no `campaign_runs` table on purpose: a denormalized counter drifts
+from what actually went out, the rows can't. The `max(0, ...)` clamp matters for
+a real case, not a hypothetical one — lowering `daily_cap` below today's count
+would otherwise produce a negative budget that any `if remaining:` check reads
+as truthy.
+
+**Idempotency, and being honest about which layer does the work.**
+`run_campaign_task` copies `discover_jobs_task`'s two layers: a per-minute
+`run_id` enqueued `unique=True` (layer 1, in `main.py`) and a Redis SETNX claim
+inside the task (layer 2). But the claim is *not* what holds the cap — the
+double-run test deliberately lets **both** claims succeed and still asserts
+only `daily_cap` applications exist, because the quota is recounted from the
+database inside the run. The claim only saves the wasted LLM work. Worth
+writing down: a test that proved the cap by mocking the claim to fail would
+have proved nothing about the cap.
+
+**`campaigns.py::run_campaign`** selects matches above `min_match_score`
+(scaled ×100 — see the deviation note), inside the role/location/source
+filters, excluding jobs this profile already has an application for, limited to
+the remaining quota; creates the `Application` rows linked to the campaign;
+commits **before** any tailoring, since the rows are what the cap counts and
+must be durable before the slow part can crash; then calls the existing
+`batch_prep.prepare_application_for_review` per application. `auto_submit=True`
+flips the result to `approved` (no human review step); `False` leaves it at
+`ready_for_review`. **No submission happens here** — that is a separate task,
+and this stops at prepared/approved by design.
+
+**Tenancy.** `campaigns.py::resolve_campaign_ownership` mirrors
+`core/deps.py::resolve_profile_ownership` — reachable only via a profile the
+caller owns, 404 rather than 403 so a cross-tenant id is indistinguishable from
+a missing one. `GET /campaigns` scopes by the join, not by a client-supplied
+`profile_id`: there is nothing in that request to trust. Migration `0012` also
+gives `campaigns` the same RLS policy + FORCE that `0010` gave the other 7
+tenant tables — without it this would be the one tenant table with no
+database-level backstop, which is exactly the gap `0010` exists to close.
+
+**Red-before-green, 30 new tests** (`232 -> 262`, whole suite green). Covered:
+the cap boundary (cap-1/cap/cap+1 → 1/0/0 remaining), yesterday's applications
+not counting, another campaign's applications not counting, a paused campaign's
+run being a true no-op (no rows, no prep call, `last_run_at` untouched), the
+role/location/source filters, already-applied jobs skipped, both `auto_submit`
+paths, the double-run cap property above, cross-tenant isolation at both the
+function and the HTTP layer (get/patch/delete/stats/list, plus creating a
+campaign on someone else's profile), archive-not-delete, and the status
+transition matrix including the two that must 422 (archived→active,
+draft→paused).
+
+**Two dead ends / corrections, recorded.**
+1. The brief said `sources` should be validated against `connectors/config.py`'s
+   `ENABLED_FEEDS` and `JOBSPY_SITES`. **Those constants do not exist** —
+   `connectors/config.py` only has the per-connector keyword/token lists, and
+   JobSpy is still hardcoded to `site_name=["google"]` inside
+   `jobspy_connector.py`. So `sources` is an unvalidated `list[str]` matched
+   against `Job.source`; an unknown name simply matches no jobs. A real
+   enum/allowlist belongs with the ADR-015 §1 multi-source work that introduces
+   those constants, not ahead of it.
+2. The first cut of the "SET NULL doesn't delete history" test deleted a
+   campaign row and asserted the applications survived. That test passes no
+   matter what the constraint says — SQLite (the unit-test engine) doesn't
+   enforce foreign keys by default. Rewritten to assert the declared
+   `ondelete` on the FK itself, which is the thing that actually has to be
+   right. Also hit a self-inflicted `canonical_hash` UNIQUE collision in a test
+   helper that derived job ids from the campaign id + index, so calling it twice
+   for one campaign collided — replaced with an `itertools.count()`.
+
+**Files created.** `apps/api/campaigns.py`,
+`apps/api/alembic/versions/0012_campaigns.py`,
+`apps/api/tests/test_campaigns.py`. **Files changed.** `apps/api/models.py`
+(`CampaignStatus`, `Campaign`, `Application.campaign_id`),
+`apps/api/schemas.py` (`CampaignCreate`/`CampaignUpdate`/`CampaignOut`/
+`CampaignStatsOut`), `apps/api/main.py` (7 endpoints),
+`apps/api/workers/jobs.py` (`run_campaign_task`), `docs/SPEC.md` (regenerated
+schema block — the generator's `--check` went red after the model change, as
+designed).
+
+**What's next.** Apply `0012`. Then actual submission (the piece
+deliberately left out here), and ADR-015 §1's multi-source connector work,
+which is what finally makes `sources` a validated set instead of free text.
+
+---
+
 ### 2026-09-26 (latest+12) — Roadmap sub-projects #2 + #4: batch prep pipeline and gated execution, live-verified
 
 **Context.** Owner asked to finish all remaining decomposed sub-projects at

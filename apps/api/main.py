@@ -25,7 +25,10 @@ from events.sse import event_stream
 from formfill.map_fields import build_profile_summary, map_form_fields
 from parsing.extract import extract_text_from_docx, extract_text_from_pdf
 from parsing.llm_extract import extract_basics, extract_facts_from_text
-from workers.jobs import discover_jobs_task, get_queue, get_redis_connection, prepare_applications_task
+from workers.jobs import (
+    discover_jobs_task, get_queue, get_redis_connection, prepare_applications_task, run_campaign_task,
+)
+import campaigns as campaigns_service
 from matching.embeddings import embed_texts, compute_centroid
 from matching.service import build_matches
 from parsing.jsonresume_export import facts_to_jsonresume
@@ -293,6 +296,140 @@ def update_application(
     db.commit()
     db.refresh(app_row)
     return app_row
+
+
+# ---------- Campaigns (ADR-015 §2 — the unit of approval) ----------
+
+@app.post("/campaigns", response_model=schemas.CampaignOut)
+def create_campaign(
+    payload: schemas.CampaignCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    profile = resolve_profile_ownership(db, current_user, payload.profile_id)
+    campaign = models.Campaign(
+        profile_id=profile.id, **payload.model_dump(exclude={"profile_id"})
+    )
+    db.add(campaign)
+    db.commit()
+    db.refresh(campaign)
+    return campaign
+
+
+@app.get("/campaigns", response_model=list[schemas.CampaignOut])
+def list_campaigns(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Every campaign across the caller's profiles. Scoped by the join, not by
+    a client-supplied profile_id — there is nothing here to trust from the
+    request at all.
+    """
+    return (
+        db.query(models.Campaign)
+        .join(models.Profile, models.Campaign.profile_id == models.Profile.id)
+        .filter(models.Profile.user_id == current_user.id)
+        .order_by(models.Campaign.created_at.desc())
+        .all()
+    )
+
+
+@app.get("/campaigns/{campaign_id}", response_model=schemas.CampaignOut)
+def get_campaign(
+    campaign_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return campaigns_service.resolve_campaign_ownership(db, current_user, campaign_id)
+
+
+@app.patch("/campaigns/{campaign_id}", response_model=schemas.CampaignOut)
+def update_campaign(
+    campaign_id: str,
+    payload: schemas.CampaignUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Edit / pause / resume. Status moves only along
+    campaigns.ALLOWED_TRANSITIONS — archived is terminal.
+    """
+    campaign = campaigns_service.resolve_campaign_ownership(db, current_user, campaign_id)
+    fields = payload.model_dump(exclude_unset=True, exclude_none=True)
+
+    new_status = fields.pop("status", None)
+    if new_status is not None:
+        try:
+            target = models.CampaignStatus(new_status)
+        except ValueError:
+            raise HTTPException(422, f"Unknown campaign status {new_status!r}")
+        if target != campaign.status and target not in campaigns_service.ALLOWED_TRANSITIONS[campaign.status]:
+            raise HTTPException(422, f"Cannot move a {campaign.status.value} campaign to {target.value}")
+        campaign.status = target
+
+    for key, value in fields.items():
+        setattr(campaign, key, value)
+
+    db.commit()
+    db.refresh(campaign)
+    return campaign
+
+
+@app.delete("/campaigns/{campaign_id}", response_model=schemas.CampaignOut)
+def archive_campaign(
+    campaign_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Archive, never a hard delete — the campaign is the record of what the
+    user authorized, and its applications point back at it.
+    """
+    campaign = campaigns_service.resolve_campaign_ownership(db, current_user, campaign_id)
+    campaign.status = models.CampaignStatus.archived
+    db.commit()
+    db.refresh(campaign)
+    return campaign
+
+
+@app.post("/campaigns/{campaign_id}/run")
+def run_campaign_endpoint(
+    campaign_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Enqueues the autonomous run onto RQ — same two-layer idempotency as
+    /discover/run: a per-minute job_id with unique=True here (layer 1), a
+    Redis claim inside the task (layer 2).
+    """
+    campaign = campaigns_service.resolve_campaign_ownership(db, current_user, campaign_id)
+    run_id = f"campaign:{campaign.id}:{int(time.time() // 60)}"
+    try:
+        job = get_queue().enqueue(
+            run_campaign_task, job_id=run_id, unique=True,
+            kwargs={"campaign_id": campaign.id, "run_id": run_id},
+        )
+    except DuplicateJobError:
+        job = RQJob.fetch(run_id, connection=get_redis_connection())
+    return {"task_id": job.id, "status": job.get_status()}
+
+
+@app.get("/campaigns/{campaign_id}/stats", response_model=schemas.CampaignStatsOut)
+def get_campaign_stats(
+    campaign_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    campaign = campaigns_service.resolve_campaign_ownership(db, current_user, campaign_id)
+    today = campaigns_service.applied_today(db, campaign)
+    return schemas.CampaignStatsOut(
+        applied_today=today,
+        daily_cap=campaign.daily_cap,
+        # Same function the worker enforces with — never recomputed here.
+        remaining_today=campaigns_service.remaining_quota(db, campaign),
+        total_applied=db.query(models.Application).filter(
+            models.Application.campaign_id == campaign.id
+        ).count(),
+        last_run_at=campaign.last_run_at,
+    )
 
 
 # ---------- Resume facts KB ----------

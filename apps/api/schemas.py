@@ -1,7 +1,7 @@
 import re
 from datetime import date, datetime
 from typing import Optional, List
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class UserCreate(BaseModel):
@@ -321,6 +321,67 @@ class ApplicationReviewOut(BaseModel):
 
 class BatchApproveRequest(BaseModel):
     application_ids: List[str]
+
+
+# ---------- Campaigns (ADR-015 §2) ----------
+# The user approves a campaign once — roles/sources/caps/template — and the
+# agents discover -> tailor -> apply inside those bounds. Replaces ADR-001's
+# per-application gate. Bounds are validated here because they are a real
+# trust boundary: daily_cap is ADR-015's non-negotiable rail, and a cap of 0
+# or a min_match_score of 1.5 would silently mean "never apply", while a
+# negative cap would mean "unbounded" to any naive comparison.
+
+
+class CampaignBase(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    roles: List[str] = []       # title keywords
+    locations: List[str] = []
+    remote_only: bool = True
+    sources: List[str] = []     # Job.source values; empty = every enabled source
+    min_match_score: float = Field(default=0.7, ge=0.0, le=1.0)
+    daily_cap: int = Field(default=10, ge=1, le=200)
+    auto_submit: bool = False   # True = skip the optional human review step
+    tailoring_notes: Optional[str] = None  # user instructions to the tailor, never a source of facts
+
+
+class CampaignCreate(CampaignBase):
+    profile_id: str
+
+
+class CampaignUpdate(BaseModel):
+    """Every field optional — this is edit/pause/resume in one endpoint.
+    `status` is validated against campaigns.ALLOWED_TRANSITIONS, not here.
+    """
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    status: Optional[str] = None
+    roles: Optional[List[str]] = None
+    locations: Optional[List[str]] = None
+    remote_only: Optional[bool] = None
+    sources: Optional[List[str]] = None
+    min_match_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    daily_cap: Optional[int] = Field(default=None, ge=1, le=200)
+    auto_submit: Optional[bool] = None
+    tailoring_notes: Optional[str] = None
+
+
+class CampaignOut(CampaignBase):
+    id: str
+    profile_id: str
+    status: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    last_run_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CampaignStatsOut(BaseModel):
+    applied_today: int
+    daily_cap: int
+    remaining_today: int
+    total_applied: int
+    last_run_at: Optional[datetime] = None
 
 
 class BatchApproveResponse(BaseModel):

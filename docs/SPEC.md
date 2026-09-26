@@ -71,10 +71,28 @@ jobs:
   last_seen_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
   UNIQUE (source, external_id)
 
+campaigns:
+  id  UUID  NOT NULL  PRIMARY KEY  -- default: app-level callable gen_uuid() — not a DB DEFAULT, set by the ORM on insert
+  profile_id  UUID  NOT NULL  -- FK -> profiles.id ON DELETE CASCADE
+  name  VARCHAR  NOT NULL
+  status  campaignstatus  NOT NULL  -- default <CampaignStatus.draft: 'draft'> (app-level, not a DB DEFAULT)
+  roles  JSON  NULL  -- default: app-level callable list() — not a DB DEFAULT, set by the ORM on insert
+  locations  JSON  NULL  -- default: app-level callable list() — not a DB DEFAULT, set by the ORM on insert
+  remote_only  BOOLEAN  NOT NULL  -- default True (app-level, not a DB DEFAULT)
+  sources  JSON  NULL  -- default: app-level callable list() — not a DB DEFAULT, set by the ORM on insert
+  min_match_score  NUMERIC(4, 3)  NOT NULL  -- default 0.7 (app-level, not a DB DEFAULT)
+  daily_cap  INTEGER  NOT NULL  -- default 10 (app-level, not a DB DEFAULT)
+  auto_submit  BOOLEAN  NOT NULL  -- default False (app-level, not a DB DEFAULT)
+  tailoring_notes  TEXT  NULL
+  created_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
+  updated_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
+  last_run_at  TIMESTAMP WITHOUT TIME ZONE  NULL
+
 applications:
   id  UUID  NOT NULL  PRIMARY KEY  -- default: app-level callable gen_uuid() — not a DB DEFAULT, set by the ORM on insert
   profile_id  UUID  NOT NULL  -- FK -> profiles.id ON DELETE CASCADE
   job_id  UUID  NOT NULL  -- FK -> jobs.id
+  campaign_id  UUID  NULL  -- FK -> campaigns.id ON DELETE SET NULL
   status  applicationstatus  NULL  -- default <ApplicationStatus.saved: 'saved'> (app-level, not a DB DEFAULT)
   portal  VARCHAR  NULL
   notes  TEXT  NULL
