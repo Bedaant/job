@@ -29,6 +29,13 @@ interface FieldDescriptor {
   input_type: string;
   options: string[];
   required: boolean;
+  // Raw DOM attributes the backend's deterministic rule matcher
+  // (formfill/deterministic.py) reads before ever calling the LLM.
+  // autocomplete is a real web standard (WHATWG HTML autofill-field-name);
+  // name/dom_id are the element's own name/id attributes.
+  autocomplete: string | null;
+  name: string | null;
+  dom_id: string | null;
 }
 
 function extractLabel(el: HTMLElement): string | null {
@@ -69,6 +76,9 @@ function extractFields(): { descriptors: FieldDescriptor[]; elements: Map<string
       input_type: el.tagName === "SELECT" ? "select" : el.tagName === "TEXTAREA" ? "textarea" : inputEl.type || "text",
       options,
       required: inputEl.required ?? false,
+      autocomplete: el.getAttribute("autocomplete"),
+      name: el.getAttribute("name"),
+      dom_id: el.getAttribute("id"),
     });
   });
 

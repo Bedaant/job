@@ -274,6 +274,14 @@ class FieldDescriptorIn(BaseModel):
     input_type: str
     options: List[str] = []
     required: bool = False
+    # Raw DOM attributes formfill/deterministic.py's rule matcher reads —
+    # autocomplete is a real web standard (WHATWG HTML), name/dom_id are the
+    # element's own name/id. All optional: older extension builds that don't
+    # send them just get None, which the deterministic matcher already
+    # treats as "no signal, fall through to the LLM path" — non-breaking.
+    autocomplete: Optional[str] = None
+    name: Optional[str] = None
+    dom_id: Optional[str] = None
 
 
 class MapFieldsRequest(BaseModel):

@@ -5,6 +5,7 @@ regardless of what the model says.
 """
 import json
 
+from formfill.deterministic import match_field_deterministic
 from tailoring.engine import call_llm
 
 CONFIDENCE_THRESHOLD = 0.75
@@ -85,12 +86,26 @@ def _flagged(field_id: str) -> dict:
 
 def map_form_fields(fields: list[dict], profile_summary: dict) -> list[dict]:
     forbidden_ids = {f["field_id"] for f in fields if is_forbidden_label(f.get("label_text"))}
-    askable_fields = [f for f in fields if f["field_id"] not in forbidden_ids]
+
+    # Deterministic pass first (SPEC.md §3.7 / PRD "Known ATS... fills them
+    # deterministically") — zero LLM calls for anything structurally
+    # unambiguous (autocomplete attribute, name/id/label patterns). Only
+    # fields it can't resolve go on to the bounded LLM path at all.
+    deterministic_results: dict[str, dict] = {}
+    remaining_fields = []
+    for field in fields:
+        if field["field_id"] in forbidden_ids:
+            continue
+        match = match_field_deterministic(field, profile_summary)
+        if match is not None:
+            deterministic_results[field["field_id"]] = match
+        else:
+            remaining_fields.append(field)
 
     mapping_by_id: dict[str, dict] = {}
-    if askable_fields:
+    if remaining_fields:
         user_prompt = (
-            f"FIELDS:\n{json.dumps(askable_fields, indent=2)}\n\n"
+            f"FIELDS:\n{json.dumps(remaining_fields, indent=2)}\n\n"
             f"PROFILE:\n{json.dumps(profile_summary, indent=2)}"
         )
         for _attempt in range(MAX_ATTEMPTS):
@@ -108,15 +123,17 @@ def map_form_fields(fields: list[dict], profile_summary: dict) -> list[dict]:
         field_id = field["field_id"]
         if field_id in forbidden_ids:
             result.append(_flagged(field_id))
-            continue
-        mapping = mapping_by_id.get(field_id)
-        if mapping is None:
-            result.append(_flagged(field_id))
-            continue
-        result.append({
-            "field_id": field_id,
-            "maps_to": mapping.get("maps_to", "unknown"),
-            "confidence": mapping.get("confidence", 0.0),
-            "value": mapping.get("value"),
-        })
+        elif field_id in deterministic_results:
+            result.append(deterministic_results[field_id])
+        else:
+            mapping = mapping_by_id.get(field_id)
+            if mapping is None:
+                result.append(_flagged(field_id))
+            else:
+                result.append({
+                    "field_id": field_id,
+                    "maps_to": mapping.get("maps_to", "unknown"),
+                    "confidence": mapping.get("confidence", 0.0),
+                    "value": mapping.get("value"),
+                })
     return result

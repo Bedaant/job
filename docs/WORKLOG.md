@@ -101,6 +101,83 @@ docs/              this documentation set
 ---
 
 ## Entries
+
+### 2026-09-26 (latest+10) — Roadmap sub-project #1: deterministic known-ATS field maps, live-verified
+
+**Context.** The "too much manual effort" analysis decomposed into four
+sub-projects; #1 was picked as the smallest, most self-contained, highest-
+leverage piece — it's the direct payoff of the identity-model fix and depends
+on nothing else unbuilt. Matches PRD's own F11 design ("Known ATS... fills
+them deterministically") and SPEC.md §3.7's "build B [rules engine] first"
+plan from the earlier brainstorm — the per-ATS override layer ("A") was
+deliberately not built alongside it, since it needs real user-side HTML
+captures that still don't exist (ADR-002 forbids server-side scraping even
+for fixtures).
+
+**`formfill/deterministic.py` (new).** An ordered rule table, zero LLM calls:
+`autocomplete` attribute first (a real WHATWG HTML standard —
+`email`/`tel`/`name`/`address-level2`/etc. — not invented), then name/id/label
+regex patterns for the same set of fields, checked in unambiguous-first order.
+Network fields (LinkedIn/GitHub/GitLab) match by name in the pattern itself
+before falling back to generic rules, so a field asking for GitLab with no
+GitLab profile on record correctly returns nothing rather than a wrong-network
+guess. Deliberately excludes `given-name`/`family-name`: `Profile.full_name`
+is a single string with no structured parts, and splitting it (first token =
+given, rest = family) would be exactly the invention the null-over-guess rule
+already forbids for identity data — those fields fall through to the LLM path
+unchanged, same as any other field this module doesn't recognize.
+
+**Wired into `formfill/map_fields.py::map_form_fields`**, ahead of the LLM
+call, not replacing it: the forbidden-label check still runs first (unchanged
+ordering), then every non-forbidden field gets a deterministic pass, and only
+what's left over goes into the LLM prompt at all — deterministic hits never
+reach the model, cutting both cost and the number of fields a human has to
+review.
+
+**A real, correct test failure, not a regression.** `test_map_form_fields_
+passes_through_high_confidence_mapping` broke immediately — it used a plain
+"Email" field to test LLM passthrough, and the new deterministic pass
+(correctly) now resolves that field itself before the mock LLM ever gets
+called. Fixed the test's fixture (switched to "Years of experience", which
+genuinely isn't in the rule table), not the implementation — same "fix the
+test, not the code" call as the `Bullet.model_validate` context fix earlier
+this session.
+
+**Extension side.** `formFill.content.ts`'s `FieldDescriptor` gained
+`autocomplete`/`name`/`dom_id` (the raw attributes the backend rule matcher
+needs — it captured none of them before), and `extractFields()` now reads
+them straight off each element. `schemas.FieldDescriptorIn` gained the same
+three fields, all `Optional` — an older extension build that doesn't send
+them just yields `None`, which the matcher already treats as "no signal,
+fall through," so this is non-breaking either direction.
+
+**Real verification, not simulated.** 20 new backend tests (16 for the rule
+table in isolation, 4 for the map_form_fields orchestration change),
+red-before-green. Full suite: 214/214 green. Extension: 9/9 Node tests green,
+`tsc --noEmit` clean, `npm run build` clean from a deleted `dist/`. **Live
+against real Neon**, not mocked: built a real profile (name/phone/city/
+LinkedIn), ran `map_form_fields` against 7 fields with `call_llm` mocked to
+observe call count — 5 of 7 resolved deterministically (email, phone,
+full_name, city, LinkedIn) at confidence 1.0, the LLM was called **exactly
+once**, and the two fields sent to it were exactly the two that couldn't be
+resolved deterministically (a first-name-only field, correctly refused rather
+than guess-split; a genuinely open-ended "years of experience" field). Test
+rows and scratch scripts cleaned up after.
+
+**Not done, by design.** The per-ATS selector override layer ("A" from the
+original design) — needs real user-side captures that don't exist yet, same
+gap `SPEC.md` §3.7 already names. Sub-projects #2 (batch prep), #3 (review
+queue), #4 (gated execution) remain unbuilt.
+
+**Files created.** `formfill/deterministic.py`, `tests/test_deterministic_
+fields.py`. **Files changed.** `formfill/map_fields.py` (deterministic-first
+orchestration), `schemas.py` (`FieldDescriptorIn` +3 fields),
+`tests/test_formfill.py` (+4 tests, 1 fixture fix),
+`apps/extension/src/content/formFill.content.ts` (`FieldDescriptor` +3
+fields, `extractFields()` reads them).
+
+---
+
 ### 2026-09-26 (latest+9) — Off-roadmap: nvidia_smoke wired into parsing/llm_extract.py — resume upload works with only an NVIDIA key
 
 **Context.** Owner has no real ANTHROPIC_API_KEY but does have a working
