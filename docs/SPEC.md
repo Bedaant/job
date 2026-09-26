@@ -80,6 +80,7 @@ applications:
   notes  TEXT  NULL
   tailored_resume_json  JSON  NULL
   tailored_cover_letter  TEXT  NULL
+  flagged_unsupported_claims  JSON  NULL  -- default: app-level callable list() — not a DB DEFAULT, set by the ORM on insert
   applied_at  TIMESTAMP WITHOUT TIME ZONE  NULL
   next_follow_up_at  TIMESTAMP WITHOUT TIME ZONE  NULL
   created_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
