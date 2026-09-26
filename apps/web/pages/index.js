@@ -76,6 +76,15 @@ export default function Home() {
           <p className="text-sm text-parchment/60 font-mono mt-1">
             job discovery · evidence-backed tailoring · application tracker
           </p>
+          {/* The only entry point into the onboarding wizard — this legacy
+              pages-router dashboard owns "/", so the wizard lives at
+              /onboarding rather than replacing it. */}
+          <a
+            href="/onboarding"
+            className="inline-block mt-3 font-mono text-sm text-brass underline underline-offset-4"
+          >
+            Set up your campaign →
+          </a>
         </div>
         <nav className="flex gap-6 font-mono text-sm">
           {["jobs", "tracker", "facts"].map((t) => (
