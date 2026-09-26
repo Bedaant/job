@@ -1,6 +1,13 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: ["./pages/**/*.{js,ts,jsx,tsx}", "./components/**/*.{js,ts,jsx,tsx}"],
+  // ./app was missing: every app-router page (facts, login, matches, review)
+  // was rendering with zero generated utilities. Found while building
+  // /onboarding — not a new bug, a pre-existing silent one.
+  content: [
+    "./app/**/*.{js,ts,jsx,tsx}",
+    "./pages/**/*.{js,ts,jsx,tsx}",
+    "./components/**/*.{js,ts,jsx,tsx}",
+  ],
   darkMode: ["class"],
   theme: {
     extend: {

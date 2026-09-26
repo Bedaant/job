@@ -18,10 +18,34 @@ export interface FactDraft {
   tags: string[];
 }
 
+export interface NetworkProfile {
+  network: string;
+  username: string | null;
+  url: string | null;
+}
+
+/** JSON Resume `basics` — mirrors apps/api/schemas.py ApplicantBasics. Every
+ * field is optional there on purpose: null is always allowed, a plausible guess
+ * is not. */
+export interface ApplicantBasics {
+  full_name?: string | null;
+  phone?: string | null;
+  website_url?: string | null;
+  street_address?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country_code?: string | null;
+  postal_code?: string | null;
+  network_profiles?: NetworkProfile[];
+  work_auth?: string[];
+}
+
 export interface ResumeUploadResult {
   upload_id: string;
   status: "parsing" | "ready" | "failed";
   facts: FactDraft[];
+  /** Draft identity from the parse — never persisted until the user confirms it. */
+  basics: ApplicantBasics | null;
   error: string | null;
 }
 
@@ -85,6 +109,43 @@ export interface ReviewApplication {
   tailored_cover_letter: string | null;
   flagged_unsupported_claims: string[];
   created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Campaigns (ADR-015 — approval happens once, at campaign level, not per
+// application). Built against the agreed contract while the backend branch is
+// still in flight: a 404 here is expected until it merges, and every caller
+// must show that failure rather than render an empty screen.
+// ---------------------------------------------------------------------------
+
+export interface CampaignCreate {
+  name: string;
+  roles: string[];
+  locations: string[];
+  remote_only: boolean;
+  sources: string[];
+  min_match_score: number; // 0..1, default 0.7
+  daily_cap: number; // default 10
+  auto_submit: boolean; // default false
+  tailoring_notes?: string;
+}
+
+export type CampaignStatus = "draft" | "active" | "paused" | "archived";
+
+export interface Campaign extends CampaignCreate {
+  id: string;
+  status: CampaignStatus;
+  created_at: string;
+  updated_at: string;
+  last_run_at: string | null;
+}
+
+export interface CampaignStats {
+  applied_today: number;
+  daily_cap: number;
+  remaining_today: number;
+  total_applied: number;
+  last_run_at: string | null;
 }
 
 class ApiError extends Error {
@@ -167,6 +228,18 @@ export const api = {
     request<ReviewApplication>(`/applications/${applicationId}`, {
       method: "PATCH",
       body: JSON.stringify({ status: "dismissed" }),
+    }),
+  listCampaigns: () => request<Campaign[]>("/campaigns"),
+  createCampaign: (body: CampaignCreate) =>
+    request<Campaign>("/campaigns", { method: "POST", body: JSON.stringify(body) }),
+  runCampaign: (campaignId: string) =>
+    request<{ job_id: string }>(`/campaigns/${campaignId}/run`, { method: "POST" }),
+  getCampaignStats: (campaignId: string) => request<CampaignStats>(`/campaigns/${campaignId}/stats`),
+  getBasics: (profileId: string) => request<ApplicantBasics>(`/profiles/${profileId}/basics`),
+  putBasics: (profileId: string, basics: ApplicantBasics) =>
+    request<ApplicantBasics>(`/profiles/${profileId}/basics`, {
+      method: "PUT",
+      body: JSON.stringify(basics),
     }),
   resumeDocxUrl: (profileId: string) => `${API_URL}/profiles/${profileId}/resume.docx`,
 };
