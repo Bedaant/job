@@ -101,6 +101,64 @@ docs/              this documentation set
 ---
 
 ## Entries
+### 2026-09-26 (latest+9) — Off-roadmap: nvidia_smoke wired into parsing/llm_extract.py — resume upload works with only an NVIDIA key
+
+**Context.** Owner has no real ANTHROPIC_API_KEY but does have a working
+NVIDIA key (already used everywhere else this session). The identity-model
+entry above flagged `parsing/llm_extract.py` as anthropic-only — a real,
+recorded limitation, not worked around at the time. Owner asked directly: can
+we work with the key we actually have? Yes — closed the gap the same way
+`tailoring/engine.py` already does, mirroring its existing nvidia_smoke
+pattern rather than inventing a second one.
+
+**What changed.** `extract_facts_from_text` and `extract_basics` both gained
+the nvidia_smoke branch. Lazy `_get_nvidia_client()` (same lazy-construction
+reasoning as every other client in this project — a missing key never breaks
+the default path). `extract_basics` additionally needed
+`_get_nvidia_instructor_client()` — `instructor.from_openai(client)`, verified
+against the installed package's real signature before use, same discipline as
+every other instructor/API check this session.
+
+**A real bug found live, not from reading the API docs.** `extract_basics`'s
+first version passed `system=BASICS_SYSTEM_PROMPT` straight through to the
+nvidia_smoke branch, copying Anthropic's calling shape — and it broke against
+the real endpoint: `TypeError: Completions.create() got an unexpected keyword
+argument 'system'`. OpenAI-shaped chat APIs (NIM included) have no separate
+`system` parameter; the system prompt is a `{"role": "system", ...}` entry
+inside the messages list. `extract_facts_from_text`'s branch already did this
+correctly (written earlier, from the tailoring/engine.py pattern); extract_basics
+did not, until this fix — the two providers now genuinely branch on call
+*shape*, not just on which client object gets used.
+
+**Honest characterization of the free model, not a fixed bug.** Ran
+`extract_facts_from_text` 3 times live against the same input: 2 clean
+successes, 1 clean failure (`ValueError: malformed JSON...`, not a crash, not
+a silent wrong answer) — consistent with this project's own prior notes on
+this exact model ("the free model invents more than Claude would... a much
+smaller model"). `extract_basics` fared better on the same class of flakiness
+because `instructor`'s bounded retry (already wired for the schema-validation
+case) also absorbs a first malformed attempt — same mechanism, extra benefit
+not originally designed for.
+
+**Real verification, not simulated.** Full suite: 194/194 green (2 new tests:
+one exercising the nvidia branch of `extract_facts_from_text`, one for
+`extract_basics`). App boots, 29 routes (unchanged — no new endpoint, this is
+provider-branch code only). **Live against the real NVIDIA key**, no
+Anthropic call at all: `extract_basics` on a synthetic resume correctly
+returned `full_name="Bedaant Srivastav"`, `phone="+91 98765 43210"`,
+`city="Bengaluru"`, `region="Karnataka"`, and correctly normalized a bare
+`linkedin.com/in/bedaant` path to a schemed `https://` URL per the prompt's
+own rule — the null-over-guess validators from the identity-model entry above
+are exercised by a real model call here, not just by unit tests. Diagnostic
+and verification scripts deleted after use.
+
+**Files changed.** `parsing/llm_extract.py` (`_get_nvidia_client`,
+`_get_nvidia_instructor_client`, provider branches in both extraction
+functions), `tests/test_llm_extract.py` (+1), `tests/test_applicant_basics.py`
+(+1).
+
+---
+
 
 ### 2026-09-26 (latest+8) — Off-roadmap: applicant identity model (JSON Resume `basics`) — the actual blocker under "too much manual effort"
 

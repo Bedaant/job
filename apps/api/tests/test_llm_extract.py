@@ -67,3 +67,27 @@ def test_extract_facts_raises_clear_error_on_malformed_json():
 def test_extract_facts_rejects_empty_resume_text():
     with pytest.raises(ValueError, match="empty"):
         extract_facts_from_text("")
+
+
+# ---------- nvidia_smoke provider branch ----------
+
+def test_extract_facts_uses_nvidia_client_when_provider_is_nvidia_smoke():
+    payload = {"facts": [{"category": "skill", "achievement": "Rust", "proof": None, "metric": None, "tags": []}]}
+    choice = MagicMock()
+    choice.message.content = json.dumps(payload)
+    response = MagicMock()
+    response.choices = [choice]
+
+    with patch("parsing.llm_extract.get_settings") as mock_settings, \
+         patch("parsing.llm_extract._get_nvidia_client") as mock_get_nvidia:
+        mock_settings.return_value.llm_provider = "nvidia_smoke"
+        mock_settings.return_value.nvidia_smoke_model = "some/model"
+        nvidia_client = MagicMock()
+        nvidia_client.chat.completions.create.return_value = response
+        mock_get_nvidia.return_value = nvidia_client
+
+        facts = extract_facts_from_text("resume text here")
+
+    assert facts[0]["achievement"] == "Rust"
+    nvidia_client.chat.completions.create.assert_called_once()
+    assert nvidia_client.chat.completions.create.call_args.kwargs["model"] == "some/model"

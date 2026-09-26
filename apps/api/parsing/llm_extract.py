@@ -8,6 +8,7 @@ import json
 
 import anthropic
 import instructor
+import openai
 
 from core.config import get_settings
 from schemas import ApplicantBasics
@@ -17,6 +18,22 @@ MODEL = "claude-sonnet-5"  # config-driven would be MODEL_STRONG per SPEC.md §6
                             # is fixed in Phase 4 and the two share config
 
 _client = anthropic.Anthropic(api_key=get_settings().anthropic_api_key)
+
+# Dev-only smoke-test client (same nvidia_smoke provider as tailoring/engine.py
+# - this module never had that branch until now, a real gap: with no real
+# ANTHROPIC_API_KEY, resume upload's fact/identity extraction was dead code).
+# Lazy - only built if llm_provider is ever actually "nvidia_smoke", so a
+# missing nvidia_api_key never breaks the default (real Anthropic) path.
+_nvidia_client: openai.OpenAI | None = None
+
+
+def _get_nvidia_client() -> openai.OpenAI:
+    global _nvidia_client
+    if _nvidia_client is None:
+        settings = get_settings()
+        _nvidia_client = openai.OpenAI(api_key=settings.nvidia_api_key, base_url=settings.nvidia_base_url)
+    return _nvidia_client
+
 
 SYSTEM_PROMPT = (
     "You extract atomic, verifiable facts from a resume's raw text for a candidate's "
@@ -36,14 +53,28 @@ def extract_facts_from_text(resume_text: str) -> list[dict]:
     if not resume_text or not resume_text.strip():
         raise ValueError("resume text is empty — nothing to extract facts from")
 
-    response = _client.messages.create(
-        model=MODEL,
-        max_tokens=4096,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": resume_text[:20_000]}],
-    )
+    settings = get_settings()
+    if settings.llm_provider == "nvidia_smoke":
+        # Mechanical smoke path - NIM serves open models, not Claude, so this
+        # does NOT validate real fact-extraction quality.
+        response = _get_nvidia_client().chat.completions.create(
+            model=settings.nvidia_smoke_model,
+            max_tokens=4096,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": resume_text[:20_000]},
+            ],
+        )
+        raw = response.choices[0].message.content or ""
+    else:
+        response = _client.messages.create(
+            model=MODEL,
+            max_tokens=4096,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": resume_text[:20_000]}],
+        )
+        raw = "".join(block.text for block in response.content if getattr(block, "type", None) == "text")
 
-    raw = "".join(block.text for block in response.content if getattr(block, "type", None) == "text")
     cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
 
     try:
@@ -63,6 +94,7 @@ def extract_facts_from_text(resume_text: str) -> list[dict]:
 # Lazy, same reasoning as tailoring/engine.py's clients — only built on first
 # real call, so nothing here breaks at import time.
 _instructor_client: instructor.Instructor | None = None
+_nvidia_instructor_client: instructor.Instructor | None = None
 
 
 def _get_instructor_client() -> instructor.Instructor:
@@ -70,6 +102,13 @@ def _get_instructor_client() -> instructor.Instructor:
     if _instructor_client is None:
         _instructor_client = instructor.from_anthropic(_client)
     return _instructor_client
+
+
+def _get_nvidia_instructor_client() -> instructor.Instructor:
+    global _nvidia_instructor_client
+    if _nvidia_instructor_client is None:
+        _nvidia_instructor_client = instructor.from_openai(_get_nvidia_client())
+    return _nvidia_instructor_client
 
 
 # Prompt-engineering notes, because the failure mode here is specific and
@@ -118,18 +157,40 @@ def extract_basics(resume_text: str) -> ApplicantBasics:
     fictional phone ranges, ISO country codes, url schemes) are *enforced* on
     the model's output with a bounded retry, rather than parsed hopefully.
 
-    Provider note: anthropic-only, matching extract_facts_from_text above —
-    this module has never had the nvidia_smoke dev branch tailoring/engine.py
-    carries. Recorded as a real limitation rather than silently worked around.
+    Provider note: mirrors tailoring/engine.py's nvidia_smoke dev branch -
+    instructor wraps whichever raw client is active, so validation (placeholder
+    names, fictional phone ranges, ISO country codes, url schemes) is enforced
+    the same way on both providers. The free smoke model is asked to honor the
+    same contract as Claude; it is not graded any more leniently.
     """
     if not resume_text or not resume_text.strip():
         raise ValueError("resume text is empty — nothing to extract identity from")
+
+    settings = get_settings()
+    user_content = resume_text[:20_000]
+
+    if settings.llm_provider == "nvidia_smoke":
+        # OpenAI-shaped APIs (NIM included) have no separate `system` param —
+        # the system prompt is a role in the messages list, unlike Anthropic's
+        # native shape below. Found live: Anthropic's `system=` kwarg passed
+        # straight through raised "Completions.create() got an unexpected
+        # keyword argument 'system'" against the real NVIDIA endpoint.
+        return _get_nvidia_instructor_client().messages.create(
+            model=settings.nvidia_smoke_model,
+            max_tokens=1024,
+            messages=[
+                {"role": "system", "content": BASICS_SYSTEM_PROMPT},
+                {"role": "user", "content": user_content},
+            ],
+            response_model=ApplicantBasics,
+            max_retries=2,
+        )
 
     return _get_instructor_client().messages.create(
         model=MODEL,
         max_tokens=1024,
         system=BASICS_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": resume_text[:20_000]}],
+        messages=[{"role": "user", "content": user_content}],
         response_model=ApplicantBasics,
         max_retries=2,
     )

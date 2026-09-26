@@ -277,3 +277,22 @@ def test_basics_endpoints_are_tenant_scoped():
     assert client.put(
         f"/profiles/{their_profile['id']}/basics", headers=mine, json={"full_name": "Someone Else"}
     ).status_code == 404
+
+
+def test_extract_basics_uses_nvidia_instructor_client_when_provider_is_nvidia_smoke():
+    from parsing.llm_extract import extract_basics
+
+    expected = ApplicantBasics(full_name="Someone Real", city="Pune")
+    nvidia_instructor_client = MagicMock()
+    nvidia_instructor_client.messages.create.return_value = expected
+
+    with patch("parsing.llm_extract.get_settings") as mock_settings, \
+         patch("parsing.llm_extract._get_nvidia_instructor_client") as mock_get_client:
+        mock_settings.return_value.llm_provider = "nvidia_smoke"
+        mock_settings.return_value.nvidia_smoke_model = "some/model"
+        mock_get_client.return_value = nvidia_instructor_client
+
+        result = extract_basics("resume text here")
+
+    assert result.full_name == "Someone Real"
+    assert nvidia_instructor_client.messages.create.call_args.kwargs["model"] == "some/model"
