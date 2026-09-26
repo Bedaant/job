@@ -102,6 +102,109 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+17) — ADR-015 Phase 1: the execution loop closes, and `submitting` stops a silent lie
+
+**Context.** After the campaign model landed, `run_campaign_task` produced
+`approved` applications and *nothing ever collected them* — a campaign ended in a
+queue rather than a sent application. The machinery to submit already existed
+(deterministic field maps, the extension's form fill, the ADR-001 static guard,
+`claim-submission`'s row-locked at-most-once authority); what was missing was
+three connections: a work queue to pull, a driver to act, and outcome reporting.
+
+**The correctness bug found while wiring it, which had to be fixed first.**
+`claim-submission` flipped the row to `applied` and stamped `applied_at` *before*
+the extension's native form submit fired. Any form that then failed left the
+application saying `applied`, with a timestamp for an event that never happened.
+That is the worst failure mode this product can have: it silently drops real
+applications while telling the user they went out. New
+`ApplicationStatus.submitting` (migration `0013`, **applied live to Neon**,
+`ALTER TYPE ... ADD VALUE ... BEFORE 'applied'`) names that window, and
+`POST /applications/{id}/submission-result` is the only thing that closes it:
+
+| outcome | status | why |
+|---|---|---|
+| `submitted` | `applied` + `applied_at` | terminal; the send really happened |
+| `failed` | back to `approved` | the form never went through, so it is work again |
+| `needs_human` | `ready_for_review` | captcha, account wall, essay question |
+
+`needs_human` deliberately reuses `ready_for_review`, which means **the review
+queue becomes an exception handler rather than a gate** — exactly the reframing
+ADR-015 called for, achieved by not building a second queue. The at-most-once
+guarantee is unchanged: after a claim the row is no longer `approved`, so a second
+claim still 409s, and only a `submitting` row can be reported on (otherwise a
+caller could mark any application `applied` without ever claiming it).
+
+**`GET /extension/work-queue`.** Only `approved` rows, joined to their job, with a
+non-empty `apply_url` (an unactionable row would buy a guaranteed failure report
+and burn a retry). Self-draining: because the claim moves a row out of `approved`,
+a second driver pass cannot pick up an item already in flight — that property has
+its own test, since it is how the same job would otherwise be applied to twice.
+
+**The driver** (`apps/extension/src/background/`). `driverCore.mjs` holds the
+decisions and is unit-tested (15 tests, `node --test`): `classifyFailure` splits
+retryable failures from ones only a human can clear, and `planRun` enforces
+`MAX_ATTEMPTS_PER_ITEM` so a permanently broken form cannot starve the rest of the
+queue on every pass. `driver.ts` is thin chrome glue: fetch queue → open each
+`apply_url` in a background tab, sequentially → wait for a report → close the tab
+→ POST the result. Sequential on purpose (parallel tabs race the same daily cap
+and make "what went out" unreadable). A per-item 60s timeout reports `failed`; the
+tab is closed on every path, including timeout, because one leaked tab per failed
+application makes the browser unusable within a dozen jobs.
+
+`autoApply.content.ts` asks the driver *what this tab is for* rather than reading
+`location.href` — a redirect or a stale tab would otherwise submit the wrong job.
+If any field came back flagged (demographic, essay, low confidence) it stops and
+reports `needs_human`: filing an application with blanks where required answers
+belong is worse than not applying, and inventing the answer is what ADR-006/009
+forbid outright.
+
+**Two real bugs caught in my own design while writing it.**
+1. `fillForm` used `alert()` on every failure path. In a background tab an alert
+   blocks that tab indefinitely with nobody to dismiss it, stalling the queue on
+   the driver's timeout. Fixed at the root: `fillForm` now throws and returns
+   `{filled, flagged}`; the interactive `jc:fill-form` listener catches and alerts,
+   so nothing changes for a user who clicked the button themselves.
+2. `autoApply` initially reported every error as `failed`, so a captcha detected
+   *on the page* would be retried forever and never reach the user. It now uses
+   the same `classifyFailure` the driver uses — the classification has to live
+   wherever an error becomes an outcome, not in one of the two places.
+
+**Verification.** Red-before-green throughout (15 backend tests written and run
+failing first — 13 of 15 red on the first run, the other 2 passing only because
+they assert absence). **310/310 backend tests** (295 → +15). Extension: **24/24**
+`node --test`, `tsc --noEmit` clean, `vite build` succeeds. `0013` verified against
+live Neon: `applicationstatus` is now `[saved, submitting, applied, oa, recruiter,
+interview, offer, rejected, ready_for_review, approved, dismissed]`. One
+pre-existing test, `test_claim_submission_transitions_approved_to_applied`,
+asserted the old straight-to-`applied` behaviour — rewritten and renamed to assert
+the new state machine *and* that the round trip still reaches `applied`. It was
+not deleted or weakened.
+
+**Not verified, and why.** No live-browser run: this project has no
+loaded-extension or Playwright access, the same standing limitation recorded for
+all the content-script work. Every decision was therefore pushed into
+`driverCore.mjs` where it can be tested in Node, leaving `driver.ts` and
+`autoApply.content.ts` as glue thin enough to verify by reading. **Nothing has
+ever actually submitted a real application.** The first real run will find things
+these tests cannot.
+
+**Deliberately left out.** No scheduler or `chrome.alarms` — the popup's "Run
+apply queue" button is the only trigger, so the user is present for the session in
+which applications go out. No résumé *file* upload wired to the file input
+(`GET /profiles/{id}/resume.docx` exists and is ATS-linted; connecting it is Phase
+2). No digest (Phase 3). `attempts` is in-memory, so a service-worker restart
+forgives prior attempts — a `ponytail:` comment names `chrome.storage.local` as the
+upgrade path.
+
+**Next.** Phase 2: `ats-scrapers` to resolve aggregator `apply_url`s to real ATS
+endpoints and supply per-ATS field schemas; wire the docx to file inputs; feed the
+keyword-gap scorer into `tailoring/engine.py`, which still ignores it. And the
+standing blocker: `ANTHROPIC_API_KEY` is still a placeholder, so essay-style
+questions cannot be answered at all and ADR-014 still has no tailoring-quality
+signal.
+
+---
+
 ### 2026-09-27 (latest+16) — JD↔resume keyword gap scorer, no-fabrication rail, live-verified on 99 real JDs
 
 **Context.** `documents/ats_safety.py` already makes the generated DOCX

@@ -52,6 +52,26 @@ export default function App() {
     setStatus(response?.ok ? "Done — review flagged fields before submitting." : "Could not fill this page.");
   }
 
+  // ADR-015 Phase 1: the only trigger for the apply queue. Deliberately a button
+  // and not an alarm — the user is present for the session in which applications
+  // go out, even though each one is no longer individually approved.
+  async function runQueue() {
+    setStatus("Running the apply queue…");
+    const result = await chrome.runtime.sendMessage({ type: "jc:run-queue" });
+    if (!result || result.error) {
+      setStatus(`Could not run the queue: ${result?.error ?? "no response"}`);
+      return;
+    }
+    if (result.attempted === 0) {
+      setStatus("Nothing approved to apply to right now.");
+      return;
+    }
+    const counts = Object.entries(result.results)
+      .map(([outcome, n]) => `${n} ${outcome.replace("_", " ")}`)
+      .join(", ");
+    setStatus(`Attempted ${result.attempted}: ${counts || "no results reported"}.`);
+  }
+
   return (
     <div style={{ padding: 16, width: 260, fontFamily: "system-ui, sans-serif" }}>
       <h1 style={{ fontSize: 16, margin: 0 }}>Job Copilot</h1>
@@ -80,6 +100,13 @@ export default function App() {
           <button onClick={fillForm} style={{ width: "100%", padding: 8 }}>
             Fill this form
           </button>
+          <button onClick={runQueue} style={{ width: "100%", padding: 8, marginTop: 6 }}>
+            Run apply queue
+          </button>
+          <p style={{ fontSize: 11, color: "#666", marginTop: 6 }}>
+            Applies to jobs your campaign already approved, up to its daily cap.
+            Anything needing your input goes to the review queue instead.
+          </p>
         </div>
       )}
 

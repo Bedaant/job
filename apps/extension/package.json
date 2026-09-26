@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "test": "node --test src/content/fieldDecision.test.mjs src/content/architectureInvariants.test.mjs src/background/driverCore.test.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "react": "^19.2.8",

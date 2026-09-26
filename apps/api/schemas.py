@@ -1,6 +1,6 @@
 import re
 from datetime import date, datetime
-from typing import Optional, List, Union
+from typing import Optional, List, Literal, Union
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
@@ -423,6 +423,31 @@ class CampaignStatsOut(BaseModel):
 
 class BatchApproveResponse(BaseModel):
     approved: List[str]
+
+
+class WorkQueueItemOut(BaseModel):
+    """One unit of work for the extension driver (ADR-015 Phase 1). Deliberately
+    minimal: the field mappings the driver needs come from
+    POST /extension/map-fields once it can see the real page's fields, so
+    precomputing them here would be guesswork about a page nobody has loaded yet.
+    """
+    application_id: str
+    profile_id: str
+    apply_url: str
+    company: str
+    title: str
+
+
+class SubmissionResultIn(BaseModel):
+    # Literal, not a plain str: an unrecognised outcome must be a 422, never a
+    # silently ignored no-op that leaves the row stuck in `submitting` forever.
+    outcome: Literal["submitted", "failed", "needs_human"]
+    reason: Optional[str] = Field(default=None, max_length=2000)
+
+
+class SubmissionResultOut(BaseModel):
+    application_id: str
+    status: str
 
 
 class TailorRequest(BaseModel):

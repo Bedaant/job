@@ -101,14 +101,24 @@ function markField(el: HTMLElement, kind: "filled" | "flagged", title: string) {
   el.title = title;
 }
 
-async function fillForm(profileId: string) {
+export type FillOutcome = { filled: number; flagged: { field_id: string; reason: string }[] };
+
+/**
+ * Throws rather than alert()s (ADR-015 Phase 1): the driver opens apply pages in
+ * background tabs, and a modal alert in a background tab blocks that tab
+ * indefinitely with nobody there to dismiss it — the whole queue then stalls on
+ * the driver's per-item timeout. The interactive path below catches and alerts,
+ * so nothing changes for a user who triggered the fill themselves.
+ */
+export async function fillForm(profileId: string): Promise<FillOutcome> {
   const { descriptors, elements } = extractFields();
-  if (descriptors.length === 0) return;
+  if (descriptors.length === 0) {
+    throw new Error("no form found on page");
+  }
 
   const { jc_token: token } = await chrome.storage.local.get("jc_token");
   if (!token) {
-    alert("Job Copilot: please log in from the extension popup first.");
-    return;
+    throw new Error("please log in from the extension popup first");
   }
 
   const resp = await fetch(`${API_BASE_URL}/extension/map-fields`, {
@@ -117,8 +127,7 @@ async function fillForm(profileId: string) {
     body: JSON.stringify({ profile_id: profileId, url: location.href, fields: descriptors }),
   });
   if (!resp.ok) {
-    alert(`Job Copilot: could not map fields (${resp.status}).`);
-    return;
+    throw new Error(`could not map fields (${resp.status})`);
   }
   const mappings = await resp.json();
 
@@ -144,11 +153,20 @@ async function fillForm(profileId: string) {
         : "Job Copilot: needs your input (low confidence).",
     );
   }
+
+  return { filled: fill.length, flagged: flag.map((f) => ({ field_id: f.field_id, reason: f.reason })) };
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "jc:fill-form") {
-    fillForm(message.profileId).then(() => sendResponse({ ok: true }));
+    // The interactive path keeps its alert — a user who clicked "fill" is present
+    // to read it. The automated path (autoApply.content.ts) handles the throw.
+    fillForm(message.profileId)
+      .then((outcome) => sendResponse({ ok: true, ...outcome }))
+      .catch((error) => {
+        alert(`Job Copilot: ${error instanceof Error ? error.message : String(error)}`);
+        sendResponse({ ok: false });
+      });
     return true; // keep the message channel open for the async response
   }
 });

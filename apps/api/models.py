@@ -22,8 +22,14 @@ def gen_uuid():
 class ApplicationStatus(str, enum.Enum):
     saved = "saved"
     ready_for_review = "ready_for_review"  # batch-prepared (tailored + truth-checked), awaiting human approval
-    approved = "approved"    # ADR-001: human clicked approve; not yet submitted — sub-project #4's job
+    approved = "approved"    # cleared to send: a human approved it, or it fell inside an approved campaign's bounds (ADR-015)
     dismissed = "dismissed"  # user declined during review — distinct from `rejected` (employer rejected)
+    # The window between claiming a submission and knowing whether the form
+    # actually went through. Claim used to flip straight to `applied`, before
+    # the native submit fired — so a form that then failed left the user
+    # believing they had applied when they had not. This names that window;
+    # POST /applications/{id}/submission-result is the only thing that closes it.
+    submitting = "submitting"
     applied = "applied"
     oa = "oa"                # online assessment
     recruiter = "recruiter"

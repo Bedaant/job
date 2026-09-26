@@ -178,7 +178,14 @@ def test_dismiss_via_existing_patch_endpoint():
     assert resp.json()["status"] == "dismissed"
 
 
-def test_claim_submission_transitions_approved_to_applied():
+def test_claim_submission_transitions_approved_to_submitting_then_applied():
+    """Behaviour changed deliberately in ADR-015 Phase 1 (see
+    tests/test_submission_loop.py): the claim opens a `submitting` window rather
+    than declaring `applied`, because the native form submit only fires *after*
+    this call returns — the old version marked applications applied whose forms
+    then failed. The round trip still ends at `applied`, via submission-result,
+    which is what this test now asserts end to end.
+    """
     client, SessionLocal = _client()
     headers = _auth(client, "claim@example.com")
     profile = client.post("/profiles", headers=headers, json={"persona": "developer"}).json()
@@ -195,6 +202,17 @@ def test_claim_submission_transitions_approved_to_applied():
     resp = client.post(f"/applications/{app1_id}/claim-submission", headers=headers)
     assert resp.status_code == 200
     assert resp.json() == {"claimed": True, "application_id": app1_id}
+
+    db = SessionLocal()
+    refreshed = db.query(models.Application).filter(models.Application.id == app1_id).first()
+    assert refreshed.status == models.ApplicationStatus.submitting
+    assert refreshed.applied_at is None, "nothing has been sent yet at claim time"
+    db.close()
+
+    result = client.post(
+        f"/applications/{app1_id}/submission-result", headers=headers, json={"outcome": "submitted"}
+    )
+    assert result.status_code == 200
 
     db = SessionLocal()
     refreshed = db.query(models.Application).filter(models.Application.id == app1_id).first()

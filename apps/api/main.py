@@ -253,14 +253,125 @@ def claim_submission(
     if application.status != models.ApplicationStatus.approved:
         raise HTTPException(409, "Application is not in an approved, claimable state")
 
-    application.status = models.ApplicationStatus.applied
-    application.applied_at = datetime.utcnow()
+    # `submitting`, NOT `applied`: at this point nothing has been sent. The
+    # native form submit fires after this call returns. Marking `applied` here
+    # (as this endpoint originally did) told the user they had applied whenever
+    # the form then failed, and `applied_at` would timestamp an event that never
+    # happened. POST /applications/{id}/submission-result closes the window.
+    # The at-most-once guarantee is unchanged: the row is no longer `approved`,
+    # so a second claim still 409s.
+    application.status = models.ApplicationStatus.submitting
     write_event(
         db, current_user.id, "application.status_changed",
-        {"application_id": application.id, "status": "applied"},
+        {"application_id": application.id, "status": "submitting"},
     )
     db.commit()
     return {"claimed": True, "application_id": application.id}
+
+
+@app.get("/extension/work-queue", response_model=list[schemas.WorkQueueItemOut])
+def extension_work_queue(
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """ADR-015 Phase 1: the missing link between a campaign run and a sent
+    application. `run_campaign_task` produced `approved` rows and nothing ever
+    collected them, so a campaign ended in a queue. This is what the extension
+    driver pulls.
+
+    Only `approved` is work. A `submitting` row has already been claimed by a
+    driver pass, so re-serving it is exactly how the same job gets applied to
+    twice — the claim moving the row out of `approved` is what makes this queue
+    self-draining.
+    """
+    rows = (
+        db.query(models.Application)
+        .join(models.Profile, models.Application.profile_id == models.Profile.id)
+        .join(models.Job, models.Application.job_id == models.Job.id)
+        .filter(
+            models.Profile.user_id == current_user.id,
+            models.Application.status == models.ApplicationStatus.approved,
+            # An empty apply_url is unactionable: handing it to the driver buys a
+            # guaranteed failure report and burns a retry for nothing.
+            models.Job.apply_url != "",
+            models.Job.apply_url.isnot(None),
+        )
+        .order_by(models.Application.created_at.asc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        schemas.WorkQueueItemOut(
+            application_id=row.id,
+            profile_id=row.profile_id,
+            apply_url=row.job.apply_url,
+            company=row.job.company,
+            title=row.job.title,
+        )
+        for row in rows
+    ]
+
+
+_SUBMISSION_OUTCOMES = {
+    # outcome -> (resulting status, stamps applied_at)
+    "submitted": (models.ApplicationStatus.applied, True),
+    # The form never went through, so this is work again rather than a lie. The
+    # reason is recorded because a silent failure is the whole thing being fixed.
+    "failed": (models.ApplicationStatus.approved, False),
+    # Captcha, an account wall, a free-text essay question — the driver stopping
+    # and handing over is a correct outcome, not an error.
+    "needs_human": (models.ApplicationStatus.ready_for_review, False),
+}
+
+
+@app.post("/applications/{application_id}/submission-result", response_model=schemas.SubmissionResultOut)
+def report_submission_result(
+    application_id: str,
+    payload: schemas.SubmissionResultIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Close the `submitting` window opened by claim-submission.
+
+    Only a `submitting` row may be closed. Accepting a result for any other
+    status would let a caller mark an arbitrary application `applied` without
+    ever having claimed it — the claim is what proves one driver owns this
+    submission, and it is also what makes reporting twice a 409.
+    """
+    application = (
+        db.query(models.Application)
+        .join(models.Profile)
+        .filter(
+            models.Application.id == application_id,
+            models.Profile.user_id == current_user.id,
+        )
+        .with_for_update()
+        .first()
+    )
+    if not application:
+        raise HTTPException(404, "Application not found")
+    if application.status != models.ApplicationStatus.submitting:
+        raise HTTPException(
+            409,
+            f"Application is {application.status.value}, not submitting — there is no open "
+            "submission to report on (claim it first, and report exactly once).",
+        )
+
+    new_status, stamps_applied_at = _SUBMISSION_OUTCOMES[payload.outcome]
+    application.status = new_status
+    if stamps_applied_at:
+        application.applied_at = datetime.utcnow()
+    if payload.reason:
+        stamp = f"[{payload.outcome}] {payload.reason}"
+        application.notes = f"{application.notes}\n{stamp}" if application.notes else stamp
+
+    write_event(
+        db, current_user.id, f"application.{payload.outcome}",
+        {"application_id": application.id, "status": new_status.value, "reason": payload.reason},
+    )
+    db.commit()
+    return schemas.SubmissionResultOut(application_id=application.id, status=new_status.value)
 
 
 @app.patch("/applications/{application_id}", response_model=schemas.ApplicationOut)

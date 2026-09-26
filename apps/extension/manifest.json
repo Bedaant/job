@@ -6,13 +6,17 @@
   "action": {
     "default_popup": "index.html"
   },
-  "permissions": ["activeTab", "storage"],
+  "permissions": ["activeTab", "storage", "tabs"],
   "host_permissions": ["http://localhost:8000/*"],
+  "background": {
+    "service_worker": "src/background/driver.ts",
+    "type": "module"
+  },
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],
       "exclude_matches": ["*://*.linkedin.com/*"],
-      "js": ["src/content/formFill.content.ts"],
+      "js": ["src/content/formFill.content.ts", "src/content/autoApply.content.ts"],
       "run_at": "document_idle"
     }
   ]
