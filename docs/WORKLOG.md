@@ -447,6 +447,79 @@ knowing if the next session hits the same thing in a different worktree.
 this screen against them for real — in particular the batch-approve 404 (all-or-nothing)
 path, which the frontend surfaces but has never actually seen fire. The test-runner gap
 above is the other open item.
+### 2026-09-26 (latest+15) — Unified the "never trust an LLM's id" check into core/grounding.py
+
+**Context.** Two independent instances of the same defensive pattern existed:
+`tailoring/engine.py`'s `Bullet.source_fact_ids` field_validator raised
+`ValueError` (caught by `instructor`'s retry) on a fact id the model invented
+that wasn't in the KB it was given, while `formfill/map_fields.py` achieved
+the equivalent only implicitly — `mapping_by_id.get(field_id)` silently
+returns `None` for an invented field_id, no explicit check, no retry.
+Extracted one reusable, tested helper and pointed both call sites at it.
+
+**`core/grounding.py` (new).** One function,
+`validate_ids_against_known_set(ids, known_ids, *, field_name)` — returns
+`ids` unchanged if every one is in `known_ids`, otherwise raises `ValueError`
+naming exactly the invented id(s). No class, no config, nothing per-caller —
+the two call sites differ only in what they do with the raised error, which
+is the caller's decision, not the helper's.
+
+**`tailoring/engine.py`.** `fact_ids_must_exist_in_kb` now delegates to the
+helper instead of its inline `[fid for fid in value if fid not in known_ids]`
+loop. Externally identical: still a `field_validator` on `source_fact_ids`,
+still reads `known_fact_ids` from `info.context`, still raises `ValueError`
+which `instructor`'s `max_retries=2` catches the same as before.
+
+**`formfill/map_fields.py`.** The LLM-mapping loop now calls
+`validate_ids_against_known_set(list(candidate.keys()), known_field_ids, ...)`
+right after `json.loads` succeeds, inside the same `try`/`except` that already
+retries on malformed JSON — `ValueError` was added to that except tuple. This
+was the one real decision in the task: should an invented field_id force a
+retry (tailoring's behavior) or degrade straight to "unknown, flag for
+review" (this module's own stated philosophy)? Chose **both, in sequence**:
+an invented id is treated as just another kind of malformed response and
+retried within the existing bounded `MAX_ATTEMPTS` loop (consistent with
+tailoring); if attempts run out, `mapping_by_id` stays `{}` and every field —
+including ones the model actually got right in a discarded attempt — falls
+through to the pre-existing `_flagged()` "unknown" path, exactly like a
+malformed-JSON exhaustion already did. No new fallback branch needed; the
+safety net already existed, it just wasn't guarding this specific failure
+mode explicitly.
+
+**Tests.** Red-before-green on a fresh `tests/test_grounding.py` (6 cases:
+unchanged pass-through, empty list, single invented id named in the message,
+multiple invented ids all named, field_name appears in the message, partial
+overlap names only the unknown one) — confirmed failing on `ModuleNotFoundError`
+before `core/grounding.py` existed, then confirmed passing after. No changes
+needed to `test_tailoring_engine.py` or `test_formfill.py` — both call sites'
+observable behavior for valid (non-adversarial) input is unchanged by
+construction, and neither test file exercises an adversarial invented-id
+input against `map_form_fields` today (a gap worth a follow-up test, not
+required by this refactor). Full suite: **220/220 green**
+(214 baseline + 6 new).
+
+**Problems hit.** This worktree had no `.venv` and no `.env` — both
+gitignored, neither carried over from the main checkout. Created the venv
+and installed `requirements.txt`, which failed on a real dependency
+conflict: `presidio-analyzer==2.2.364`'s own metadata now requires
+`pydantic>=2.12.5`, but the pin was `pydantic==2.9.2`. Bumped the pydantic
+pin to `2.12.5` (the floor presidio demands, nothing higher) to unblock
+install — full suite green afterward, no other pin needed to move. Also
+added a local dev-only `.env` (dummy `DATABASE_URL`/`ANTHROPIC_API_KEY`/
+`JWT_SECRET`, gitignored) since none of this session's tests hit a real
+Postgres or a real Claude/NVIDIA call — pure mocked refactor of already-
+tested logic, no live verification needed or attempted this session.
+
+**Files created.** `core/grounding.py`, `tests/test_grounding.py`.
+**Files changed.** `tailoring/engine.py` (import + validator body),
+`formfill/map_fields.py` (import + retry-loop validation), `requirements.txt`
+(pydantic pin bump, reasoning inline).
+
+**Next.** The follow-up test gap noted above: an explicit
+`test_map_form_fields_retries_on_invented_field_id_then_flags` covering the
+new path in `map_fields.py` directly (today's 6 grounding-utility tests cover
+the helper in isolation; nothing yet drives an invented-field_id LLM response
+through `map_form_fields` itself).
 
 ---
 

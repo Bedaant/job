@@ -5,6 +5,7 @@ regardless of what the model says.
 """
 import json
 
+from core.grounding import validate_ids_against_known_set
 from formfill.deterministic import match_field_deterministic
 from tailoring.engine import call_llm
 
@@ -104,6 +105,7 @@ def map_form_fields(fields: list[dict], profile_summary: dict) -> list[dict]:
 
     mapping_by_id: dict[str, dict] = {}
     if remaining_fields:
+        known_field_ids = {f["field_id"] for f in remaining_fields}
         user_prompt = (
             f"FIELDS:\n{json.dumps(remaining_fields, indent=2)}\n\n"
             f"PROFILE:\n{json.dumps(profile_summary, indent=2)}"
@@ -113,9 +115,25 @@ def map_form_fields(fields: list[dict], profile_summary: dict) -> list[dict]:
             cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
             try:
                 parsed = json.loads(cleaned)
-                mapping_by_id = {m["field_id"]: m for m in parsed}
+                candidate = {m["field_id"]: m for m in parsed}
+                # Same grounding check as tailoring/engine.py's Bullet
+                # validator, applied explicitly here rather than left to the
+                # implicit effect of `mapping_by_id.get()` below returning
+                # None for an id we never supplied. Unlike tailoring (which
+                # lets `instructor` retry on ValueError), this raises into
+                # the *same* bounded MAX_ATTEMPTS loop already used for
+                # malformed JSON — an invented field_id is just another kind
+                # of malformed response. If attempts run out, the loop falls
+                # through with `mapping_by_id` still {}, and every field
+                # lands in the existing `_flagged()` "unknown, human review"
+                # path below — consistent with this module's own "never
+                # invent, flag for a human" philosophy, not a hard failure.
+                validate_ids_against_known_set(
+                    list(candidate.keys()), known_field_ids, field_name="field_id"
+                )
+                mapping_by_id = candidate
                 break
-            except (json.JSONDecodeError, TypeError, KeyError):
+            except (json.JSONDecodeError, TypeError, KeyError, ValueError):
                 continue
 
     result = []

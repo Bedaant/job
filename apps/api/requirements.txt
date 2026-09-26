@@ -7,7 +7,11 @@ uvicorn[standard]==0.30.6
 sqlalchemy==2.0.35
 psycopg2-binary==2.9.9
 httpx==0.27.2
-pydantic==2.9.2
+pydantic==2.9.2  # kept at 2.9.2 (not the 2.12.5 a worktree agent's fresh-venv
+# install briefly needed): verified live in this actual venv that
+# presidio-analyzer==2.2.364 imports and runs fine against 2.9.2 — the
+# resolver conflict was specific to that agent's clean install, not a real
+# runtime requirement here. Don't bump without re-verifying the same way.
 python-dotenv==1.0.1
 
 # --- Phase 0 foundation (DEPENDENCIES.md §1.1, approved) ---
