@@ -102,6 +102,132 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+13) — JD↔resume keyword gap scorer, no-fabrication rail, live-verified on 99 real JDs
+
+**Context.** `documents/ats_safety.py` already makes the generated DOCX
+*mechanically* ATS-safe (8 linted format rules). That is only half of the
+owner's actual goal ("the main aim is to get more interview calls"): the other
+half is whether the resume surfaces the **vocabulary** the JD is screened on.
+Nothing in the repo answered "which of this job's keywords does your resume
+fail to show, and which of your real facts already cover them." This adds it.
+
+**New `matching/keyword_gap.py::compute_keyword_gap(job_description, facts,
+job_skills=None, job_title=None)`** returning `coverage` (0..1, importance-
+weighted — failing a "high" keyword costs 3x failing a "low" one), `matched`
+(each with `match_type` exact|fuzzy|synonym and the id/index of the fact that
+evidences it), `missing`, `weak`, and `suggestions`. `facts` takes
+`ResumeFact` rows or plain strings. Deterministic: regex + `rapidfuzz`
+(installed since Phase 3 and, until now, unused by any feature) — **no LLM
+call**, so it is free and instant enough to run on every match, and it stays
+off the `ANTHROPIC_API_KEY`-blocked path entirely. JDs arrive as HTML from the
+feeds; stripped with stdlib (`html.unescape` + tag regex, no parser
+dependency) before analysis.
+
+**The rail, which is the whole point.** A `missing` keyword means "the user
+does not have this," and it may never become a suggestion. This is enforced
+structurally, not by a check: `_build_suggestions` takes `matched`/`weak` as
+its only inputs, so there is no code path from a missing keyword into a
+suggestion at all, and the only two actions that exist are `surface` (move a
+real fact's real content where an ATS can see it) and `reword` (say the same
+true thing in the JD's wording) — there is deliberately no "add". A trailing
+filter drops anything in `missing` as a second lock on the same door, and
+`test_no_suggestion_ever_references_a_missing_keyword` asserts it against a JD
+deliberately stuffed with unsupported keywords. ADR-009 is what makes this
+checkable at all: suggestions can only point at facts, so "which fact backs
+this?" always has an answer.
+
+**`weak` is the genuinely useful output, and it is not a score.** Two distinct
+kinds of buried: `metadata_only` (the keyword lives only in a fact's
+tags/metric, so it never reaches the bullet text a keyword scan reads — a real
+gap the database hides) and `single_mention` (in exactly one bullet while the
+JD leans on it — a reorder opportunity). On the live run these were 18 and 14
+occurrences respectively across 52 scored jobs.
+
+**Extended `matching/skills.py` rather than forking a second vocabulary.** New
+`skill_occurrences()` (name → count, which the importance heuristic needs) and
+`skill_pattern()` (so the fact side matches with the *exact* regex semantics
+the job side was extracted with, not a subtly different second one);
+`extract_skills` is now a one-liner over the former. ~70 vocabulary terms added
+that real JDs demand (Airflow, dbt, Snowflake, Jenkins, Helm, Pytest,
+Playwright, OAuth, GDPR, Amplitude, Project Management, …). Terms that are also
+ordinary English words — `Excel`, `Segment`, `Strategy`, `Linear`, `R` — were
+deliberately *left out*: a report claiming you lack "Excel" because the JD said
+"excel at communication" is worse than silence.
+
+**What broke, and it was real.** The live run against 99 RemoteOK JDs (not a
+fixture — this is exactly why the brief demanded real data) found that a
+product manager's own metric, "…within first weeks of **go-live**", matched the
+**Go language** via `(?<!\w)Go(?!\w)` with `re.I`, and the scorer then emitted
+`{"action": "surface", "keyword": "Go"}` — advice to write a programming
+language the candidate does not know onto their resume. The anti-fabrication
+rail held for *missing* keywords exactly as designed and still produced a false
+claim, because the keyword was wrongly classified as **matched** in the first
+place. Fixed at the source in three layers, since all of them were wrong the
+same way: (1) `skills.AMBIGUOUS_TERMS` (Go, REST, Swift, Rust, Spark, Flutter,
+Jest, Sass, Helm, Notion, Express, Flask, Angular, Bash, Airflow) now match
+case-sensitively and never inside a hyphenated compound — fixed in `skills.py`
+and not filtered downstream, because `extract_skills` feeds `Job.skills` and
+every match's `skill_coverage`, so **existing** callers had this bug too;
+(2) short all-caps acronyms (ML, JS, TS, PM — the synonym aliases) get the same
+rule, and `skill_pattern()`'s fallback now routes through `_compile` instead of
+quietly rebuilding a loose pattern and undoing the fix; (3) fuzzy matching is
+skipped entirely for ambiguous terms, because the fuzzy scan lowercases both
+sides and thereby discards the very casing signal the fix depends on — "rest of
+the team" scored 100 against "REST". Three regression tests, each named after
+the real input that found it. Effect on the live numbers: spurious matches
+gone, total suggestions across the 99 jobs dropped 43 → 32.
+
+**Dead ends / corrections, recorded so nobody redoes them.** (a) The brief said
+to pull a JD via `connectors.feeds.fetch_remoteok_jobs()`; `connectors/feeds.py`
+does **not** exist on this branch's base (`d6a5dab`) — it arrived in a parallel
+agent's later merge and is present only in the main checkout. Worked around by
+fetching in the main checkout and scoring in the worktree, two steps, no
+cross-contamination. (b) The brief's "245 passed" baseline is the **main
+checkout's** count; this worktree's HEAD baseline is **232**. (c) This worktree
+has no `.venv`/`.env` of its own — both live in the main `apps/api`; `.env` had
+to be copied in (gitignored) because `core.config.Settings` resolves it from
+the process CWD. (d) The synonym map initially only ran against the facts, so a
+JD saying "K8s" never produced "Kubernetes" as a keyword to score at all —
+aliases have to be resolved on the **JD** side too. (e) `json.dump` on the
+connector's output needs `default=str` (`posted_at` is a `datetime`).
+
+**Real numbers, live.** 99 real RemoteOK rows (all 99 HTML, longest 25,355
+chars) scored against the real 24-fact `resume_kb/facts.json`. 52 jobs had ≥1
+recognised JD keyword; mean coverage **0.284**, median 0.000, max 1.000; 28 jobs
+at 0.0 coverage, 13 at ≥0.5; 4.1 keywords/job; match types exact 24 / synonym 7
+/ fuzzy 1; 32 suggestions total. Both invariants held on real data: **0**
+suggestions referencing a `missing` keyword, **0** pointing at a non-existent
+fact. The low mean is honest, not a bug — the Facts KB is a product manager's
+and this feed is mostly engineering roles; the "Frontend Engineer" row scored
+0.000 with React/TypeScript/Next.js/CSS all correctly `missing` and,
+correctly, **zero** suggestions. The realistic case is the PM rows: coverage
+0.429 and 1.000, each with a single `reword` suggestion ("Product Strategy",
+matched via the PM synonym).
+
+**Endpoint.** `GET /matches/{match_id}/keyword-gap`, tenant-scoped with the
+same `Match`-join-`Profile`/`user_id` pattern as its neighbours (cross-user
+404 tested). `schemas.KeywordGapOut` + 4 nested models. **No migration** —
+computed on demand, no columns added (migration `0012` belongs to a parallel
+agent). No new dependencies.
+
+**Not done, honestly.** `weak`/`suggestions` are not wired into any UI or into
+`tailoring/engine.py` — the scorer is callable and exposed, but nothing
+consumes it yet, and the `reword`/`surface` suggestions are advisory text a
+human acts on, not something applied automatically. Coverage is computed
+against a fixed vocabulary, so recall is still bounded by that list
+(pre-existing ceiling, marked in `skills.py`). The importance heuristic cannot
+tell "5+ years of Kubernetes" from "we run Kubernetes" — both read `high`.
+
+**Files created.** `apps/api/matching/keyword_gap.py`,
+`apps/api/tests/test_keyword_gap.py`,
+`apps/api/tests/test_keyword_gap_endpoint.py`. **Files changed.**
+`apps/api/matching/skills.py` (occurrences/pattern helpers, ~70 new terms,
+`AMBIGUOUS_TERMS`), `apps/api/schemas.py` (`KeywordGapOut` + 4 nested,
+`Union` import), `apps/api/main.py` (the endpoint). **Tests.** 232 → **252**
+passed, full suite green from `apps/api`.
+
+---
+
 ### 2026-09-26 (latest+12) — Roadmap sub-projects #2 + #4: batch prep pipeline and gated execution, live-verified
 
 **Context.** Owner asked to finish all remaining decomposed sub-projects at
