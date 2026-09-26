@@ -17,7 +17,11 @@ export interface FieldMapping {
 }
 
 export const CONFIDENCE_THRESHOLD: number;
+export const DEMOGRAPHIC_LABEL_KEYWORDS: string[];
+export const ESSAY_LABEL_KEYWORDS: string[];
 export const FORBIDDEN_LABEL_KEYWORDS: string[];
+export function isDemographicLabel(labelText: string | null | undefined): boolean;
+export function isEssayLabel(labelText: string | null | undefined): boolean;
 export function isForbiddenLabel(labelText: string | null | undefined): boolean;
 export function decideFieldActions(
   fields: FieldDescriptor[],

@@ -6,19 +6,51 @@
 
 export const CONFIDENCE_THRESHOLD = 0.75;
 
-// Mirrors apps/api/formfill/map_fields.py's FORBIDDEN_LABEL_KEYWORDS exactly —
-// defense-in-depth: the backend already never returns a value for these, but
-// a client that only trusted the backend would have a single point of
-// failure. Keep both lists in sync if either changes.
-export const FORBIDDEN_LABEL_KEYWORDS = [
+// Mirrors apps/api/answer_bank.py's DEMOGRAPHIC_LABEL_KEYWORDS exactly —
+// defense-in-depth: the backend already never returns a value for these, but a
+// client that only trusted the backend would have a single point of failure.
+// NEVER fillable, by anything, under any circumstances. Keep both lists in sync
+// if either changes.
+export const DEMOGRAPHIC_LABEL_KEYWORDS = [
   "race", "ethnicity", "gender", "veteran status", "disability status",
-  "sexual orientation", "why do you want to work", "why are you interested",
+  "sexual orientation",
 ];
 
-export function isForbiddenLabel(labelText) {
+// Mirrors apps/api/formfill/map_fields.py's ESSAY_LABEL_KEYWORDS. These were in
+// the same list as the demographic keywords until the answer bank (ADR-015)
+// existed, and lumping them together was wrong: an essay question is unfillable
+// only for as long as the user has never written the answer. The backend now
+// returns `maps_to: "answer_bank"` with the user's own text for these, so
+// flagging them here before looking at the mapping would throw that away and
+// stop the run for a question that was already answered.
+export const ESSAY_LABEL_KEYWORDS = [
+  "why do you want to work", "why are you interested",
+];
+
+// The union, kept because "nothing here is fillable from profile data alone" is
+// still a true and useful statement.
+export const FORBIDDEN_LABEL_KEYWORDS = [
+  ...DEMOGRAPHIC_LABEL_KEYWORDS, ...ESSAY_LABEL_KEYWORDS,
+];
+
+function matchesAny(labelText, keywords) {
   if (!labelText) return false;
   const lower = labelText.toLowerCase();
-  return FORBIDDEN_LABEL_KEYWORDS.some((keyword) => lower.includes(keyword));
+  return keywords.some((keyword) => lower.includes(keyword));
+}
+
+// The unconditional rail. A true here is not "flag for review" — it is "no
+// value may ever be written into this field".
+export function isDemographicLabel(labelText) {
+  return matchesAny(labelText, DEMOGRAPHIC_LABEL_KEYWORDS);
+}
+
+export function isEssayLabel(labelText) {
+  return matchesAny(labelText, ESSAY_LABEL_KEYWORDS);
+}
+
+export function isForbiddenLabel(labelText) {
+  return matchesAny(labelText, FORBIDDEN_LABEL_KEYWORDS);
 }
 
 // fields: FieldDescriptor[] ({field_id, label_text, ...})
@@ -30,13 +62,18 @@ export function decideFieldActions(fields, mappings) {
   const flag = [];
 
   for (const field of fields) {
-    if (isForbiddenLabel(field.label_text)) {
-      flag.push({ field_id: field.field_id, reason: "demographic_or_essay" });
+    // Unconditional, and before anything else looks at the mapping.
+    if (isDemographicLabel(field.label_text)) {
+      flag.push({ field_id: field.field_id, reason: "demographic" });
       continue;
     }
     const mapping = mappingById.get(field.field_id);
     if (!mapping || mapping.maps_to === "unknown" || mapping.confidence < CONFIDENCE_THRESHOLD || !mapping.value) {
-      flag.push({ field_id: field.field_id, reason: "low_confidence" });
+      // An essay question with no answer gets its own reason rather than
+      // "low_confidence": it is the one flag the user can clear permanently, by
+      // writing the answer once into the answer bank.
+      const reason = isEssayLabel(field.label_text) ? "essay_no_stored_answer" : "low_confidence";
+      flag.push({ field_id: field.field_id, reason });
       continue;
     }
     fill.push({ field_id: field.field_id, value: mapping.value });

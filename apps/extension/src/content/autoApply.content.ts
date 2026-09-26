@@ -29,9 +29,16 @@ type WorkItem = {
   title: string;
 };
 
-// Reasons map-fields uses for a field it will not answer. Either means a human
-// has to finish this application.
-const NEEDS_USER_REASONS = new Set(["demographic_or_essay", "low_confidence"]);
+// Reasons map-fields uses for a field it will not answer. Any of them means a
+// human has to finish this application. `demographic_or_essay` split into
+// `demographic` (never answerable) and `essay_no_stored_answer` (answerable
+// once, via the answer bank) when the bank landed — an essay field that the
+// bank DID answer is not flagged at all and so never appears here.
+const NEEDS_USER_REASONS = new Set([
+  "demographic",
+  "essay_no_stored_answer",
+  "low_confidence",
+]);
 
 function report(outcome: "submitted" | "failed" | "needs_human", reason?: string): void {
   // Fire-and-forget: the driver is waiting on this message and has its own

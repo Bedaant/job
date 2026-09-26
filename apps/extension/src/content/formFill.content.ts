@@ -103,6 +103,16 @@ function markField(el: HTMLElement, kind: "filled" | "flagged", title: string) {
 
 export type FillOutcome = { filled: number; flagged: { field_id: string; reason: string }[] };
 
+// Keyed by fieldDecision.mjs's flag reasons. `essay_no_stored_answer` is the
+// only one the user can clear for good — saving the answer once means every
+// later form that asks it is filled from the answer bank.
+const FLAG_MESSAGES: Record<string, string> = {
+  demographic: "Job Copilot: needs your input (never auto-answered).",
+  essay_no_stored_answer:
+    "Job Copilot: needs your input — save the answer and we'll reuse it next time.",
+  low_confidence: "Job Copilot: needs your input (low confidence).",
+};
+
 /**
  * Throws rather than alert()s (ADR-015 Phase 1): the driver opens apply pages in
  * background tabs, and a modal alert in a background tab blocks that tab
@@ -145,13 +155,7 @@ export async function fillForm(profileId: string): Promise<FillOutcome> {
   for (const { field_id, reason } of flag) {
     const el = elements.get(field_id);
     if (!el) continue;
-    markField(
-      el,
-      "flagged",
-      reason === "demographic_or_essay"
-        ? "Job Copilot: needs your input (never auto-answered)."
-        : "Job Copilot: needs your input (low confidence).",
-    );
+    markField(el, "flagged", FLAG_MESSAGES[reason] ?? FLAG_MESSAGES.low_confidence);
   }
 
   return { filled: fill.length, flagged: flag.map((f) => ({ field_id: f.field_id, reason: f.reason })) };

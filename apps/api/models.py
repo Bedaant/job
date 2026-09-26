@@ -103,6 +103,7 @@ class Profile(Base):
     applications = relationship("Application", back_populates="profile", cascade="all, delete-orphan")
     matches = relationship("Match", back_populates="profile", cascade="all, delete-orphan")
     campaigns = relationship("Campaign", back_populates="profile", cascade="all, delete-orphan")
+    answers = relationship("AnswerBank", back_populates="profile", cascade="all, delete-orphan")
 
     __table_args__ = (UniqueConstraint("user_id", "persona", name="uq_profile_user_persona"),)
 
@@ -331,3 +332,44 @@ class ResumeUpload(Base):
     draft_facts = Column(JSON, nullable=True)
     error = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AnswerBank(Base):
+    """One question the user has answered in their own words, reusable on every
+    later form that asks the same thing (ADR-015). Without this, an auto-apply
+    run stops on "why do you want to work here?" for every employer, forever;
+    with it, the interruptions shrink.
+
+    The text here is ALWAYS user-written — answer_bank.py::save_answer is the
+    only write path and nothing in that module's import graph can reach
+    call_llm. That is what keeps ADR-006/ADR-009 trivially satisfied for these
+    answers: there is no generated claim, so there is nothing to truth-check.
+
+    `question_text` is kept verbatim (it is what the user was looking at when
+    they answered, and it is what the demographic guard re-checks on read);
+    `question_normalized` is the derived matching key and half the unique key,
+    so re-answering the same question updates the row rather than adding a
+    second, contradictory answer to the same question.
+    """
+    __tablename__ = "answer_bank"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    profile_id = Column(UUID(as_uuid=False), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+
+    question_text = Column(Text, nullable=False)
+    question_normalized = Column(String, nullable=False, index=True)
+    answer_text = Column(Text, nullable=False)
+
+    # Whether this feature is actually paying off, per answer. Incremented only
+    # by serve_answer — a lookup is not a use.
+    times_used = Column(sqlalchemy.Integer, nullable=False, default=0)
+    last_used_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    profile = relationship("Profile", back_populates="answers")
+
+    __table_args__ = (
+        UniqueConstraint("profile_id", "question_normalized", name="uq_answer_bank_profile_question"),
+    )
