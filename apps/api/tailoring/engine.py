@@ -20,6 +20,7 @@ import openai
 from instructor.v2.core.errors import InstructorRetryException
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from core.config import get_settings
+from core.grounding import validate_ids_against_known_set
 from langfuse import observe, get_client
 
 MODEL = "claude-sonnet-4-6"
@@ -87,12 +88,7 @@ class Bullet(BaseModel):
     @classmethod
     def fact_ids_must_exist_in_kb(cls, value: list[str], info: ValidationInfo) -> list[str]:
         known_ids = (info.context or {}).get("known_fact_ids", set())
-        unknown = [fid for fid in value if fid not in known_ids]
-        if unknown:
-            raise ValueError(
-                f"source_fact_ids references id(s) not present in the given KB: {unknown}"
-            )
-        return value
+        return validate_ids_against_known_set(value, known_ids, field_name="source_fact_ids")
 
 
 class TailoredDraft(BaseModel):
