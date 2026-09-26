@@ -1,6 +1,10 @@
-"""JobSpy connector (DEPENDENCIES.md §3, speedyapply/JobSpy, MIT) — Google
-Jobs / ZipRecruiter / Glassdoor only, per ADR-002 (LinkedIn/Indeed scraping
-is explicitly excluded regardless of this library's own support for them).
+"""JobSpy connector (DEPENDENCIES.md §3, speedyapply/JobSpy, MIT).
+
+ADR-015 lifted the Google-only restriction this file used to carry: the sites
+scraped are now whatever `connectors.config.JOBSPY_SITES` lists. LinkedIn stays
+excluded (ADR-015 parks it as a special case) and Indeed is Tier C, so neither
+is in the default list — that exclusion is a tested config value now, not a
+hardcoded string buried in this module.
 
 JobSpy's pinned `numpy==1.26.3` hard-conflicts with this app's numpy 2.x
 requirement (pgvector/scikit-learn) — installing it in the main venv broke a
@@ -14,21 +18,31 @@ import os
 import subprocess
 import sys
 
+from connectors import config
+
 _TOOLS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "tools")
 _JOBSPY_PYTHON = os.path.join(_TOOLS_DIR, ".venv-jobspy", "Scripts", "python.exe")
 
 _SCRAPE_SCRIPT = """
 import json, sys
 from jobspy import scrape_jobs
-df = scrape_jobs(site_name=["google"], google_search_term=sys.argv[1], results_wanted=int(sys.argv[2]))
+sites = sys.argv[3].split(",")
+df = scrape_jobs(
+    site_name=sites,
+    search_term=sys.argv[1],
+    google_search_term=sys.argv[1],
+    results_wanted=int(sys.argv[2]),
+)
 df = df.where(df.notnull(), None)
-print(json.dumps(df.to_dict(orient="records")))
+print(json.dumps(df.to_dict(orient="records"), default=str))
 """
 
 
-def fetch_jobspy_jobs(search_term: str, results_wanted: int = 20) -> list[dict]:
+def fetch_jobspy_jobs(search_term: str, results_wanted: int = 20,
+                      sites: list[str] | None = None) -> list[dict]:
+    sites = sites or config.JOBSPY_SITES
     result = subprocess.run(
-        [_JOBSPY_PYTHON, "-c", _SCRAPE_SCRIPT, search_term, str(results_wanted)],
+        [_JOBSPY_PYTHON, "-c", _SCRAPE_SCRIPT, search_term, str(results_wanted), ",".join(sites)],
         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
     )
     if result.returncode != 0 or not result.stdout.strip():
@@ -41,7 +55,9 @@ def fetch_jobspy_jobs(search_term: str, results_wanted: int = 20) -> list[dict]:
         if not url:
             continue
         jobs.append({
-            "source": "jobspy_google",
+            # Per-site, not a constant: a ZipRecruiter row recorded as coming
+            # from Google would make source-level yield stats meaningless.
+            "source": f"jobspy_{r.get('site') or 'unknown'}",
             "external_id": url,
             "title": r.get("title", ""),
             "company": r.get("company", ""),

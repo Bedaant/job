@@ -7,6 +7,7 @@ from rq import Queue
 
 from connectors import config as conn_config
 from connectors.ashby import fetch_ashby_jobs
+from connectors.feeds import fetch_enabled_feeds
 from connectors.greenhouse import fetch_greenhouse_jobs
 from connectors.lever import fetch_lever_jobs
 from connectors.normalize import canonical_hash
@@ -59,13 +60,26 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
     for token in conn_config.ASHBY_ORG_TOKENS:
         all_jobs.extend(fetch_ashby_jobs(token))
 
+    # ADR-015 multi-source: the keyless public feeds. Reported per source rather
+    # than merged into one count — with six boards, "0 inserted" has to be
+    # traceable to which board went quiet.
+    feed_jobs, feed_report = fetch_enabled_feeds(
+        conn_config.ENABLED_FEEDS, conn_config.FEED_KEYWORDS
+    )
+    all_jobs.extend(feed_jobs)
+
     for j in all_jobs:
         j["canonical_hash"] = canonical_hash(j["company"], j["title"], j.get("location"))
 
     with session_scope() as db:
         inserted, skipped = upsert_jobs(db, all_jobs)
 
-    return {"fetched": len(all_jobs), "inserted": inserted, "skipped_duplicates": skipped}
+    return {
+        "fetched": len(all_jobs),
+        "inserted": inserted,
+        "skipped_duplicates": skipped,
+        "feeds": feed_report,
+    }
 
 
 def prepare_applications_task(application_ids: list[str]) -> dict:

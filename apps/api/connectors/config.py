@@ -2,6 +2,29 @@
 
 REMOTIVE_KEYWORDS = ["product manager", "associate product manager", "APM"]
 
+# --- ADR-015 multi-source discovery ------------------------------------------
+# Keyless public feeds (connectors/feeds.py). Each returns its whole board, so
+# FEED_KEYWORDS filters client-side. Empty list = keep everything the feeds
+# return (feeds.filter_by_keywords treats "no keywords" as "no filter", never
+# as "no results").
+FEED_KEYWORDS: list[str] = []
+
+# Which feeds run. Comment a line out to drop that source without touching code.
+ENABLED_FEEDS = [
+    "remoteok",
+    "himalayas",
+    "workingnomads",
+    "jobicy",
+    "arbeitnow",
+    "weworkremotely",
+]
+
+# JobSpy sites (connectors/jobspy_connector.py). ADR-015: "linkedin" is parked
+# as a special case and "indeed" is Tier C — test_jobspy_connector.py asserts
+# neither appears here, so adding one has to be a deliberate, visible decision.
+JOBSPY_SITES = ["google", "zip_recruiter", "glassdoor"]
+JOBSPY_KEYWORDS: list[str] = []
+
 # Reed (PRD.md §6 Tier 2) — no-ops without REED_API_KEY set in .env
 REED_KEYWORDS = ["product manager", "associate product manager"]
 

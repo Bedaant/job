@@ -102,6 +102,73 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+13) — ADR-015 multi-source: six keyless public feeds live, JobSpy un-restricted
+
+**Context.** Owner's framing, verbatim: "There are so many job portals apart from
+LinkedIn and Indeed where jobs are posted… There are too many websites… I want to
+build this in this project." Coverage was the complaint. Factually there was never a
+LinkedIn connector here — but coverage really was thin: of six existing sources only
+Remotive was a searchable board, the three ATS ones (Greenhouse/Lever/Ashby) need
+hand-typed company tokens and shipped with **empty** token lists, Reed needs a key,
+and JobSpy was pinned to Google alone and yielding 0. So in practice, one live board.
+
+**Method: probe first, then write.** Every endpoint was fetched live and its keys
+printed *before* any parser was written — no field names taken from docs, per the
+standing "never guess APIs" rule. Six passed: Remote OK (`/api`, row 0 is a ToS
+notice, not a job), Himalayas (`/jobs/api`), Working Nomads (`/api/exposed_jobs/`,
+no id field — it's in the URL), Jobicy (`/api/v2/remote-jobs`), Arbeitnow
+(`/api/job-board-api`, mixed remote/on-site, EU-heavy), We Work Remotely (RSS only;
+parsed with stdlib ElementTree, no new dependency, and its employer is encoded in the
+title as "Company: Role").
+
+**`connectors/feeds.py`** — one file, six parse/fetch pairs on the existing connector
+contract, plus `FEED_FETCHERS` and `fetch_enabled_feeds(enabled, keywords)`. Parsers
+are pure, so `tests/test_feeds.py` needs no network. Two deliberate details:
+`_salary()` renders only the bounds that actually exist (these feeds variously use 0,
+null, or an absent key for "unknown" — a naive join produced a misleading
+`0-160000`), and `filter_by_keywords([])` means *keep everything*, never *return
+nothing*, so an empty config can't silently zero out a whole board.
+
+**Failure isolation, the real design point.** With six boards, one going 502 or
+drifting its JSON shape is routine, not an outage. `fetch_enabled_feeds` catches per
+source and returns a report mapping each source to its kept count *or* its error
+string; `discover_jobs_task` returns that as `result["feeds"]`. Fails visibly, per
+ADR-015's "per-source adapters that fail visibly" — neither aborting the run nor
+swallowing the error.
+
+**JobSpy un-restricted (ADR-015).** Site list moved out of the hardcoded
+`site_name=["google"]` into `config.JOBSPY_SITES` (default
+`google, zip_recruiter, glassdoor`), and `source` is now `jobspy_{site}` rather than
+the constant `jobspy_google` — a ZipRecruiter row logged as Google makes per-source
+yield stats meaningless. LinkedIn and Indeed stay out, but as a **tested config
+assertion** (`test_jobspy_never_scrapes_linkedin_or_indeed`) instead of a string
+buried in the module, so adding either is a visible decision.
+
+**Real bug this caught.** `test_discover_idempotency.py` patched each connector
+individually, so the moment the worker gained a feed call those tests started making
+real HTTP requests *and* real Voyage embedding calls — surfaced as a
+`voyageai RateLimitError` inside a supposedly offline unit test. Fixed by stubbing
+`workers.jobs.fetch_enabled_feeds` in that file's helper. Worth remembering: a test
+helper that enumerates collaborators by name silently stops being a seam the next
+time the function under test grows one.
+
+**Verification.** Red-before-green on all three new test files. 245/245 backend tests
+pass. Live run of all six feeds: `{"remoteok": 99, "himalayas": 20,
+"workingnomads": 57, "jobicy": 50, "arbeitnow": 286, "weworkremotely": 80}` = **592
+real jobs**, zero rows missing title/company/apply_url; keyword filter spot-checked
+(`remoteok` + "engineer" → 23). Not yet inserted into Neon — that costs Voyage
+embedding calls, so the upsert is left for a deliberate run.
+
+**Files.** `connectors/feeds.py` (new), `connectors/config.py` (+`FEED_KEYWORDS`,
+`ENABLED_FEEDS`, `JOBSPY_SITES`, `JOBSPY_KEYWORDS`), `connectors/jobspy_connector.py`,
+`workers/jobs.py`, `tests/test_feeds.py` (new), `tests/test_feeds_discovery.py` (new),
+`tests/test_jobspy_connector.py`, `tests/test_discover_idempotency.py`.
+
+**Next.** Campaign model (ADR-015 §2) does not exist yet and is the actual core of the
+pivot; removing the ADR-001 per-item submit gate; onboarding flow in `apps/web`;
+a JD-vs-resume keyword-gap score surfaced to the user (docx ATS-safety linting already
+exists in `documents/ats_safety.py` — format is covered, keyword targeting is not).
+
 ### 2026-09-26 (latest+12) — Roadmap sub-projects #2 + #4: batch prep pipeline and gated execution, live-verified
 
 **Context.** Owner asked to finish all remaining decomposed sub-projects at

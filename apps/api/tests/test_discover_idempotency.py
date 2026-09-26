@@ -10,6 +10,9 @@ def _patch_connectors():
         patch("workers.jobs.fetch_greenhouse_jobs", return_value=[]),
         patch("workers.jobs.fetch_lever_jobs", return_value=[]),
         patch("workers.jobs.fetch_ashby_jobs", return_value=[]),
+        # ADR-015's six public feeds. Without this stub these tests make real
+        # network calls (and real Voyage embedding calls) — it happened once.
+        patch("workers.jobs.fetch_enabled_feeds", return_value=([], {})),
     )
 
 

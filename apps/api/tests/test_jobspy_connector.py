@@ -35,3 +35,24 @@ def test_fetch_jobspy_jobs_returns_empty_on_no_results(mock_run):
 
     from connectors.jobspy_connector import fetch_jobspy_jobs
     assert fetch_jobspy_jobs("backend engineer") == []
+
+
+@patch("connectors.jobspy_connector.subprocess.run")
+def test_fetch_jobspy_jobs_tags_source_per_site_not_always_google(mock_run):
+    """ADR-015 lifted the Google-only restriction. A row scraped from
+    ZipRecruiter must not be recorded as coming from Google."""
+    payload = [{"title": "PM", "company": "Acme", "site": "zip_recruiter",
+                "job_url": "https://z", "location": "Remote", "date_posted": "2026-09-26"}]
+    mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(payload))
+
+    from connectors.jobspy_connector import fetch_jobspy_jobs
+    assert fetch_jobspy_jobs("pm")[0]["source"] == "jobspy_zip_recruiter"
+
+
+def test_jobspy_never_scrapes_linkedin_or_indeed():
+    """ADR-015 parks LinkedIn (special case) and defers Indeed to Tier C.
+    Neither may appear in the default site list."""
+    from connectors import config
+    assert "linkedin" not in config.JOBSPY_SITES
+    assert "indeed" not in config.JOBSPY_SITES
+    assert config.JOBSPY_SITES, "at least one JobSpy site must be enabled"
