@@ -7,6 +7,13 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str
+    # RLS backstop (migration 0010): the FastAPI app connects as a
+    # deliberately restricted role (no BYPASSRLS) for every real request;
+    # migrations and background workers keep using database_url's owner
+    # role. Optional and falls back to database_url when unset, so nothing
+    # breaks before the role/password actually exists on a given Postgres
+    # instance (e.g. the SQLite test engine never needs this at all).
+    app_database_url: str | None = None
     redis_url: str = "redis://localhost:6379/0"
     anthropic_api_key: str
     reed_api_key: str | None = None  # optional — reed connector no-ops without it

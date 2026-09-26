@@ -1,5 +1,6 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 import models
@@ -21,6 +22,17 @@ def get_current_user(
     user = db.query(models.User).filter(models.User.id == payload.get("sub")).first()
     if not user:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
+
+    # Postgres RLS backstop (migration 0010): every subsequent query on this
+    # request's connection now carries the authenticated user's id, so a
+    # missed application-level tenancy filter still can't leak another
+    # user's row — the database itself won't return it. SET LOCAL is
+    # transaction-scoped and resets automatically; guarded to Postgres only
+    # since SQLite (the unit-test engine) has no such syntax at all and
+    # would raise on it.
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(text("SET LOCAL app.current_user_id = :uid"), {"uid": user.id})
+
     return user
 
 

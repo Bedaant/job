@@ -102,6 +102,86 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-26 (latest+11) — Off-roadmap: Postgres Row-Level Security, restricted role, live-verified fail-closed
+
+**Context.** Parked mid-discovery earlier this session after finding
+`neondb_owner` has `rolbypassrls = True` — RLS policies would be silently
+decorative against the only role this project had ever connected as, no
+matter how carefully written. Owner asked to finish it as part of a larger
+batch of remaining work.
+
+**Migration `0010_row_level_security.py`**, real infra change, not just
+schema: creates `job_copilot_app` — `NOSUPERUSER`, no `BYPASSRLS` (the
+default when unspecified) — with ordinary DML grants + `ALTER DEFAULT
+PRIVILEGES` (so future migrations' tables are covered without a manual
+re-grant), then `ENABLE`+`FORCE ROW LEVEL SECURITY` and a `tenant_isolation`
+policy on the 7 real tenant tables: `profiles`, `resume_facts`,
+`applications`, `matches`, `resume_uploads` (via `profile_id ->
+profiles.user_id`), `events`, `notifications` (direct `user_id`). Not applied
+to `users` (the JWT->user lookup happens before any tenant context exists —
+protecting it here is a chicken-and-egg problem, and there's no "list other
+users" endpoint), `jobs`/`connector_runs` (legitimately global data).
+
+**A real bug found by testing live, not by reading Postgres docs.**
+`current_setting('app.current_user_id', true)` on a genuinely fresh
+connection returned an **empty string**, not `NULL` — contradicting the
+migration's own first-draft assumption (and most RLS tutorials' framing of
+`missing_ok=true`). A bare `::uuid` cast on that crashed with
+`InvalidTextRepresentation` instead of failing closed, which would have been
+the wrong failure mode for a security control (a crash a caller might paper
+over is worse than a clean empty result). Fixed with `NULLIF(current_setting
+(...), '')::uuid` — turns the empty string into a real NULL first, so
+`user_id = NULL` correctly evaluates to false. Corrected in the migration
+file and reapplied live (dropped + recreated the 7 policies with the fixed
+expression) since the bug was caught within the same session it was written.
+
+**`database.py` split into two engines**, deliberately different roles:
+`engine`/`SessionLocal` (owner role, `DATABASE_URL`) for Alembic and
+background workers that are legitimately cross-tenant by design — the
+events relay must see every user's unpublished events, job discovery only
+touches the non-tenant `jobs` table. `app_engine`/`AppSessionLocal`
+(restricted role, new `APP_DATABASE_URL`, falls back to `DATABASE_URL` when
+unset) is what `get_db()` — every real HTTP request — uses now. `core/
+config.py` gained the optional `app_database_url` setting. `core/deps.py::
+get_current_user` runs `SET LOCAL app.current_user_id = :uid` on every
+authenticated request, dialect-guarded to Postgres only (`db.get_bind()
+.dialect.name == "postgresql"`) so the SQLite unit-test engine — which has
+no such syntax — is completely unaffected; confirmed the full suite stays
+green on that path.
+
+**This is a backstop, not a replacement.** Every existing application-level
+tenancy filter (`get_owned_profile`, `resolve_profile_ownership`) is
+untouched. If a future endpoint ever forgets one, this is what stops the
+leak instead of nothing — verified below that it actually does.
+
+**Real verification, not simulated — the actual point of this work.**
+Full suite green on SQLite (confirmed via background run, exit code 0; RLS
+has no SQLite equivalent so this only confirms nothing broke, not that RLS
+itself works). **Live against real Neon, connecting directly as the new
+restricted role, bypassing all application code**: created two real users
+with real profiles; set `app.current_user_id` to user A's id and ran `SELECT
+full_name FROM profiles` with **no `WHERE` clause at all** — got back only
+`['User A']`; same for user B — only `['User B']`; with **no session
+variable set at all** — got back `[]`, confirmed fail-closed, not fail-open;
+and confirmed the owner role still sees both (workers/migrations correctly
+unaffected). Test rows cleaned up, including orphaned rows from the first
+verification run that crashed on the empty-string bug before its own cleanup
+could run — checked for and removed separately.
+
+**Not done.** No automated Postgres-RLS test exists or is planned to — no
+Docker, no Postgres test tier, same standing limitation as every other
+Postgres-specific feature this project has (pgvector, `FOR UPDATE SKIP
+LOCKED`, etc.). This was verified live this session; it is not re-verified
+automatically on every future change. Worth a live recheck if this area is
+ever touched again.
+
+**Files created.** `alembic/versions/0010_row_level_security.py`.
+**Files changed.** `core/config.py` (`app_database_url`), `database.py`
+(`app_engine`/`AppSessionLocal`, `get_db()` now uses it), `core/deps.py`
+(`SET LOCAL` in `get_current_user`, dialect-guarded).
+
+---
+
 ### 2026-09-26 (latest+10) — Roadmap sub-project #1: deterministic known-ATS field maps, live-verified
 
 **Context.** The "too much manual effort" analysis decomposed into four
