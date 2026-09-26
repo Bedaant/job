@@ -29,7 +29,7 @@ import re
 
 from rapidfuzz import fuzz, process
 
-from matching.skills import skill_occurrences, skill_pattern
+from matching.skills import AMBIGUOUS_TERMS, skill_occurrences, skill_pattern
 
 # ponytail: a hand-written map, not a thesaurus. It only needs to carry the
 # abbreviation-vs-expansion pairs where character-level fuzzy matching is
@@ -40,14 +40,14 @@ from matching.skills import skill_occurrences, skill_pattern
 # starts needing dozens of entries is a curated alias column alongside the
 # skills vocabulary (one source of truth, still no ML), not a synonym model.
 SYNONYMS: dict[str, tuple[str, ...]] = {
-    "Kubernetes": ("k8s", "kube"),
-    "JavaScript": ("js", "ecmascript"),
-    "TypeScript": ("ts",),
-    "Machine Learning": ("ml",),
-    "Product Strategy": ("pm", "product manager", "product management"),
-    "PostgreSQL": ("postgres", "psql"),
+    "Kubernetes": ("K8s", "kube"),
+    "JavaScript": ("JS", "ECMAScript"),
+    "TypeScript": ("TS",),
+    "Machine Learning": ("ML",),
+    "Product Strategy": ("PM", "product manager", "product management"),
+    "PostgreSQL": ("Postgres", "psql"),
     "CI/CD": ("continuous integration", "continuous delivery", "continuous deployment"),
-    "Google Analytics": ("ga4",),
+    "Google Analytics": ("GA4",),
     "A/B Testing": ("split testing", "experimentation"),
 }
 
@@ -188,7 +188,16 @@ def _match_in_fact(keyword: str, text: str, tokens: list[str], jd_alias_only: bo
     # means something. Multi-word phrases ("Machine Learning") would need token
     # -set scoring against every n-gram of the fact — cost and false-positive
     # risk for a case the synonym map already covers where it matters.
-    if len(keyword) >= FUZZY_MIN_LENGTH and " " not in keyword and tokens:
+    # Never fuzzy-match a term that is also an ordinary English word: the fuzzy
+    # scan lowercases both sides, which throws away exactly the casing signal
+    # skills.AMBIGUOUS_TERMS relies on, so "rest of the team" would score 100
+    # against "REST" and be reported as an API skill the user does not have.
+    if (
+        keyword not in AMBIGUOUS_TERMS
+        and len(keyword) >= FUZZY_MIN_LENGTH
+        and " " not in keyword
+        and tokens
+    ):
         hit = process.extractOne(
             keyword.lower(), tokens, scorer=fuzz.ratio, score_cutoff=FUZZY_CUTOFF
         )

@@ -59,7 +59,40 @@ _SKILLS = [
     "Accessibility", "Customer Success", "Forecasting", "SaaS", "B2B", "B2C",
 ]
 
-_PATTERNS = [(name, re.compile(rf"(?<!\w){re.escape(name)}(?!\w)", re.I)) for name in _SKILLS]
+# Skill names that are also ordinary English words. Found by running the real
+# scorer over 99 live RemoteOK JDs against a real Facts KB: "go-live" in a
+# product manager's metric matched the **Go language**, which then produced a
+# "surface Go on this bullet" suggestion — i.e. advice to make a false skill
+# claim. That is precisely the failure mode matching/keyword_gap.py exists to
+# prevent, so it is fixed here at the source rather than filtered downstream:
+# `extract_skills` feeds `Job.skills` and every match's skill_coverage, so all
+# callers were wrong in the same way.
+#
+# Two rules for these names, and only these: match case-sensitively (the
+# language is "Go", the verb is "go"), and never inside a hyphenated compound
+# ("go-live", "rest-of-team").
+#
+# ponytail: case is a proxy for meaning, and an imperfect one — a JD written in
+# ALL CAPS, or "Express" opening a sentence, still misreads. Upgrade path is a
+# required-context word per ambiguous term ("Go" counts near "golang"/
+# "backend"), still deterministic; not worth it until a real JD shows the miss.
+AMBIGUOUS_TERMS = {
+    "Go", "REST", "Swift", "Rust", "Spark", "Flutter", "Jest", "Sass", "Helm",
+    "Notion", "Express", "Flask", "Angular", "Bash", "Airflow",
+}
+
+
+def _compile(name: str) -> re.Pattern:
+    # Short all-caps acronyms get the same treatment for the same reason: the
+    # synonym aliases in matching/keyword_gap.py include "ML", "JS", "TS", "PM",
+    # and matching those case-insensitively would turn any stray "ts" or "pm" in
+    # a resume bullet into a "you already have TypeScript" claim.
+    if name in AMBIGUOUS_TERMS or (len(name) <= 3 and name.isalpha() and name.isupper()):
+        return re.compile(rf"(?<![\w-]){re.escape(name)}(?![\w-])")
+    return re.compile(rf"(?<!\w){re.escape(name)}(?!\w)", re.I)
+
+
+_PATTERNS = [(name, _compile(name)) for name in _SKILLS]
 _BY_NAME = {name.lower(): pattern for name, pattern in _PATTERNS}
 
 
@@ -70,7 +103,7 @@ def skill_pattern(name: str) -> re.Pattern:
     regex semantics the job side was extracted with, rather than a second,
     subtly-different one.
     """
-    return _BY_NAME.get(name.lower()) or re.compile(rf"(?<!\w){re.escape(name)}(?!\w)", re.I)
+    return _BY_NAME.get(name.lower()) or _compile(name)
 
 
 def skill_occurrences(text: str | None) -> dict[str, int]:

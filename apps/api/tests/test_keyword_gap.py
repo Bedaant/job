@@ -181,3 +181,42 @@ def test_coverage_is_between_zero_and_one():
     jd = "Requirements: Python, Kubernetes, Terraform."
     result = compute_keyword_gap(jd, [_fact("Wrote Python")])
     assert 0.0 < result["coverage"] < 1.0
+
+
+# ---------- regressions found on real data, not fixtures ----------
+
+def test_go_live_in_a_fact_is_not_the_go_language():
+    """Found by running the scorer over 99 live RemoteOK JDs against the real
+    Facts KB: a product manager's metric "...within first weeks of go-live"
+    matched the Go language, and the scorer then suggested surfacing "Go" on
+    that bullet — advice to make a false skill claim. The whole point of this
+    module is that it never does that.
+    """
+    jd = "Requirements: strong Go and Kubernetes experience."
+    facts = [_fact("Shipped a rewards engine", metric="20% adoption within first weeks of go-live")]
+
+    result = compute_keyword_gap(jd, facts)
+
+    assert "Go" in _kw(result["missing"])
+    assert "Go" not in _kw(result["matched"])
+    assert all(s["keyword"] != "Go" for s in result["suggestions"])
+
+
+def test_ordinary_english_words_do_not_count_as_skills():
+    jd = "Requirements: REST, Express, Flask, Notion, Spark."
+    facts = [_fact("Gave the rest of the team a flask of coffee and expressed a notion at speed")]
+
+    result = compute_keyword_gap(jd, facts)
+
+    assert _kw(result["matched"]) == set()
+    assert result["suggestions"] == []
+
+
+def test_short_acronym_synonyms_need_their_real_casing():
+    """A stray lowercase 'ts'/'pm' must not read as TypeScript/Product Manager."""
+    jd = "Requirements: TypeScript and Machine Learning."
+    facts = [_fact("Shipped 400ml ts pm builds")]
+
+    result = compute_keyword_gap(jd, facts)
+
+    assert _kw(result["matched"]) == set()
