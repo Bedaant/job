@@ -334,6 +334,31 @@ class FieldMappingOut(BaseModel):
     value: Optional[str] = None
 
 
+class AnswerIn(BaseModel):
+    """One question the user has answered in their own words. `question_text` is
+    verbatim as the form asked it — the normalized matching key is derived
+    server-side (answer_bank.py::normalize_question) and is never accepted from
+    a client, so two clients can't disagree about what matches what.
+    """
+    question_text: str = Field(min_length=1)
+    answer_text: str = Field(min_length=1)
+
+
+class AnswerOut(BaseModel):
+    id: str
+    profile_id: str
+    question_text: str
+    question_normalized: str
+    answer_text: str
+    times_used: int
+    last_used_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 class BulletOut(BaseModel):
     text: str
     source_fact_ids: List[str] = []  # SPEC.md §3.3 — empty only on the nvidia_smoke dev path

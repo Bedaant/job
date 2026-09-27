@@ -102,6 +102,187 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+19) — the answer bank: the interruption shrinks, and the demographic rail is finally its own thing
+
+**Context.** `latest+17` closed the execution loop, and its honest ending was
+`needs_human`: a form asks "why do you want to work here?", the run stops, the
+user answers, we submit. And then **the answer was thrown away.** The next
+employer asked the same question and interrupted them again, forever — the one
+failure mode that makes an auto-apply product feel like manual applying with
+extra steps. This makes the interruption shrink: answer once, reuse on every
+similar question after.
+
+**The real work was not the storage, it was the boundary.**
+`FORBIDDEN_LABEL_KEYWORDS` lumped together two things that have nothing to do
+with each other:
+
+| | why it was unfillable | permanent? |
+|---|---|---|
+| race, ethnicity, gender, veteran/disability status, sexual orientation | EEO — auto-answering it is not ours to do | **yes, forever** |
+| "why do you want to work", "why are you interested" | we had no user-written answer | no — that is exactly what the bank supplies |
+
+Now `DEMOGRAPHIC_LABEL_KEYWORDS` (in `answer_bank.py`) and
+`ESSAY_LABEL_KEYWORDS` (in `map_fields.py`), with
+`FORBIDDEN_LABEL_KEYWORDS` kept as their union so existing callers keep their
+meaning. **The demographic list lives in `answer_bank.py`, not
+`map_fields.py`, and that placement is forced**: `map_fields` imports
+`tailoring.engine.call_llm`, and rail 2 below says nothing in the bank's import
+graph may reach it — so the dependency has to point that way, not the other.
+
+**Three rails, each with a test that fails if it breaks.**
+
+1. **Demographic is unconditional.** Enforced in three places on purpose, since
+   this is the one outcome that is unacceptable rather than merely wrong:
+   `save_answer` 400s on storing one, `find_answer` filters demographic rows out
+   before it looks at anything (so a row that arrived by a hand-written INSERT,
+   a restored backup, or a future code path *still* cannot be served), and
+   `map_form_fields` excludes those fields before the deterministic matcher, the
+   bank and the model. `test_a_demographic_answer_is_never_served_even_if_a_row_somehow_exists`
+   writes the row straight to the ORM, asserts it really is there, and asserts
+   it is unreachable. `test_a_demographic_field_never_even_reaches_the_answer_lookup`
+   is stronger than "the value is discarded" — the bank is never consulted, so a
+   demographic question cannot so much as bump a `times_used` counter.
+2. **User-written text only.** No LLM generates an entry, ever.
+   `test_no_llm_call_exists_anywhere_in_the_answer_bank_import_graph` proves it
+   structurally, in a **subprocess** — inside the pytest session
+   `"tailoring.engine" in sys.modules` is already true no matter what
+   `answer_bank` does, so an in-process check would have been vacuous.
+   `test_save_answer_is_the_only_write_path_in_the_module` greps every function
+   in the module for `AnswerBank(` and asserts the list is exactly
+   `["save_answer"]` — a second constructor is a second door that bypasses the
+   demographic refusal.
+3. **A wrong answer is worse than asking again.** See below.
+
+**The matching, which is where the measurement mattered.** The finding that
+shaped the design: **no single rapidfuzz scorer works at any threshold.** Every
+whole-string scorer puts at least one semantically-opposite pair above any cutoff
+that still admits a real paraphrase — `token_set_ratio` scores "years of
+experience with python" vs "…with java" at **90.6** and the visa-sponsorship
+negation pair at **100**; `fuzz.ratio` scores "…with c++" vs "…with c#" at
+**94.5**. So two gates, both over **content words only** (stopwords stripped —
+measured on the whole question the signal drowns in shared glue):
+
+* **Gate 1**, `token_sort_ratio` ≥ 90 over content words.
+* **Gate 2**, bidirectional coverage: every content word on each side needs a
+  `fuzz.ratio` ≥ 90 partner on the other.
+
+Measured, and these numbers are in the source as the justification for the
+thresholds:
+
+| asked / stored (content words) | gate 1 | verdict |
+|---|---|---|
+| want work / leave last job | 26.1 | rejected |
+| willing relocate / relocate | 66.7 | rejected |
+| want work / want work company | 69.2 | rejected |
+| years experience python / years experience java | 77.3 | rejected |
+| years experience c++ / years experience c# | 92.3 | → **gate 2 rejects** (c++/c# = 40) |
+| require visa sponsorship / **not** require visa sponsorship | 92.3 | → **gate 2 rejects** ("not" unpartnered) |
+| notice period / notice periods | 96.3 | accepted |
+| notice period / notice period | 100.0 | accepted |
+
+Neither gate is redundant: gate 1 kills python/java, gate 2 kills c++/c# and the
+negation. `"not"/"no"/"never"` are deliberately **not** stopwords — negation
+flips the answer, and gate 2 is the only thing separating "do you require visa
+sponsorship" from its negation, which is a false legal declaration on a real
+application. `normalize_question` also deliberately **keeps `+` and `#`**: every
+other punctuation mark is collapsed, but stripping those turns `c++` and `c#`
+into the same key and serves a C# answer to a C++ question.
+
+**Two bugs found in my own design, both by running the numbers rather than
+trusting them.** (a) Gate 1 was originally `token_set_ratio` over the *whole*
+question at 90; the plural case ("what is your notice period" / "what are your
+notice periods") scored **88.9** and was rejected, while python/java scored 90.6
+and was *accepted* — the gate was actively backwards. Moving it onto content
+words fixed both directions at once. (b) Renaming the extension's flag reason
+`demographic_or_essay` → `demographic` silently dropped it out of
+`autoApply.content.ts`'s `NEEDS_USER_REASONS` set, which would have meant a
+demographic-flagged field **no longer stopped the run**. Caught by grepping every
+consumer of the literal before committing; `formFill.content.ts` had the same
+coupling and is now a `FLAG_MESSAGES` lookup instead of a two-branch ternary.
+
+**The extension half had to change or the backend fill was dead on arrival.**
+`decideFieldActions` flagged every essay field *before* looking at the mapping,
+so a bank answer would have been discarded client-side and the run would still
+have reported `needs_human`. Same split applied there (mirrored list, as the
+existing comment demands), demographic still unconditional and still checked
+first. New `essay_no_stored_answer` reason, distinct from `low_confidence`
+because it is the one flag a user can clear *permanently* — the content script
+now says so ("save the answer and we'll reuse it next time").
+
+**Files created.** `apps/api/answer_bank.py`,
+`apps/api/alembic/versions/0014_answer_bank.py`,
+`apps/api/tests/test_answer_bank.py`,
+`apps/api/tests/test_answer_bank_endpoints.py`. **Files changed.**
+`apps/api/models.py` (`AnswerBank`, `Profile.answers`), `apps/api/schemas.py`
+(`AnswerIn`/`AnswerOut` — the normalized key is derived server-side and never
+accepted from a client, so two clients can't disagree about what matches what),
+`apps/api/formfill/map_fields.py` (list split, `is_essay_label`,
+`answer_lookup`), `apps/api/main.py` (3 endpoints + the lookup injection),
+`apps/api/tests/test_formfill.py`,
+`apps/extension/src/content/fieldDecision.{mjs,d.mts,test.mjs}`,
+`apps/extension/src/content/{autoApply,formFill}.content.ts`.
+
+**API.** `GET/PUT /profiles/{id}/answers`, `DELETE
+/profiles/{id}/answers/{answer_id}`, all via `get_owned_profile`. PUT not POST
+because the unique key is the question, not an id. DELETE is scoped by
+`profile_id` as well as `answer_id` — a user with two personas must not delete
+one profile's answer through the other's path, and that has its own test.
+`map_form_fields` gained `answer_lookup=None`: the bank is **injected as a plain
+callable, not imported**, so the module stays free of a DB session, its tests
+stay free of a database, and `answer_lookup=None` reproduces the pre-bank
+behaviour exactly (tested). Order in the pipeline: demographic exclusion →
+deterministic (profile data still wins over the bank, tested) → bank → bounded
+LLM. A bank hit *removes* the field from the model prompt, so this makes the LLM
+path cheaper, not more expensive. Essay fields are bank-or-nothing and never
+reach the model at all.
+
+**Migration `0014`, WRITTEN AND NOT RUN**, as instructed — a parallel agent is
+working in `apps/api`. RLS copied from `0012` verbatim (ENABLE + FORCE +
+`tenant_isolation` via `profile_id -> profiles.user_id`, with the `NULLIF(...)`
+that `0010` learned the hard way is load-bearing). Verified **offline** with
+`python -m alembic upgrade 0013:0014 --sql` from `apps/api`, which renders the
+DDL without connecting; the chain resolves and the policy SQL is as intended.
+Command to actually apply it: `.venv/Scripts/python.exe -m alembic upgrade head`
+from `apps/api`.
+
+**Tests.** Backend **310 → 365** passed, full suite green from `apps/api`.
+Extension `node --test` **24 → 29**. Red-before-green throughout: the first run
+of `test_answer_bank.py` was a collection error (no module), and the two
+genuine reds that followed were the backwards gate above and a test that tripped
+`uq_profile_user_persona` by asking for two `developer` profiles on one user.
+
+**Not verified, and why.** `0014` has not touched live Neon, by instruction —
+so the RLS policy and the unique constraint are argued-correct-by-analogy to
+`0012`, not observed. The SQLite test engine does enforce the unique constraint,
+so the upsert behaviour is genuinely tested; RLS is not testable there at all.
+`tsc --noEmit` cannot run clean in this worktree (no `node_modules`); pointing
+`--typeRoots` at the main checkout's `@types` resolved `chrome` and left only
+`vite.config.ts` module-resolution errors, i.e. nothing in the files I touched.
+No live-browser run, same standing limitation as every content-script entry.
+
+**Deliberately left out.** No UI for managing the bank — the endpoints exist,
+nothing in `apps/web` consumes them. **Nothing writes to the bank
+automatically**: the `needs_human` path does not yet capture what the user typed
+into the form, so today the only way an answer gets in is an explicit PUT. That
+is the obvious next step and the feature is half-useful without it. No
+embedding-based matching — a `# ponytail:` comment names the lexical ceiling
+(genuine paraphrases with different vocabulary, "what draws you to this role",
+cannot be recognised at all) and names `voyage-3-lite` as the upgrade path;
+skipped because it puts a network call on a path that is currently free and
+instant, and the strict-miss behaviour is the safe direction to be wrong in. The
+bidirectional coverage rule is deliberately strict for the same reason: adding a
+content word ("…work **at our company**") is a miss, and the user gets asked
+again rather than given a plausible wrong answer. `find_answer` is a linear scan
+of one profile's bank (`# ponytail:` comment, upgrade path named) — a bank is
+tens of rows, one per distinct question a human has been asked.
+
+**Next.** Capture the answer at the `needs_human` boundary so the bank fills
+itself, which is what turns this from a feature into the loop the brief
+describes. Then surface it in `apps/web`. Standing blocker unchanged:
+`ANTHROPIC_API_KEY` is still a placeholder.
+
+---
+
 ### 2026-09-27 (latest+18) — ATS apply-target resolver: the aggregator link becomes the real form, and the SSRF guard learns to check every hop
 
 **Context.** Phase 1 left the driver opening whatever `apply_url` a feed handed

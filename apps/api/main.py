@@ -10,6 +10,7 @@ from sse_starlette.sse import EventSourceResponse
 from rq.exceptions import DuplicateJobError
 from rq.job import Job as RQJob
 
+import answer_bank as answer_bank_service
 from core.config import get_settings
 from core.deps import get_current_user, get_owned_profile, resolve_profile_ownership
 from database import get_db
@@ -902,7 +903,70 @@ def extension_map_fields(
 
     profile_summary = build_profile_summary(profile, current_user.email)
     fields = [f.model_dump() for f in payload.fields]
-    return map_form_fields(fields, profile_summary)
+
+    # The answer bank, scoped to this profile and injected as a plain callable —
+    # a question the user has already answered in their own words is filled here
+    # instead of interrupting them again. serve_answer refuses demographic
+    # questions itself, and map_form_fields never reaches it for one anyway.
+    def answer_lookup(question_text: str | None) -> str | None:
+        if not question_text:
+            return None
+        return answer_bank_service.serve_answer(db, profile.id, question_text)
+
+    return map_form_fields(fields, profile_summary, answer_lookup=answer_lookup)
+
+
+# ---------- Answer bank (ADR-015): answer once, reuse on every later form ----
+
+@app.get("/profiles/{profile_id}/answers", response_model=list[schemas.AnswerOut])
+def list_answers(
+    profile: models.Profile = Depends(get_owned_profile),
+    db: Session = Depends(get_db),
+):
+    return (
+        db.query(models.AnswerBank)
+        .filter(models.AnswerBank.profile_id == profile.id)
+        .order_by(models.AnswerBank.updated_at.desc())
+        .all()
+    )
+
+
+@app.put("/profiles/{profile_id}/answers", response_model=schemas.AnswerOut)
+def upsert_answer(
+    payload: schemas.AnswerIn,
+    profile: models.Profile = Depends(get_owned_profile),
+    db: Session = Depends(get_db),
+):
+    """PUT rather than POST because the unique key is the question, not an id:
+    answering the same question twice must update, never add a second
+    contradictory answer. save_answer 400s on a demographic/EEO question.
+    """
+    return answer_bank_service.save_answer(
+        db, profile.id, payload.question_text, payload.answer_text
+    )
+
+
+@app.delete("/profiles/{profile_id}/answers/{answer_id}", status_code=204)
+def delete_answer(
+    answer_id: str,
+    profile: models.Profile = Depends(get_owned_profile),
+    db: Session = Depends(get_db),
+):
+    row = (
+        db.query(models.AnswerBank)
+        .filter(
+            models.AnswerBank.id == answer_id,
+            # scoped by profile, not just by user — a user with two personas
+            # must not delete one profile's answer through the other's path
+            models.AnswerBank.profile_id == profile.id,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Answer not found")
+    db.delete(row)
+    db.commit()
+    return Response(status_code=204)
 
 
 # ---------- Real-time events / notifications (ADR-012, SPEC.md §2.6) ----------

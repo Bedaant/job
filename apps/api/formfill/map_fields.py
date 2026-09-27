@@ -5,6 +5,7 @@ regardless of what the model says.
 """
 import json
 
+from answer_bank import DEMOGRAPHIC_LABEL_KEYWORDS, is_demographic_label
 from core.grounding import validate_ids_against_known_set
 from formfill.deterministic import match_field_deterministic
 from tailoring.engine import call_llm
@@ -53,10 +54,27 @@ def build_profile_summary(profile, email: str) -> dict:
 
     return summary
 
-FORBIDDEN_LABEL_KEYWORDS = [
-    "race", "ethnicity", "gender", "veteran status", "disability status",
-    "sexual orientation", "why do you want to work", "why are you interested",
+# These two lists used to be one, and lumping them together was wrong: they are
+# unfillable for completely different reasons and only one of them is permanent.
+#
+# DEMOGRAPHIC (imported from answer_bank, where it is enforced on both the read
+# and write path): race, ethnicity, gender, veteran/disability status, sexual
+# orientation. NEVER fillable — not from the profile, not from the answer bank,
+# not from a model, not ever. No feature may change this.
+#
+# ESSAY: "why do you want to work here", "why are you interested". Unfillable
+# only because we had no user-written answer to fill them with. Now that the
+# answer bank exists, filling these from something the user actually typed is
+# the entire point — a model must still never write one (ADR-006/ADR-009), which
+# is why the essay path checks the bank and then stops, rather than falling
+# through to the LLM like an ordinary unresolved field.
+ESSAY_LABEL_KEYWORDS = [
+    "why do you want to work", "why are you interested",
 ]
+
+# Kept as the union so existing callers (and the extension's mirrored list) keep
+# their meaning: "nothing here is fillable without a user-written answer".
+FORBIDDEN_LABEL_KEYWORDS = DEMOGRAPHIC_LABEL_KEYWORDS + ESSAY_LABEL_KEYWORDS
 
 MAX_ATTEMPTS = 2  # ADR-011: bounded retry on a malformed response, not a reasoning loop
 
@@ -75,33 +93,82 @@ SYSTEM_PROMPT = (
 
 
 def is_forbidden_label(label_text: str | None) -> bool:
+    """Demographic OR essay. Still the right question for a caller asking "can
+    this be filled from profile data alone?" — but no longer the right question
+    for "can this be filled at all", which is why the essay half is now checked
+    separately in map_form_fields.
+    """
     if not label_text:
         return False
     lower = label_text.lower()
     return any(keyword in lower for keyword in FORBIDDEN_LABEL_KEYWORDS)
 
 
+def is_essay_label(label_text: str | None) -> bool:
+    """Motivation/essay question — fillable only from a user-written answer."""
+    if not label_text:
+        return False
+    lower = label_text.lower()
+    return any(keyword in lower for keyword in ESSAY_LABEL_KEYWORDS)
+
+
 def _flagged(field_id: str) -> dict:
     return {"field_id": field_id, "maps_to": "unknown", "confidence": 0.0, "value": None}
 
 
-def map_form_fields(fields: list[dict], profile_summary: dict) -> list[dict]:
-    forbidden_ids = {f["field_id"] for f in fields if is_forbidden_label(f.get("label_text"))}
+def _from_answer_bank(field_id: str, value: str) -> dict:
+    # confidence 1.0 because the text is the user's own, and the match that
+    # produced it already had to clear answer_bank's two gates — there is no
+    # model judgement in this value to discount.
+    return {"field_id": field_id, "maps_to": "answer_bank", "confidence": 1.0, "value": value}
 
-    # Deterministic pass first (SPEC.md §3.7 / PRD "Known ATS... fills them
+
+def map_form_fields(fields: list[dict], profile_summary: dict, answer_lookup=None) -> list[dict]:
+    """`answer_lookup(question_text) -> str | None` is the answer bank, injected
+    rather than imported so this module stays free of a DB session and its tests
+    stay free of a database. main.py passes
+    `answer_bank.serve_answer`-bound-to-this-profile; None means "no bank", which
+    reproduces the pre-bank behaviour exactly.
+    """
+    # Demographic first and unconditionally: these fields are excluded before
+    # the deterministic matcher, before the bank, and before the model. Nothing
+    # downstream gets the chance to resolve one.
+    demographic_ids = {
+        f["field_id"] for f in fields if is_demographic_label(f.get("label_text"))
+    }
+
+    # Deterministic pass next (SPEC.md §3.7 / PRD "Known ATS... fills them
     # deterministically") — zero LLM calls for anything structurally
-    # unambiguous (autocomplete attribute, name/id/label patterns). Only
-    # fields it can't resolve go on to the bounded LLM path at all.
+    # unambiguous (autocomplete attribute, name/id/label patterns). Then the
+    # answer bank, for anything the profile itself can't answer. Only what
+    # neither resolves goes on to the bounded LLM path at all.
     deterministic_results: dict[str, dict] = {}
+    bank_results: dict[str, dict] = {}
     remaining_fields = []
     for field in fields:
-        if field["field_id"] in forbidden_ids:
+        field_id = field["field_id"]
+        if field_id in demographic_ids:
             continue
+
+        if is_essay_label(field.get("label_text")):
+            # An essay question has no deterministic answer and must never be
+            # written by a model. The bank or nothing.
+            answer = answer_lookup(field["label_text"]) if answer_lookup else None
+            if answer:
+                bank_results[field_id] = _from_answer_bank(field_id, answer)
+            continue
+
         match = match_field_deterministic(field, profile_summary)
         if match is not None:
-            deterministic_results[field["field_id"]] = match
-        else:
-            remaining_fields.append(field)
+            deterministic_results[field_id] = match
+            continue
+
+        answer = answer_lookup(field.get("label_text")) if answer_lookup else None
+        if answer:
+            bank_results[field_id] = _from_answer_bank(field_id, answer)
+            continue
+
+        remaining_fields.append(field)
 
     mapping_by_id: dict[str, dict] = {}
     if remaining_fields:
@@ -139,10 +206,12 @@ def map_form_fields(fields: list[dict], profile_summary: dict) -> list[dict]:
     result = []
     for field in fields:
         field_id = field["field_id"]
-        if field_id in forbidden_ids:
+        if field_id in demographic_ids:
             result.append(_flagged(field_id))
         elif field_id in deterministic_results:
             result.append(deterministic_results[field_id])
+        elif field_id in bank_results:
+            result.append(bank_results[field_id])
         else:
             mapping = mapping_by_id.get(field_id)
             if mapping is None:

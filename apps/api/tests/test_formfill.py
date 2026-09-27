@@ -1,7 +1,11 @@
 from unittest.mock import patch
 
+import pytest
+
 from formfill.map_fields import (
-    CONFIDENCE_THRESHOLD, FORBIDDEN_LABEL_KEYWORDS, is_forbidden_label, map_form_fields,
+    CONFIDENCE_THRESHOLD, DEMOGRAPHIC_LABEL_KEYWORDS, ESSAY_LABEL_KEYWORDS,
+    FORBIDDEN_LABEL_KEYWORDS, is_demographic_label, is_essay_label, is_forbidden_label,
+    map_form_fields,
 )
 
 
@@ -133,3 +137,160 @@ def test_map_form_fields_forbidden_field_never_reaches_deterministic_or_llm(mock
     result = map_form_fields(fields, {"email": "a@b.com"})
     assert result == [{"field_id": "f1", "maps_to": "unknown", "confidence": 0.0, "value": None}]
     mock_call_llm.assert_not_called()
+
+
+# ---------- the demographic / essay split (ADR-015 answer bank) ----------
+#
+# These two used to be one list, which is why "why do you want to work here"
+# could never be filled even from an answer the user wrote themselves. Splitting
+# them is what makes the answer bank possible; keeping the demographic half
+# unconditional is what keeps that safe.
+
+def test_the_two_keyword_lists_are_disjoint_and_together_are_the_old_list():
+    assert set(DEMOGRAPHIC_LABEL_KEYWORDS) & set(ESSAY_LABEL_KEYWORDS) == set()
+    assert set(FORBIDDEN_LABEL_KEYWORDS) == set(DEMOGRAPHIC_LABEL_KEYWORDS) | set(
+        ESSAY_LABEL_KEYWORDS
+    )
+
+
+def test_demographic_and_essay_classifications_do_not_overlap():
+    assert is_demographic_label("What is your gender?") is True
+    assert is_essay_label("What is your gender?") is False
+    assert is_essay_label("Why do you want to work here?") is True
+    assert is_demographic_label("Why do you want to work here?") is False
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "What is your race?",
+        "Please select your ethnicity",
+        "Gender",
+        "Protected veteran status",
+        "Disability status",
+        "Sexual orientation",
+    ],
+)
+@patch("formfill.map_fields.call_llm")
+def test_a_demographic_field_is_never_filled_from_the_answer_bank(mock_call_llm, label):
+    """THE test for this feature's one unacceptable failure mode. The answer
+    bank here is a lookup that answers EVERY question — the most hostile bank
+    possible, standing in for a row that arrived by some route save_answer
+    doesn't control. A demographic field must still come back empty."""
+    answers_everything = lambda question: "SHOULD NEVER BE FILLED"  # noqa: E731
+
+    result = map_form_fields(
+        [{"field_id": "f1", "label_text": label, "input_type": "select"}],
+        {"email": "a@b.com"},
+        answer_lookup=answers_everything,
+    )
+
+    assert result == [{"field_id": "f1", "maps_to": "unknown", "confidence": 0.0, "value": None}]
+    mock_call_llm.assert_not_called()
+
+
+@patch("formfill.map_fields.call_llm")
+def test_a_demographic_field_never_even_reaches_the_answer_lookup(mock_call_llm):
+    """Not just "the value is discarded" — the bank is never consulted at all,
+    so a demographic question cannot so much as bump a times_used counter."""
+    asked = []
+
+    def spy(question):
+        asked.append(question)
+        return None
+
+    map_form_fields(
+        [
+            {"field_id": "f1", "label_text": "Gender", "input_type": "select"},
+            {"field_id": "f2", "label_text": "Notice period", "input_type": "text"},
+        ],
+        {"email": "a@b.com"},
+        answer_lookup=spy,
+    )
+
+    assert asked == ["Notice period"]
+
+
+@patch("formfill.map_fields.call_llm")
+def test_map_form_fields_fills_an_essay_field_from_the_answer_bank(mock_call_llm):
+    """The point of the whole task: a field that was unconditionally flagged
+    is now filled, from text the user wrote, with no model call."""
+    result = map_form_fields(
+        [{"field_id": "f1", "label_text": "Why do you want to work here?", "input_type": "textarea"}],
+        {"email": "a@b.com"},
+        answer_lookup=lambda q: "Because I have shipped this exact problem twice.",
+    )
+
+    assert result == [{
+        "field_id": "f1",
+        "maps_to": "answer_bank",
+        "confidence": 1.0,
+        "value": "Because I have shipped this exact problem twice.",
+    }]
+    mock_call_llm.assert_not_called()
+
+
+@patch("formfill.map_fields.call_llm")
+def test_an_essay_field_with_no_stored_answer_is_still_flagged_and_never_sent_to_the_llm(mock_call_llm):
+    """The bank is the only thing allowed to answer an essay question. On a
+    miss the field is flagged exactly as before — a model must never write
+    one (ADR-006/ADR-009)."""
+    result = map_form_fields(
+        [{"field_id": "f1", "label_text": "Why are you interested in this role?", "input_type": "textarea"}],
+        {"email": "a@b.com"},
+        answer_lookup=lambda q: None,
+    )
+
+    assert result == [{"field_id": "f1", "maps_to": "unknown", "confidence": 0.0, "value": None}]
+    mock_call_llm.assert_not_called()
+
+
+@patch("formfill.map_fields.call_llm")
+def test_the_bank_answers_an_ordinary_field_that_would_otherwise_go_to_the_llm(mock_call_llm):
+    """"Notice period" isn't demographic, isn't an essay question, and isn't in
+    the deterministic rule table — today it costs an LLM call and usually comes
+    back `unknown`. A stored answer removes the call entirely."""
+    result = map_form_fields(
+        [{"field_id": "f1", "label_text": "Notice period", "input_type": "text"}],
+        {"email": "a@b.com"},
+        answer_lookup=lambda q: "30 days",
+    )
+
+    assert result[0]["maps_to"] == "answer_bank"
+    assert result[0]["value"] == "30 days"
+    mock_call_llm.assert_not_called()
+
+
+@patch("formfill.map_fields.call_llm")
+def test_profile_data_still_wins_over_the_bank_for_a_deterministic_field(mock_call_llm):
+    """The bank must not shadow the profile: an email field resolves from the
+    profile even if the bank would happily answer it."""
+    result = map_form_fields(
+        [{"field_id": "f1", "label_text": "Email", "input_type": "email", "autocomplete": "email"}],
+        {"email": "a@b.com"},
+        answer_lookup=lambda q: "stale@old.com",
+    )
+
+    assert result[0]["maps_to"] == "profile.email"
+    assert result[0]["value"] == "a@b.com"
+    mock_call_llm.assert_not_called()
+
+
+@patch("formfill.map_fields.call_llm")
+def test_without_an_answer_lookup_behaviour_is_exactly_what_it_was_before(mock_call_llm):
+    """`answer_lookup=None` is the pre-bank path — every existing caller keeps
+    its behaviour unchanged."""
+    mock_call_llm.return_value = "not json"
+    fields = [
+        {"field_id": "f1", "label_text": "Gender", "input_type": "select"},
+        {"field_id": "f2", "label_text": "Why do you want to work here?", "input_type": "textarea"},
+        {"field_id": "f3", "label_text": "Notice period", "input_type": "text"},
+    ]
+
+    result = map_form_fields(fields, {"email": "a@b.com"})
+
+    assert [r["maps_to"] for r in result] == ["unknown", "unknown", "unknown"]
+    # only f3 was ever a candidate for the model
+    assert "f3" in mock_call_llm.call_args[0][1]
+    assert "f1" not in mock_call_llm.call_args[0][1]
+    assert "f2" not in mock_call_llm.call_args[0][1]
