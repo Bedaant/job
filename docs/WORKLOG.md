@@ -102,6 +102,69 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+24) — apps/web UX pass: one theme, one shell, accessible controls
+
+**What changed.** Audit (redesign-skill + ui-ux-pro-max checklist) found the web app
+was two design systems fighting: a legacy "ledger" theme (dark-green unlayered
+`body{}` rule, Fraunces/Inter from Google Fonts) overriding shadcn tokens, so
+login/facts rendered near-white text on white inputs. Fixed at the root:
+- `styles/globals.css` rewritten to the hi-fi prototype's tokens (neutral surfaces,
+  magpie-blue `--primary`, success/warning), light+dark via `prefers-color-scheme`;
+  `tailwind.config.js` `darkMode: "media"`, legacy colours/fonts removed (Geist stays).
+- shadcn components were generated for Tailwind v4 (`ring-3` etc.); under v3.4 that
+  class doesn't exist, so buttons/inputs had **no focus ring**. `ring-3`→`ring-[3px]`
+  across `components/ui`; buttons 40/36/48px, inputs 44px (was 32px).
+- `components/AppShell.tsx`: skip link, sticky nav with `aria-current`, log out,
+  shared `useRequireAuth` (was copy-pasted in four pages).
+- Deleted the pre-pivot `pages/index.js` dashboard (+ `_app.js`, `lib/legacy-api.js`)
+  that `/` still served; `app/page.tsx` routes to /review or /login.
+- Login, facts, matches, review rebuilt on the shell: labels + autocomplete, error
+  cleared on mode switch, signup → /onboarding, real empty states, internal jargon
+  ("F6", "ADR-001", "Facts KB") and the pre-ADR-015 "nothing is submitted until you
+  approve" copy removed.
+
+**Tests.** Web 27/27, `tsc` clean, `next build` clean. Verified in a browser
+(Playwright): every route 200, light + dark, visible keyboard focus. No unit test
+for the restyle (no jsdom — still needs approval).
+
+**Problems hit.** Stopping a backgrounded `npm run dev` left its Node child holding
+:3000; a `next build` run beside the dev server clobbered its `.next` (there is no
+`NEXT_DIST_DIR`) — build in a separate checkout or stop dev first.
+
+**Next.** Onboarding + review card still carry their own local styles; add a "Today"
+home and the prototype's keyword-gap scorecard to the review card.
+
+---
+
+### 2026-09-27 (latest+23) — RLS tenant id survives a commit (found live: every new user's profile creation 500'd)
+
+**What changed.** `core/deps.py`: the tenant id is stored on the session
+(`db.info["current_user_id"]`) and a `Session` `after_begin` listener
+(`_reapply_tenant`) re-applies it with `set_config('app.current_user_id', uid, true)`
+at the start of every transaction. Previously a one-shot `SET LOCAL` in
+`get_current_user`.
+
+**Why.** Found by running the app locally against Neon: `POST /profiles` →
+`InvalidRequestError: Could not refresh instance`. `SET LOCAL` is
+transaction-scoped; `db.commit()` ended it, so `db.refresh()` ran with no tenant
+and RLS hid the row just inserted. Every endpoint that commits then reads was
+exposed, not just profiles — fixed once where all of them route through. Still
+transaction-local, so a pooled connection never carries a user id to another request.
+
+**Files.** `apps/api/core/deps.py`, `apps/api/tests/test_rls_context.py` (new).
+
+**Tests.** Red (ImportError) → green; 417/417. SQLite has no RLS, so the unit test
+pins the mechanism; the real proof is live: signup → `POST /profiles` 200 →
+`GET /profiles` returns it, on Neon.
+
+**Problems hit.** None of 415 SQLite tests could catch this — RLS only exists on the
+real Postgres role. Worth a Postgres-backed smoke test in CI.
+
+**Next.** Login page: input text is near-white on white (unreadable) and a stale
+"Incorrect email or password" persists when switching to Sign up.
+
+---
+
 ### 2026-09-27 (latest+22) — the keyword-gap scorer feeds tailoring; `missing` stays a gap, never a bullet
 
 **What changed.** `tailoring/engine.py::tailor_application` now runs

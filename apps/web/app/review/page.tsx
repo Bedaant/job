@@ -1,29 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { AppShell, useRequireAuth } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApplicationCard } from "@/components/review/ApplicationCard";
 
 export default function ReviewPage() {
-  const router = useRouter();
   const queryClient = useQueryClient();
-  const [ready, setReady] = useState(false);
+  const ready = useRequireAuth();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [approveError, setApproveError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!getToken()) {
-      router.push("/login");
-    } else {
-      setReady(true);
-    }
-  }, [router]);
 
   const profilesQuery = useQuery({
     queryKey: ["profiles"],
@@ -98,40 +89,35 @@ export default function ReviewPage() {
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10">
-      <h1 className="text-2xl font-semibold">Review queue</h1>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Tailored and truth-checked applications, ready for your sign-off. Nothing is submitted
-        until you approve it (ADR-001).
-      </p>
-
+    <AppShell
+      title="Review"
+      description="Applications Maggie tailored from your facts, plus anything a form asked that only you can answer. Approve to send."
+    >
       {(profilesQuery.isLoading || (!!profile && queueQuery.isLoading)) && (
         <div className="space-y-4">
-          <Skeleton className="h-40 w-full" />
-          <Skeleton className="h-40 w-full" />
-          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-48 w-full rounded-2xl" />
+          <Skeleton className="h-48 w-full rounded-2xl" />
         </div>
       )}
 
       {profilesQuery.isSuccess && !profile && (
-        <p className="text-sm text-muted-foreground">
-          No profile yet — set one up on the{" "}
-          <a href="/facts" className="underline">
-            facts
-          </a>{" "}
-          page first.
-        </p>
+        <div className="rounded-2xl border border-dashed px-6 py-12 text-center">
+          <p className="text-lg font-semibold">Let&apos;s set you up first</p>
+          <p className="mx-auto mt-1 max-w-md text-muted-foreground">Two minutes: your resume, your facts, and what you&apos;re looking for.</p>
+          <Button asChild className="mt-5">
+            <Link href="/onboarding">Start setup</Link>
+          </Button>
+        </div>
       )}
 
       {queueQuery.isSuccess && queue.length === 0 && (
-        <div className="rounded-md border border-dashed p-6 text-center">
-          <p className="text-sm font-medium">You&apos;re all caught up</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Nothing is waiting for review right now. New matches get tailored and truth-checked
-            automatically, then land here.
+        <div className="rounded-2xl border border-dashed px-6 py-12 text-center">
+          <p className="text-lg font-semibold">You&apos;re all caught up</p>
+          <p className="mx-auto mt-1 max-w-md text-muted-foreground">
+            Nothing needs you right now. New applications are tailored and truth-checked, then land here.
           </p>
-          <Button asChild size="sm" className="mt-3">
-            <a href="/matches">Browse matches</a>
+          <Button asChild variant="outline" className="mt-5">
+            <Link href="/matches">See matches</Link>
           </Button>
         </div>
       )}
@@ -144,7 +130,7 @@ export default function ReviewPage() {
 
       {queue.length > 0 && (
         <>
-          <div className="mb-4 flex items-center gap-3 rounded-md border p-3">
+          <div className="sticky top-16 z-30 mb-5 flex items-center gap-3 rounded-2xl border bg-card/90 p-3 pl-4 shadow-sm backdrop-blur-xl">
             <Checkbox checked={allSelected} onCheckedChange={(c) => toggleAll(c === true)} aria-label="Select all" />
             <span className="text-sm text-muted-foreground">
               {selected.size} of {queue.length} selected
@@ -160,7 +146,7 @@ export default function ReviewPage() {
           </div>
 
           {approveError && (
-            <p className="mb-4 text-sm text-destructive">
+            <p role="alert" className="mb-4 rounded-xl bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
               Approval failed: {approveError} — nothing was submitted. Check your selection and retry.
             </p>
           )}
@@ -187,6 +173,6 @@ export default function ReviewPage() {
           </div>
         </>
       )}
-    </main>
+    </AppShell>
   );
 }

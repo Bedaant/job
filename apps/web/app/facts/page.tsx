@@ -1,26 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { FileUpIcon } from "lucide-react";
 import { api, ApiError, FactDraft } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { AppShell, useRequireAuth } from "@/components/AppShell";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 
 export default function FactsPage() {
-  const router = useRouter();
   const queryClient = useQueryClient();
-  const [ready, setReady] = useState(false);
+  const ready = useRequireAuth();
+  const fileInput = useRef<HTMLInputElement>(null);
   const [draftFacts, setDraftFacts] = useState<FactDraft[] | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [confirmedCount, setConfirmedCount] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!getToken()) {
-      router.push("/login");
-    } else {
-      setReady(true);
-    }
-  }, [router]);
 
   const profilesQuery = useQuery({
     queryKey: ["profiles"],
@@ -88,75 +83,122 @@ export default function FactsPage() {
 
   if (!ready) return null;
 
-  return (
-    <main style={{ maxWidth: 720, margin: "40px auto", fontFamily: "sans-serif", padding: "0 16px" }}>
-      <a href="/matches" style={{ fontSize: 13 }}>View matches →</a>
-      <h1>Your resume facts</h1>
-      <p style={{ color: "#555" }}>
-        Upload a resume (.pdf or .docx, under 5MB). We parse it into atomic facts you review and confirm — nothing
-        is added to your Facts KB until you approve it.
-      </p>
+  const facts = factsQuery.data ?? [];
 
-      {!profile && <p>Setting up your profile…</p>}
+  return (
+    <AppShell
+      title="Your facts"
+      description="Everything Maggie writes comes from these — nothing else. Upload a resume and confirm what's true; you can edit any time."
+    >
+      {!profile && <Skeleton className="h-40 w-full rounded-2xl" />}
 
       {profile && (
-        <>
-          <input type="file" accept=".pdf,.docx" onChange={handleFileChange} disabled={uploadMutation.isPending} />
-          {uploadMutation.isPending && <p>Parsing your resume…</p>}
-          {uploadError && (
-            <p style={{ color: "crimson" }}>
-              Couldn&apos;t parse this resume: {uploadError}
-            </p>
-          )}
-          {confirmedCount !== null && (
-            <p style={{ color: "seagreen" }}>Saved {confirmedCount} fact{confirmedCount === 1 ? "" : "s"} to your KB.</p>
-          )}
+        <div className="space-y-10">
+          <section aria-labelledby="upload-h">
+            <h2 id="upload-h" className="sr-only">Upload a resume</h2>
+            <input
+              ref={fileInput}
+              id="resume-file"
+              type="file"
+              accept=".pdf,.docx"
+              onChange={handleFileChange}
+              disabled={uploadMutation.isPending}
+              className="sr-only"
+            />
+            <button
+              type="button"
+              onClick={() => fileInput.current?.click()}
+              disabled={uploadMutation.isPending}
+              className="flex w-full flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-input bg-card px-6 py-10 text-center transition-colors hover:border-primary hover:bg-accent disabled:cursor-wait disabled:opacity-70"
+            >
+              <FileUpIcon className="size-9 text-primary" aria-hidden="true" />
+              <span className="text-lg font-semibold">
+                {uploadMutation.isPending ? "Reading your resume…" : "Choose a resume to add facts"}
+              </span>
+              <span className="text-sm text-muted-foreground">
+                PDF or Word, under 5 MB · nothing is saved until you confirm
+              </span>
+            </button>
+
+            <div aria-live="polite" className="mt-3 space-y-2">
+              {uploadError && (
+                <p role="alert" className="rounded-xl bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+                  We couldn&apos;t read this resume: {uploadError}
+                </p>
+              )}
+              {confirmedCount !== null && (
+                <p className="rounded-xl bg-success-soft px-4 py-3 text-sm font-medium text-success">
+                  Saved {confirmedCount} fact{confirmedCount === 1 ? "" : "s"}.
+                </p>
+              )}
+            </div>
+          </section>
 
           {draftFacts && draftFacts.length > 0 && (
-            <section style={{ marginTop: 24 }}>
-              <h2>Review {draftFacts.length} parsed facts</h2>
-              {draftFacts.map((fact, i) => (
-                <div key={i} style={{ border: "1px solid #ddd", borderRadius: 6, padding: 12, marginBottom: 8 }}>
-                  <textarea
-                    value={fact.achievement}
-                    onChange={(e) => updateDraft(i, { achievement: e.target.value })}
-                    style={{ width: "100%", marginBottom: 6 }}
-                    rows={2}
-                  />
-                  <div style={{ display: "flex", gap: 8, fontSize: 13, color: "#666" }}>
-                    <span>{fact.category}</span>
-                    {fact.proof && <span>· {fact.proof}</span>}
-                    {fact.metric ? (
-                      <span>· {fact.metric}</span>
-                    ) : (
-                      <span style={{ color: "#c60" }}>· no metric — consider adding one</span>
-                    )}
-                  </div>
-                  <button onClick={() => removeDraft(i)} style={{ marginTop: 6 }}>
-                    Remove
-                  </button>
-                </div>
-              ))}
-              <button
+            <section aria-labelledby="draft-h" className="space-y-4">
+              <div className="space-y-1">
+                <h2 id="draft-h" className="text-xl font-semibold">Check {draftFacts.length} facts we found</h2>
+                <p className="text-muted-foreground">Fix anything that&apos;s off and remove anything that isn&apos;t true.</p>
+              </div>
+              <ul className="space-y-3">
+                {draftFacts.map((fact, i) => (
+                  <li key={i} className="space-y-3 rounded-2xl border bg-card p-5 shadow-sm">
+                    <label htmlFor={`draft-${i}`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {fact.category}
+                    </label>
+                    <Textarea
+                      id={`draft-${i}`}
+                      value={fact.achievement}
+                      onChange={(e) => updateDraft(i, { achievement: e.target.value })}
+                      rows={2}
+                    />
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm text-muted-foreground">
+                        {[fact.proof, fact.metric].filter(Boolean).join(" · ") ||
+                          "No number yet — add one if you have it; Maggie never makes one up."}
+                      </p>
+                      <Button variant="ghost" size="sm" onClick={() => removeDraft(i)}>
+                        Remove
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <Button
+                size="lg"
                 onClick={() => confirmMutation.mutate(draftFacts)}
                 disabled={confirmMutation.isPending || draftFacts.length === 0}
-                style={{ padding: "8px 16px", marginTop: 8 }}
               >
-                {confirmMutation.isPending ? "Saving…" : `Confirm ${draftFacts.length} facts`}
-              </button>
+                {confirmMutation.isPending ? "Saving…" : `Keep ${draftFacts.length} facts`}
+              </Button>
             </section>
           )}
 
-          <section style={{ marginTop: 32 }}>
-            <h2>Confirmed facts ({factsQuery.data?.length ?? 0})</h2>
-            {factsQuery.data?.map((fact) => (
-              <div key={fact.id} style={{ padding: "6px 0", borderBottom: "1px solid #eee" }}>
-                {fact.achievement}
-              </div>
-            ))}
+          <section aria-labelledby="confirmed-h" className="space-y-4">
+            <h2 id="confirmed-h" className="text-xl font-semibold">
+              Confirmed <span className="text-muted-foreground tabular-nums">{facts.length}</span>
+            </h2>
+            {factsQuery.isLoading && <Skeleton className="h-24 w-full rounded-2xl" />}
+            {factsQuery.isSuccess && facts.length === 0 && (
+              <p className="rounded-2xl border border-dashed px-6 py-8 text-center text-muted-foreground">
+                No facts yet. Add a resume above — it takes about 20 seconds.
+              </p>
+            )}
+            {facts.length > 0 && (
+              <ul className="divide-y rounded-2xl border bg-card shadow-sm">
+                {facts.map((fact) => (
+                  <li key={fact.id} className="flex items-start gap-4 px-5 py-4">
+                    <span className="mt-0.5 shrink-0 rounded-md bg-accent px-2 py-0.5 text-xs font-semibold text-accent-foreground">
+                      {fact.category}
+                    </span>
+                    <span className="leading-relaxed">{fact.achievement}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
-        </>
+        </div>
       )}
-    </main>
+    </AppShell>
   );
 }

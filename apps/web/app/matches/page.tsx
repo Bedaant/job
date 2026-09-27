@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { api, Match } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { AppShell, useRequireAuth } from "@/components/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,10 +26,10 @@ function stateVariant(state: Match["state"]): "default" | "secondary" | "outline
 function MatchCard({ match }: { match: Match }) {
   const { job, breakdown, state } = match;
   return (
-    <Card>
+    <Card className="rounded-2xl transition-shadow hover:shadow-md">
       <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <div>
-          <CardTitle>{job.title}</CardTitle>
+        <div className="space-y-1">
+          <CardTitle className="text-lg">{job.title}</CardTitle>
           <p className="text-sm text-muted-foreground">
             {job.company}
             {job.location ? ` · ${job.location}` : ""}
@@ -38,12 +37,15 @@ function MatchCard({ match }: { match: Match }) {
           </p>
         </div>
         <div className="flex flex-col items-end gap-1">
-          <span className="text-2xl font-semibold tabular-nums">{match.score.toFixed(0)}</span>
-          <Badge variant={stateVariant(state)}>{state}</Badge>
+          <span className="text-3xl font-bold tracking-tight tabular-nums" aria-label={`${match.score.toFixed(0)} percent match`}>
+            {match.score.toFixed(0)}
+            <span className="text-base font-semibold text-muted-foreground">%</span>
+          </span>
+          {state !== "new" && <Badge variant={stateVariant(state)}>{state}</Badge>}
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-xs text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           {formatPostedAt(job.posted_at)}
           {job.salary ? ` · ${job.salary}` : ""}
         </p>
@@ -56,14 +58,14 @@ function MatchCard({ match }: { match: Match }) {
           </div>
         )}
         {breakdown.missing_skills.length > 0 && (
-          <p className="text-xs text-muted-foreground">
-            Missing: {breakdown.missing_skills.join(", ")}
+          <p className="text-sm text-muted-foreground">
+            Not in your facts: {breakdown.missing_skills.join(", ")}
           </p>
         )}
 
-        <Button asChild size="sm">
+        <Button asChild variant="outline" size="sm">
           <a href={job.apply_url} target="_blank" rel="noreferrer">
-            View listing
+            View listing<span className="sr-only"> (opens in a new tab)</span>
           </a>
         </Button>
       </CardContent>
@@ -72,16 +74,7 @@ function MatchCard({ match }: { match: Match }) {
 }
 
 export default function MatchesPage() {
-  const router = useRouter();
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    if (!getToken()) {
-      router.push("/login");
-    } else {
-      setReady(true);
-    }
-  }, [router]);
+  const ready = useRequireAuth();
 
   const profilesQuery = useQuery({
     queryKey: ["profiles"],
@@ -99,24 +92,28 @@ export default function MatchesPage() {
   if (!ready) return null;
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10">
-      <h1 className="text-2xl font-semibold">Matches</h1>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Jobs scored against your resume facts (F6 — semantic similarity, skill coverage, recency).
-      </p>
-
+    <AppShell
+      title="Matches"
+      description="Jobs Maggie found, ranked by how well your real experience fits — not keyword bingo."
+    >
       {matchesQuery.isLoading && (
         <div className="space-y-4">
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-40 w-full rounded-2xl" />
+          <Skeleton className="h-40 w-full rounded-2xl" />
+          <Skeleton className="h-40 w-full rounded-2xl" />
         </div>
       )}
 
       {matchesQuery.isSuccess && matchesQuery.data.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          No matches yet. This needs a confirmed resume-facts KB and embedded jobs in the database first.
-        </p>
+        <div className="rounded-2xl border border-dashed px-6 py-12 text-center">
+          <p className="text-lg font-semibold">No matches yet</p>
+          <p className="mx-auto mt-1 max-w-md text-muted-foreground">
+            Maggie ranks jobs against your confirmed facts. Add your facts first — matches appear once she&apos;s searched.
+          </p>
+          <Button asChild className="mt-5">
+            <Link href="/facts">Add your facts</Link>
+          </Button>
+        </div>
       )}
 
       <div className="space-y-4">
@@ -124,6 +121,6 @@ export default function MatchesPage() {
           <MatchCard key={m.id} match={m} />
         ))}
       </div>
-    </main>
+    </AppShell>
   );
 }

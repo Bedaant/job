@@ -1,6 +1,6 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.orm import Session
 
 import models
@@ -23,17 +23,29 @@ def get_current_user(
     if not user:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
 
-    # Postgres RLS backstop (migration 0010): every subsequent query on this
-    # request's connection now carries the authenticated user's id, so a
-    # missed application-level tenancy filter still can't leak another
-    # user's row — the database itself won't return it. SET LOCAL is
-    # transaction-scoped and resets automatically; guarded to Postgres only
-    # since SQLite (the unit-test engine) has no such syntax at all and
-    # would raise on it.
-    if db.get_bind().dialect.name == "postgresql":
-        db.execute(text("SET LOCAL app.current_user_id = :uid"), {"uid": user.id})
+    # Postgres RLS backstop (migration 0010): every query on this request's
+    # session carries the authenticated user's id, so a missed
+    # application-level tenancy filter still can't leak another user's row.
+    # Stored on the session and re-applied by _reapply_tenant at the start of
+    # EVERY transaction — the setting is transaction-local, so without that a
+    # read after db.commit() ran with no tenant and RLS hid the row just written.
+    db.info["current_user_id"] = user.id
+    _reapply_tenant(db, None, db.connection())
 
     return user
+
+
+_SET_TENANT = text("SELECT set_config('app.current_user_id', :uid, true)")
+
+
+@event.listens_for(Session, "after_begin")
+def _reapply_tenant(session, transaction, connection):
+    """Transaction-local (is_local=true, i.e. SET LOCAL) so a pooled connection
+    never carries one user's id into another request. Postgres only: SQLite, the
+    unit-test engine, has no set_config."""
+    uid = session.info.get("current_user_id")
+    if uid and connection.dialect.name == "postgresql":
+        connection.execute(_SET_TENANT, {"uid": uid})
 
 
 def resolve_profile_ownership(db: Session, current_user: models.User, profile_id: str) -> models.Profile:

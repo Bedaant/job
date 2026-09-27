@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils";
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
-  title: "Job Copilot",
-  description: "Job search, done with you, not to you.",
+  title: { default: "ApplyScout", template: "%s · ApplyScout" },
+  description: "Approve a job search once. Maggie finds roles, tailors each application from your real experience, and applies.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

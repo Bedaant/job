@@ -8,16 +8,14 @@ module.exports = {
     "./pages/**/*.{js,ts,jsx,tsx}",
     "./components/**/*.{js,ts,jsx,tsx}",
   ],
-  darkMode: ["class"],
+  // Follows the OS setting — globals.css defines the dark tokens under
+  // prefers-color-scheme, so `dark:` utilities must use the same signal.
+  darkMode: "media",
   theme: {
     extend: {
       colors: {
-        ledger: "#12312B",
-        ledgerLight: "#1B443C",
-        parchment: "#EDE6D6",
-        brass: "#C9A24B",
-        verified: "#7FAE8C",
-        flagged: "#C0604A",
+        success: { DEFAULT: "var(--success)", soft: "var(--success-soft)" },
+        warning: { DEFAULT: "var(--warning)", soft: "var(--warning-soft)" },
         // shadcn/ui tokens — Tailwind v3 convention (config-based, not v4's
         // @theme). Values are the CSS variables in styles/globals.css.
         border: "var(--border)",
@@ -56,10 +54,8 @@ module.exports = {
         sm: "calc(var(--radius) - 4px)",
       },
       fontFamily: {
-        display: ["'Fraunces'", "serif"],
-        mono: ["'IBM Plex Mono'", "monospace"],
-        body: ["'Inter'", "sans-serif"],
-        sans: ["'Inter'", "sans-serif"],
+        sans: ["var(--font-sans)", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "system-ui", "sans-serif"],
+        mono: ["ui-monospace", "SF Mono", "Menlo", "Consolas", "monospace"],
       },
     },
   },
