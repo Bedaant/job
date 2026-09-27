@@ -17,7 +17,6 @@
 // tested and live-verified against real Neon; this file is the thin,
 // deliberately minimal glue on top of it.
 import { _adr001OriginalRequestSubmit } from "./formFill.content";
-import { API_BASE_URL } from "../apiConfig";
 
 // `beforeSubmit` runs after the claim succeeds and before the native submit; if it
 // throws, nothing is submitted. autoApply uses it to tell the driver "verify from
@@ -27,19 +26,16 @@ export async function submitApprovedApplication(
   applicationId: string,
   beforeSubmit: () => Promise<void> = async () => {},
 ): Promise<void> {
-  const { jc_token: token } = await chrome.storage.local.get("jc_token");
-  if (!token) {
-    throw new Error("ApplyScout: not logged in — cannot claim submission.");
-  }
-
-  const resp = await fetch(`${API_BASE_URL}/applications/${applicationId}/claim-submission`, {
+  // Through the background worker (apiProxy.ts): a fetch from the employer page
+  // is CORS-refused, and the worker holds the token (LIVE-FORM-TEST #1).
+  const resp = await chrome.runtime.sendMessage({
+    type: "jc:api",
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    path: `/applications/${applicationId}/claim-submission`,
   });
-
-  if (!resp.ok) {
+  if (!resp?.ok) {
     throw new Error(
-      `ApplyScout: backend refused the submission claim (${resp.status}) — the human-approval gate was not satisfied, so the form was not submitted.`,
+      `ApplyScout: the submission claim was refused (${resp?.error ?? "no answer from the extension"}) — nothing was submitted.`,
     );
   }
 

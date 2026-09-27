@@ -38,3 +38,11 @@ test("bytes survive the base64 round trip across the message boundary", () => {
   assert.deepEqual(base64ToBytes(bytesToBase64(bytes)), bytes);
   assert.equal(bytesToBase64(new Uint8Array([80, 75, 3, 4])), "UEsDBA=="); // a docx starts "PK\3\4"
 });
+
+test("the submission claim goes through the worker too — UUID ids only", () => {
+  // Found after the proxy landed: submitApprovedApplication.ts still fetched the
+  // claim from the employer page, so it would be CORS-refused like map-fields was.
+  assert.equal(allowedRoute("POST", `/applications/${PROFILE}/claim-submission`)?.response, "json");
+  assert.equal(allowedRoute("GET", `/applications/${PROFILE}/claim-submission`), null);
+  assert.equal(allowedRoute("POST", `/applications/${PROFILE}/claim-submission/x`), null);
+});
