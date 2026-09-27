@@ -21,6 +21,9 @@ export default function LoginPage() {
 
   // Read after mount (not useSearchParams) so the page stays statically renderable.
   useEffect(() => setExpired(new URLSearchParams(window.location.search).has("expired")), []);
+  useEffect(() => {
+    document.title = `${signup ? "Create account" : "Sign in"} · ApplyScout`;
+  }, [signup]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,7 +34,7 @@ export default function LoginPage() {
       const { access_token } = await api.login(email, password);
       setToken(access_token);
       // A new account has nothing yet — onboarding is where it starts.
-      router.push(signup ? "/onboarding" : safeNext(new URLSearchParams(window.location.search).get("next")) ?? "/review");
+      router.push(signup ? "/onboarding" : safeNext(new URLSearchParams(window.location.search).get("next")) ?? "/today");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "We couldn't reach the server. Check your connection and try again.");
     } finally {

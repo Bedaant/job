@@ -170,6 +170,24 @@ export interface ExtensionStatus {
   approved_waiting: number;
 }
 
+/** GET /activity — one row of "What Maggie did", mapped server-side from the events outbox. */
+export interface ActivityItem {
+  id: number;
+  type: string;
+  at: string;
+  title: string;
+  detail?: string | null;
+  application_id?: string | null;
+  job?: { title: string; company: string } | null;
+}
+
+/** GET /today — counters across all the user's profiles (UTC day). */
+export interface TodayCounts {
+  sent_today: number;
+  needs_you: number;
+  new_matches_today: number;
+}
+
 class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -266,6 +284,8 @@ export const api = {
     request<Campaign>(`/campaigns/${campaignId}`, { method: "PATCH", body: JSON.stringify(body) }),
   getCampaignStats: (campaignId: string) => request<CampaignStats>(`/campaigns/${campaignId}/stats`),
   getExtensionStatus: () => request<ExtensionStatus>("/extension/status"),
+  getActivity: (limit = 50) => request<ActivityItem[]>(`/activity?limit=${limit}`),
+  getToday: () => request<TodayCounts>("/today"),
   getBasics: (profileId: string) => request<ApplicantBasics>(`/profiles/${profileId}/basics`),
   putBasics: (profileId: string, basics: ApplicantBasics) =>
     request<ApplicantBasics>(`/profiles/${profileId}/basics`, {
