@@ -1,6 +1,6 @@
 "use client";
 
-import { FileTextIcon, Loader2Icon, PencilLineIcon } from "lucide-react";
+import { FileTextIcon, Loader2Icon, PencilLineIcon, UploadIcon } from "lucide-react";
 import { Dropzone, DropzoneContent, DropzoneEmptyState } from "@/components/kibo-ui/dropzone";
 import type { FactDraft } from "@/lib/api";
 import { FailureNotice } from "./fields";
@@ -36,6 +36,7 @@ export function StepResume({
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
         }}
         maxFiles={1}
+        multiple={false}
         maxSize={MAX_RESUME_BYTES}
         src={file ? [file] : undefined}
         disabled={isUploading}
@@ -43,7 +44,17 @@ export function StepResume({
           if (accepted[0]) onFile(accepted[0]);
         }}
       >
-        <DropzoneEmptyState />
+        {/* Own caption: the kit's default lists raw MIME types. */}
+        <DropzoneEmptyState>
+          <div className="flex flex-col items-center justify-center">
+            <div className="flex size-8 items-center justify-center rounded-md bg-muted text-muted-foreground">
+              <UploadIcon className="h-4 w-4" aria-hidden="true" />
+            </div>
+            <p className="my-2 text-sm font-medium">Upload your resume</p>
+            <p className="text-xs text-muted-foreground">Drag and drop or click to choose a file</p>
+            <p className="text-xs text-muted-foreground">PDF or Word (.docx), up to 5 MB</p>
+          </div>
+        </DropzoneEmptyState>
         <DropzoneContent />
       </Dropzone>
 

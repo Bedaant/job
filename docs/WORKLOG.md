@@ -102,6 +102,65 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-28 (latest+47) — Onboarding: no duplicates, survives refresh, real sources; 404/error pages
+
+**What changed.**
+- *Duplicate facts (API).* `POST /profiles/{id}/facts:bulk` is idempotent: a fact equal
+  after normalisation (category/achievement/metric/proof; case + whitespace folded) to one
+  the profile already has, or to an earlier one in the same payload, is skipped. Body is
+  still the list of *newly created* facts (back-compatible with /facts and the harness);
+  `X-Skipped-Facts` lists the skipped payload indices. Nothing new → no commit, no embed call.
+- *Duplicate facts (web).* `factsToPost(drafts, saved)` (same rule) — the wizard posts only
+  facts the server doesn't have; nothing new → no facts:bulk call at all.
+- *Refresh / second campaign.* The wizard draft (step, facts, basics, prefs, campaign draft —
+  never the token or the file) is kept in sessionStorage per profile
+  (`applyscout.onboarding.<profileId>`, every access try/catch), cleared on launch.
+  `startingStep()` decides where to open from the server: a non-archived campaign exists →
+  "You're already set up" with Go to Today / Change your campaign / Add more facts (re-running
+  onboarding used to create a second campaign); saved facts → Preferences (facts and basics
+  preloaded from the server, so leaving the facts step can't wipe saved basics); a saved draft
+  further along wins; "done" is never restored.
+- *Sources.* New `GET /sources` (auth): every source the discovery worker knows, with label,
+  note, `enabled` + plain `reason`, and `job_count` from the jobs pool as the cheap health
+  signal (`connector_runs` has no rows for these — only F5's classifier writes it). Enabled
+  from `connectors/config.py`: remotive + the six keyless feeds (remoteok, himalayas,
+  workingnomads, jobicy, arbeitnow, weworkremotely); Greenhouse/Lever/Ashby off until board
+  tokens exist, Reed off without a key, Google Jobs off ("Currently returns no results" —
+  JobSpy isn't even in discovery). `AVAILABLE_SOURCES` deleted; the campaign step renders the
+  server list, disabled ones stay visible with their reason; default = every enabled source;
+  launch drops any source the server says is off (a restored draft may hold one).
+- *A11y.* Continue/Back use `aria-disabled` (not `disabled`) while a step saves, stay
+  focusable, and read "Saving…". A blocked Continue focuses the first `aria-invalid` field
+  (panel only for form-level errors); one polite summary region ("Can't continue: N problems…
+  <first>") replaces the per-field `role=alert`s — via an `ErrorsAnnounced` context in
+  `fields.tsx`, so /campaign keeps its alerts. Chip × is a 44px target (negative margins keep
+  the chip small; rows spaced so targets don't overlap); "Remove fact" is 44px tall. Dropzone
+  caption "PDF or Word (.docx), up to 5 MB", `multiple={false}`. Per-fact inputs are
+  "Metric (fact 2)" / "Proof (fact 2)". Facts copy: "You can edit or remove facts later on your
+  Profile page" (edit/delete endpoints land from another branch).
+- *404 / error.* `app/not-found.tsx` (Go to Today / Sign in) and `app/error.tsx` (Try again =
+  `reset()`, Go to Today; heading takes focus; the raw error only goes to the console).
+  No `global-error.tsx`: the root layout has nothing that throws.
+
+**Files.** api: `main.py` (one block: `_fact_key`, facts:bulk, `GET /sources`), `schemas.py`
+(`SourceOut`), `tests/test_onboarding_endpoints.py` (new). web: `lib/onboarding.ts` + test,
+`lib/api.ts` (`Source`, `listSources` only), `lib/campaigns.test.ts`, `app/onboarding/page.tsx`,
+`components/onboarding/{fields,StepFacts,StepResume,StepCampaign}.tsx`,
+`app/{not-found,error}.tsx` (new).
+
+**Dependencies added.** None. No migration.
+
+**Tests.** Red first: api 5 failing (duplicates appended, no header, /sources 404) → api
+578 → **583**. web 8 failing (`factsToPost`/`saveDraft`/`startingStep`/`defaultSources`/
+`api.listSources` missing) → web 105 → **113**. `tsc` clean, `next build` clean
+(/onboarding 19.5 kB). Not driven in a browser this time.
+
+**Not done / notes.** The Kibo Dropzone drops a rejected file (too big / wrong type) silently
+— `StepResume` passes no `onError`; worth a visible message. Deleting a preloaded (already
+saved) fact inside the wizard doesn't delete it server-side; the Profile page does.
+
+---
+
 ### 2026-09-27 (latest+42) — Legal consent is never automated; country codes bind to option names
 
 **What changed.** `answer_bank.is_consent_field(label, options)` — arbitration

@@ -162,3 +162,11 @@ describe("launchCampaign", () => {
     expect(result.campaign.status).toBe("active");
   });
 });
+
+describe("GET /sources", () => {
+  it("returns the server's list", async () => {
+    const sources = [{ id: "himalayas", label: "Himalayas", note: "Remote jobs board", enabled: true, reason: null, job_count: 0 }];
+    server.use(http.get(`${API_URL}/sources`, () => HttpResponse.json(sources)));
+    expect(await api.listSources()).toEqual(sources);
+  });
+});

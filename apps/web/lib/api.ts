@@ -151,6 +151,16 @@ export interface CampaignCreate {
 
 export type CampaignStatus = "draft" | "active" | "paused" | "archived";
 
+/** GET /sources — a job source a campaign can search; `reason` says why a disabled one is off. */
+export interface Source {
+  id: string;
+  label: string;
+  note: string;
+  enabled: boolean;
+  reason: string | null;
+  job_count: number;
+}
+
 export interface Campaign extends CampaignCreate {
   id: string;
   status: CampaignStatus;
@@ -300,6 +310,7 @@ export const api = {
       keepalive: true,
     }),
   listCampaigns: () => request<Campaign[]>("/campaigns"),
+  listSources: () => request<Source[]>("/sources"),
   createCampaign: (body: CampaignCreate) =>
     request<Campaign>("/campaigns", { method: "POST", body: JSON.stringify(body) }),
   runCampaign: (campaignId: string) =>

@@ -242,6 +242,16 @@ class FactsBulkIn(BaseModel):
     facts: List[ResumeFactIn]
 
 
+class SourceOut(BaseModel):
+    """GET /sources — a job source a campaign can search."""
+    id: str
+    label: str
+    note: str
+    enabled: bool
+    reason: Optional[str] = None  # why it's disabled, in plain words
+    job_count: int  # jobs it has contributed so far; 0 = nothing yet
+
+
 class MatchOut(BaseModel):
     id: str
     job: JobOut
