@@ -10,14 +10,18 @@
 //   4. only then submit, through submitApprovedApplication, which claims
 //      server-side first and is the single audited native-submit call site
 //
-// Step 3 is not politeness: a flagged field is one map-fields refused to answer
-// (a demographic question, or an essay). Submitting anyway would file an
+// Step 3 is not politeness: a blocking flag is a field nobody may or can answer
+// for the user (a REQUIRED demographic question, or an essay). An optional
+// demographic question is left blank and does not block. Submitting anyway would file an
 // application with blanks where required answers belong, which is worse than not
 // applying — and inventing an answer is what ADR-006/009 forbid outright.
 //
 // NOT live-browser-tested (no loaded-extension access in this project). The
 // classification it relies on is unit-tested in ../background/driverCore.test.mjs.
 import { classifyFailure } from "../background/driverCore.mjs";
+// Which flag reasons stop the run (an optional EEO field does not — it is left
+// blank) and the needs_human message, both pure and tested in fieldDecision.test.mjs.
+import { NEEDS_USER_REASONS, needsHumanReason } from "./fieldDecision.mjs";
 import { fillForm } from "./formFill.content";
 import { submitApprovedApplication } from "./submitApprovedApplication";
 
@@ -29,18 +33,6 @@ type WorkItem = {
   title: string;
   ats_type?: string | null;
 };
-
-// Reasons map-fields uses for a field it will not answer. Any of them means a
-// human has to finish this application. `demographic_or_essay` split into
-// `demographic` (never answerable) and `essay_no_stored_answer` (answerable
-// once, via the answer bank) when the bank landed — an essay field that the
-// bank DID answer is not flagged at all and so never appears here.
-const NEEDS_USER_REASONS = new Set([
-  "demographic",
-  "essay_no_stored_answer",
-  "low_confidence",
-  "file_upload", // a required upload that isn't the resume
-]);
 
 function report(
   outcome: "submitted" | "failed" | "needs_human",
@@ -81,8 +73,7 @@ async function run(): Promise<void> {
     if (blocking.length > 0) {
       report(
         "needs_human",
-        `${blocking.length} field(s) need your input and were not answered: ` +
-          blocking.map((f) => f.reason).join(", "),
+        needsHumanReason(blocking),
         // What the user answers once in the review queue; the next pass fills
         // these from the answer bank instead of stopping again.
         questions,

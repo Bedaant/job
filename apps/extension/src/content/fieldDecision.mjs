@@ -60,11 +60,21 @@ export function decideFieldActions(fields, mappings) {
   const mappingById = new Map(mappings.map((m) => [m.field_id, m]));
   const fill = [];
   const flag = [];
+  // A radio group is required if any member is (that is how HTML validates it).
+  const requiredRadioNames = new Set(
+    fields.filter((f) => f.input_type === "radio" && f.name && f.required).map((f) => f.name),
+  );
 
   for (const field of fields) {
-    // Unconditional, and before anything else looks at the mapping.
+    // Unconditional, and before anything else looks at the mapping: never
+    // filled. Whether it blocks depends only on whether the form requires it.
     if (isDemographicLabel(field.label_text)) {
-      flag.push({ field_id: field.field_id, reason: "demographic" });
+      const required =
+        field.required || (field.input_type === "radio" && requiredRadioNames.has(field.name));
+      flag.push({
+        field_id: field.field_id,
+        reason: required ? "demographic_required" : "demographic_left_blank",
+      });
       continue;
     }
     const mapping = mappingById.get(field.field_id);
@@ -80,6 +90,33 @@ export function decideFieldActions(fields, mappings) {
   }
 
   return { fill, flag };
+}
+
+// --- what stops a run --------------------------------------------------------
+
+// Flag reasons that stop auto-apply at needs_human. `demographic_left_blank` is
+// deliberately absent: an optional EEO question is left empty (never answered,
+// not even "Decline to self-identify" — picking that is answering) and the form
+// is submitted without it. Only a REQUIRED one stops the run, since the form
+// cannot go without an answer only the user may give.
+export const NEEDS_USER_REASONS = new Set([
+  "demographic_required",
+  "essay_no_stored_answer",
+  "low_confidence",
+  "file_upload", // a required upload that isn't the resume
+]);
+
+// apps/api/needs_input.py sets demographic_left_blank on /\bdemographic\b/, and
+// "_" is a word char, so the raw reason code alone would not match.
+const REASON_TEXT = {
+  demographic_required: "required demographic self-identification question",
+};
+
+export function needsHumanReason(blocking) {
+  return (
+    `${blocking.length} field(s) need your input and were not answered: ` +
+    blocking.map((f) => REASON_TEXT[f.reason] ?? f.reason).join(", ")
+  );
 }
 
 // --- file inputs --------------------------------------------------------------

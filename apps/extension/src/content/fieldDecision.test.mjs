@@ -6,7 +6,9 @@ import {
   DEMOGRAPHIC_LABEL_KEYWORDS,
   ESSAY_LABEL_KEYWORDS,
   FORBIDDEN_LABEL_KEYWORDS,
+  NEEDS_USER_REASONS,
   classifyFileInput,
+  needsHumanReason,
   decideFieldActions,
   isDemographicLabel,
   isForbiddenLabel,
@@ -56,13 +58,13 @@ test("decideFieldActions flags unknown mappings", () => {
 });
 
 test("decideFieldActions always flags demographic fields, even with a high-confidence mapping", () => {
-  const fields = [{ field_id: "f1", label_text: "What is your gender?" }];
+  const fields = [{ field_id: "f1", label_text: "What is your gender?", required: true }];
   const mappings = [{ field_id: "f1", maps_to: "literal:Male", confidence: 0.99, value: "Male" }];
 
   const { fill, flag } = decideFieldActions(fields, mappings);
 
   assert.deepEqual(fill, []);
-  assert.deepEqual(flag, [{ field_id: "f1", reason: "demographic" }]);
+  assert.deepEqual(flag, [{ field_id: "f1", reason: "demographic_required" }]);
 });
 
 test("decideFieldActions flags a field with no mapping returned at all", () => {
@@ -109,13 +111,74 @@ test("a demographic field is never filled, even with a confident bank mapping", 
     "Disability status",
     "Sexual orientation",
   ]) {
-    const { fill, flag } = decideFieldActions(
-      [{ field_id: "f1", label_text: label }],
-      [{ field_id: "f1", maps_to: "answer_bank", confidence: 1.0, value: "SHOULD NEVER BE FILLED" }],
-    );
-    assert.deepEqual(fill, [], `filled a demographic field: ${label}`);
-    assert.deepEqual(flag, [{ field_id: "f1", reason: "demographic" }]);
+    for (const required of [true, false]) {
+      const { fill, flag } = decideFieldActions(
+        [{ field_id: "f1", label_text: label, required }],
+        [{ field_id: "f1", maps_to: "answer_bank", confidence: 1.0, value: "SHOULD NEVER BE FILLED" }],
+      );
+      assert.deepEqual(fill, [], `filled a demographic field: ${label}`);
+      assert.deepEqual(flag, [
+        { field_id: "f1", reason: required ? "demographic_required" : "demographic_left_blank" },
+      ]);
+    }
   }
+});
+
+// ---------- EEO: optional ones are left blank, required ones still stop ----------
+
+test("an optional EEO field is left blank and does not block; a required one blocks", () => {
+  const { fill, flag } = decideFieldActions(
+    [
+      { field_id: "opt", label_text: "Gender (voluntary self-identification)", required: false },
+      { field_id: "unset", label_text: "Veteran status" }, // required absent = optional
+      { field_id: "req", label_text: "Race / Ethnicity", required: true },
+    ],
+    [
+      { field_id: "opt", maps_to: "literal:Decline to self-identify", confidence: 1.0, value: "Decline to self-identify" },
+      { field_id: "unset", maps_to: "literal:No", confidence: 1.0, value: "No" },
+      { field_id: "req", maps_to: "literal:X", confidence: 1.0, value: "X" },
+    ],
+  );
+  assert.deepEqual(fill, []);
+  assert.deepEqual(flag, [
+    { field_id: "opt", reason: "demographic_left_blank" },
+    { field_id: "unset", reason: "demographic_left_blank" },
+    { field_id: "req", reason: "demographic_required" },
+  ]);
+  assert.equal(NEEDS_USER_REASONS.has("demographic_left_blank"), false);
+  assert.equal(NEEDS_USER_REASONS.has("demographic_required"), true);
+  assert.deepEqual(flag.filter((f) => NEEDS_USER_REASONS.has(f.reason)).map((f) => f.field_id), ["req"]);
+});
+
+test("a radio group is required if any member is required", () => {
+  const radio = (field_id, name, required) => ({
+    field_id, label_text: "Gender", input_type: "radio", name, required,
+  });
+  const { fill, flag } = decideFieldActions(
+    [
+      radio("g1", "gender", false), radio("g2", "gender", true), radio("g3", "gender", false),
+      radio("v1", "veteran", false), radio("v2", "veteran", false),
+    ],
+    [],
+  );
+  assert.deepEqual(fill, []);
+  assert.deepEqual(flag.map((f) => [f.field_id, f.reason]), [
+    ["g1", "demographic_required"], ["g2", "demographic_required"], ["g3", "demographic_required"],
+    ["v1", "demographic_left_blank"], ["v2", "demographic_left_blank"],
+  ]);
+});
+
+test("the needs_human reason names a required demographic question as a whole word", () => {
+  const reason = needsHumanReason([
+    { field_id: "a", reason: "demographic_required" },
+    { field_id: "b", reason: "low_confidence" },
+  ]);
+  // apps/api/needs_input.py keys demographic_left_blank on /\bdemographic\b/ ("_" is a word char).
+  assert.match(reason, /\bdemographic\b/i);
+  assert.match(reason, /required/i);
+  assert.match(reason, /self-identification/i);
+  assert.match(reason, /^2 field\(s\)/);
+  assert.doesNotMatch(needsHumanReason([{ field_id: "b", reason: "low_confidence" }]), /demographic/i);
 });
 
 test("an essay field IS filled when the backend supplies a user-written answer", () => {
@@ -167,6 +230,7 @@ test("unansweredQuestions returns labels of flagged fields the user can answer",
     { field_id: "a", label_text: "Why do you want to work here?" },
     { field_id: "b", label_text: "How did you hear about us?" },
     { field_id: "c", label_text: "What is your gender?" },
+    { field_id: "c2", label_text: "Disability status" },
     { field_id: "d", label_text: "Portfolio PDF" },
     { field_id: "e", label_text: null },
     { field_id: "f", label_text: "Email" },
@@ -174,7 +238,8 @@ test("unansweredQuestions returns labels of flagged fields the user can answer",
   const flag = [
     { field_id: "a", reason: "essay_no_stored_answer" },
     { field_id: "b", reason: "low_confidence" },
-    { field_id: "c", reason: "demographic" },
+    { field_id: "c", reason: "demographic_required" },
+    { field_id: "c2", reason: "demographic_left_blank" },
     { field_id: "d", reason: "file_upload" },
     { field_id: "e", reason: "low_confidence" },
   ];
