@@ -87,3 +87,69 @@ def test_tailor_application_nvidia_smoke_path_never_fakes_source_fact_ids(mock_c
         result = tailor_application({"title": "Backend Engineer", "company": "Acme"}, FACTS)
 
     assert result["bullets"] == [{"text": "Led a team", "source_fact_ids": []}]
+
+
+# ---------- keyword-gap feed (latest+22) ----------
+
+GAP_FACTS = [
+    {"id": "k1", "category": "experience", "achievement": "Deployed 12 services on K8s",
+     "proof": None, "metric": None, "tags": []},
+    {"id": "k2", "category": "skill", "achievement": "Python", "proof": None, "metric": None, "tags": []},
+]
+GAP_JD = "Requirements: Kubernetes, Python, Terraform and Snowflake experience."
+
+
+def _run_with_captured_prompt(facts, jd):
+    from tailoring.engine import TruthCheckResult
+
+    bullet = Bullet.model_validate(
+        {"text": "Deployed 12 services on Kubernetes", "source_fact_ids": ["k1"]},
+        context={"known_fact_ids": {"k1", "k2"}},
+    )
+    mock_instructor = MagicMock()
+    mock_instructor.messages.create.side_effect = [
+        TailoredDraft(summary="S.", bullets=[bullet], cover_letter="C."),
+        TruthCheckResult(unsupported_claims=[]),
+    ]
+    with patch("tailoring.engine._get_instructor_client", return_value=mock_instructor), \
+            patch("tailoring.engine._settings") as mock_settings:
+        mock_settings.llm_provider = "anthropic"
+        result = tailor_application({"title": "Platform Engineer", "company": "Acme", "description": jd}, facts)
+    prompt = mock_instructor.messages.create.call_args_list[0].kwargs["messages"][0]["content"]
+    return result, prompt
+
+
+def _terms_section(prompt: str) -> str:
+    from tailoring.engine import JD_TERMS_HEADER
+
+    assert JD_TERMS_HEADER in prompt
+    return prompt.split(JD_TERMS_HEADER, 1)[1].split("\n\n", 1)[0]
+
+
+def test_supported_jd_terms_reach_the_prompt_with_their_backing_fact():
+    _, prompt = _run_with_captured_prompt(GAP_FACTS, GAP_JD)
+    section = _terms_section(prompt)
+    # The "K8s" fact is steered to the JD's own word, tied to the fact backing it.
+    assert "Kubernetes" in section and "k1" in section
+    assert "Python" in section and "k2" in section
+
+
+def test_missing_keyword_never_reaches_the_prompt_outside_the_raw_jd():
+    """The rail: Terraform/Snowflake are in the JD but in no fact. They must not
+    appear in the "use these terms" section, nor anywhere in the prompt except
+    the untouched JD text itself. Fails if any code path injects `missing`."""
+    result, prompt = _run_with_captured_prompt(GAP_FACTS, GAP_JD)
+    section = _terms_section(prompt)
+    outside_jd = prompt.replace(GAP_JD, "")
+    for kw in ("Terraform", "Snowflake"):
+        assert kw not in section
+        assert kw not in outside_jd
+    # Surfaced to the user as a gap, never written into the resume.
+    assert {"Terraform", "Snowflake"} <= set(result["keyword_gap"]["missing"])
+
+
+def test_keyword_gap_summary_reports_coverage_before_and_after():
+    result, _ = _run_with_captured_prompt(GAP_FACTS, GAP_JD)
+    gap = result["keyword_gap"]
+    assert 0 < gap["coverage_before"] < 1
+    assert 0 <= gap["coverage_after"] <= 1

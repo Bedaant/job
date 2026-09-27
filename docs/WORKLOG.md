@@ -102,6 +102,51 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+22) — the keyword-gap scorer feeds tailoring; `missing` stays a gap, never a bullet
+
+**What changed.** `tailoring/engine.py::tailor_application` now runs
+`compute_keyword_gap` on the job + the user's real facts before pass 1 and adds a
+`JD TERMS YOUR FACTS SUPPORT:` block to the tailoring prompt: one line per
+**matched** keyword with the id of the fact that backs it and the scorer's
+action (`reword` / `surface`) where it has one. The system prompt tells the model
+to use each term verbatim only in a bullet citing that fact, and to add no other
+JD keyword. The result gains `keyword_gap: {coverage_before, coverage_after,
+missing}` — `coverage_after` is the same scorer run on the tailored bullet text.
+Stored additively in `applications.tailored_resume_json["keyword_gap"]` by both
+writers (`/tailor`, `batch_prep`); `TailorResponse.keyword_gap` optional.
+
+**Why.** latest+16/+20 Next: the scorer existed and nothing consumed it. Wired
+inside `tailor_application`, the one function `/tailor`, `batch_prep` →
+`workers/jobs.py::prepare_applications_task` and `campaigns.py` all route through.
+
+**The rail.** `_jd_terms_section` reads `gap["matched"]` and `gap["suggestions"]`
+only; `missing` is never an input, so an unsupported keyword has no path into the
+"use these terms" block. It is returned to the user as `keyword_gap.missing`.
+
+**Files.** `apps/api/tailoring/engine.py`, `batch_prep.py`, `main.py`,
+`schemas.py`, `tests/test_tailoring_engine.py`, `tests/test_batch_prep.py`.
+
+**Dependencies added.** None. No migration (existing JSON column).
+
+**Tests.** 3 new + 1 extended, LLM mocked (`_get_instructor_client`). Red first
+(4 failed), then green. `test_missing_keyword_never_reaches_the_prompt_outside_the_raw_jd`:
+JD asks for Terraform/Snowflake, no fact has them → asserted absent from the terms
+block and from the whole prompt outside the raw JD text, and present in
+`keyword_gap.missing`. Sabotage-checked: temporarily feeding `missing` into the
+block made it fail, then reverted. Full suite 400 → **403** passed.
+
+**Problems hit / not verified.** No live LLM (placeholder `ANTHROPIC_API_KEY`), so
+whether the model actually adopts the JD wording is unmeasured — the eval harness
+is the place once the key is real. The raw JD is still in the prompt (it was
+before), so the model *can* read a missing keyword there; the prompt forbids it
+and the truth-check pass is the backstop, same as before. `job.skills` isn't
+passed by the callers (scorer takes it as optional; JD text + title cover it).
+
+**Next.** Show `keyword_gap.missing` / coverage in the review card; measure
+coverage_before→after on the eval set once the key is real.
+
+---
+
 ### 2026-09-27 (latest+20) — the answer bank fills itself at `needs_human`; the resume reaches file inputs
 
 **What changed.**

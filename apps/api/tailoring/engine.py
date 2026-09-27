@@ -13,6 +13,7 @@ Two-pass tailoring:
 """
 import os
 import json
+from types import SimpleNamespace
 
 import anthropic
 import instructor
@@ -21,6 +22,7 @@ from instructor.v2.core.errors import InstructorRetryException
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from core.config import get_settings
 from core.grounding import validate_ids_against_known_set
+from matching.keyword_gap import compute_keyword_gap
 from langfuse import observe, get_client
 
 MODEL = "claude-sonnet-4-6"
@@ -175,9 +177,31 @@ def _call_claude_structured(system: str, user: str, response_model: type, contex
     return result
 
 
+JD_TERMS_HEADER = "JD TERMS YOUR FACTS SUPPORT:"
+
+
+def _jd_terms_section(gap: dict) -> str:
+    """The prompt's "use these terms" block. Built from `matched` only — the
+    scorer's `missing` list is never read here, so a keyword the user's facts
+    don't back has no path into the bullets (ADR-006/009). `missing` is
+    returned to the user as a gap instead, see tailor_application."""
+    actions = {s["keyword"]: s["action"] for s in gap["suggestions"]}
+    lines = [
+        f"- {m['keyword']} (fact {m['evidence_fact_id_or_index']}"
+        + (f"; {actions[m['keyword']]}" if m["keyword"] in actions else "")
+        + ")"
+        for m in gap["matched"]
+    ]
+    return JD_TERMS_HEADER + "\n" + ("\n".join(lines) or "- (none)") + "\n\n"
+
+
 def tailor_application(job: dict, facts: list[dict]) -> dict:
     facts_json = json.dumps(facts, indent=2)
     known_fact_ids = {f["id"] for f in facts if f.get("id")}
+    description = job.get("description") or ""
+    gap = compute_keyword_gap(
+        description, [SimpleNamespace(**f) for f in facts], job.get("skills"), job.get("title")
+    )
 
     tailor_system = (
         "You are a resume-tailoring assistant. You will be given a candidate's "
@@ -187,13 +211,19 @@ def tailor_application(job: dict, facts: list[dict]) -> dict:
         "relevance to this job, and a short (150-200 word) cover letter. Every bullet "
         "must cite the id(s) of the fact(s) it is directly backed by. Never invent "
         "achievements, metrics, or experience not present in the KB. Reorder and "
-        "rewrite for relevance and ATS keyword match only."
+        "rewrite for relevance and ATS keyword match only. The '"
+        + JD_TERMS_HEADER
+        + "' list names the job's own keywords that a KB fact already backs, with "
+        "that fact's id (reword = the fact says it in other words; surface = it is "
+        "buried): use each term verbatim, only in a bullet citing that fact. Do not "
+        "add any other skill, tool, or keyword from the job description."
     )
     tailor_user = (
         f"CANDIDATE FACTS KB:\n{facts_json}\n\n"
-        f"JOB TITLE: {job.get('title')}\n"
+        + _jd_terms_section(gap)
+        + f"JOB TITLE: {job.get('title')}\n"
         f"COMPANY: {job.get('company')}\n"
-        f"JOB DESCRIPTION:\n{job.get('description', '')[:4000]}"
+        f"JOB DESCRIPTION:\n{description[:4000]}"
     )
 
     if _settings.llm_provider == "nvidia_smoke" or not known_fact_ids:
@@ -264,4 +294,13 @@ def tailor_application(job: dict, facts: list[dict]) -> dict:
         "bullets": bullets,
         "cover_letter": cover_letter,
         "flagged_unsupported_claims": unsupported_claims,
+        # Advisory only: `missing` is what the job wants and the facts don't
+        # show — for the user to see, never written into the resume.
+        "keyword_gap": {
+            "coverage_before": gap["coverage"],
+            "coverage_after": compute_keyword_gap(
+                description, [b["text"] for b in bullets], job.get("skills"), job.get("title")
+            )["coverage"],
+            "missing": [m["keyword"] for m in gap["missing"]],
+        },
     }
