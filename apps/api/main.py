@@ -1063,6 +1063,7 @@ _ACTIVITY = {
     "application.needs_human": ("Stopped on a question", "Needs an answer from you before it can be sent."),
     "application.failed": ("Couldn't send", "Maggie will try again."),
     "campaign.skipped": ("Skipped", None),
+    "campaign.scheduled_run": ("Ran on schedule", None),
 }
 # campaign.skipped rows without a job are run-level notes; title by reason_code.
 _RUN_SKIP_TITLES = {"checked": "Checked new jobs", "daily_cap": "Daily limit reached", "not_active": "Didn't run"}
