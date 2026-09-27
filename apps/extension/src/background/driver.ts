@@ -17,6 +17,7 @@
 // is chrome API glue, which is exactly why it is kept this thin.
 import { API_BASE_URL } from "../apiConfig";
 import { classifyFailure, planRun } from "./driverCore.mjs";
+import "./apiProxy"; // content scripts reach the API through the worker (CORS, LIVE-FORM-TEST #1)
 
 export type WorkItem = {
   application_id: string;
