@@ -102,6 +102,107 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+37) — Extension on real forms: proxy, React-safe fills, groups, EEO options
+
+**What changed.** Closes the extension-side findings of `docs/LIVE-FORM-TEST.md` (the live
+no-submit run on Greenhouse/Lever/Ashby).
+- *#1 P0 backend unreachable (CORS).* Content scripts no longer fetch the API. They
+  message the worker (`{type: "jc:api", method, path, body}`); `background/apiProxy.ts`
+  (registered by ONE import line in `driver.ts`) does the fetch from the extension origin.
+  Not a generic fetch: `apiProxyCore.mjs` allow-lists exactly `POST /extension/map-fields`
+  and `GET /profiles/<uuid>/resume.docx` (anchored regexes, strings only, fixed host
+  `API_BASE_URL`), refuses messages whose `sender.id` isn't this extension, and attaches
+  the bearer token itself — content scripts no longer read `jc_token`. JSON comes back
+  as-is; the docx crosses the (JSON) message boundary as chunked base64. CORS stays narrow.
+- *#3 P0 React values didn't stick.* Text and `<select>` values go through the prototype's
+  native `value` setter (`setNativeValue`, walks past React's instance-level value
+  tracker) then bubbling `input` + `change`. Files are attached FIRST, then text (Ashby's
+  upload re-render wiped earlier text; Lever parses the resume into its own fields).
+- *#7 P1 radio/checkbox/select.* `.value` is never written into a radio/checkbox.
+  `planFill` (pure): radio / checkbox-group → click the member whose label or value equals
+  the mapped value (case-insensitive, trimmed); lone checkbox → checked only for
+  yes/true, left unchecked for no/false, anything else (the phone number in "Telugu")
+  flagged; select → the `<option>` whose text or value matches, set via the native
+  setter. No exact match → not filled, flagged `low_confidence` (the relocation Yes/No
+  = "San Francisco" case).
+- *#8 P1 group questions lost.* `buildDescriptors` (pure) emits ONE descriptor per
+  radio group / same-name checkbox group: `label_text` = the question, `options` = the
+  option labels. The glue finds the question in `fieldset > legend`, the
+  `role=radiogroup|group` container's `aria-labelledby`/`aria-label`, else the nearest
+  preceding text (`pickQuestionText`, pure: skips option labels and `*`/`✱` markers; the
+  glue skips labels belonging to other controls). Unlabeled text fields (Lever `cards[…]`
+  textareas) fall back to the same question text, then the placeholder.
+- *#10/#15 P2 junk fields, option cap.* Skipped: `type=hidden|submit|button|reset|image`,
+  invisible (zero rect / `display:none`, `visibility:hidden`, `aria-hidden` ancestor),
+  `g-recaptcha|h-captcha|cf-turnstile` names/ids, `honeypot` names/ids, and react-select
+  internals (only its `role=combobox` input is mapped). Radios/checkboxes count as
+  visible if their label is (styled controls hide the native input); file inputs are
+  never skipped for visibility (they sit behind buttons). `options` sent are capped at
+  `MAX_OPTIONS` = 50; matching still uses every option.
+- *#2 P0 EEO options (shared spec, the backend agent implements the same rule).*
+  `isDemographicField` in `fieldDecision.mjs`: demographic if (a) the question text
+  contains race, ethnicity, ethnic, hispanic, latino, latina, latinx, gender, sexual
+  orientation, transgender, pronoun, veteran, disability, disabled (substring) or the
+  whole word "sex"; or (b) the options contain a decline option ("decline to
+  self-identify" / "i don't wish to answer" / "prefer not to say") plus ≥1 demographic
+  option, or ≥2 distinct demographic options (man, woman, male, female, non-binary, white,
+  black or african american, asian, hispanic or latino, native hawaiian, american indian,
+  two or more races, protected veteran, i am a veteran, not a veteran, i have a
+  disability, no disability). Matching precision the backend must mirror: normalise
+  (lowercase, non-alphanumeric runs → one space, trim); a decline phrase matches
+  whole-word anywhere in the option; a demographic term matches when the option equals it
+  or starts with it + space ("White (Not Hispanic or Latino)"), and terms are counted
+  distinct — so a university `<select>` with "Asian Institute of Technology", "Asian
+  University for Women" and "Texas Woman's University" is not EEO. `decideFieldActions`
+  and `unansweredQuestions` use it; the latest+31 optional→left blank / required→stop
+  rule is unchanged. Eligibility ("18 or older", work authorisation, sponsorship,
+  relocation) is tested NOT demographic.
+- *#17 P2 iframes — deliberately NOT done.* `all_frames: true` would inject
+  `autoApply.content.ts` into every frame, including the reCAPTCHA/hCaptcha iframes every
+  tested ATS has. Each frame asks `jc:what-am-i-doing` keyed only by tab, gets the same
+  assignment, runs, and reports; the driver takes the FIRST `jc:apply-result` from the
+  tab, so a captcha frame's "no form found" can win the race. Gating to the frame that
+  holds the form needs `autoApply.content.ts` / the driver to key by `frameId` (e.g. each
+  frame reports its field count, the driver assigns the richest) — the Verify agent's
+  files. Direct `job-boards.greenhouse.io` URLs are unaffected.
+
+**Files.** extension: `src/background/apiProxy.ts` (new), `apiProxyCore.mjs/.d.mts/.test.mjs`
+(new), `driver.ts` (one import line), `src/content/fieldDecision.mjs/.d.mts/.test.mjs`,
+`formFill.content.ts`, `package.json` (test script lists the new test file).
+
+**Dependencies added.** None.
+
+**Tests.** Red first (module failed to load on the missing exports), then green.
+Extension 37 → **53** (`npm test`): 13 in `fieldDecision.test.mjs` (EEO keywords, "sex"
+whole-word, eligibility not caught, option-only EEO groups incl. the university
+false-positive, demographic group never filled nor a question, radio/checkbox grouping,
+unlabeled fallback, junk skipping, option cap, question-text picking, `planFill` for
+select/radio/checkbox/combobox, native setter past a React-style tracker) + 3 in
+`apiProxyCore.test.mjs` (allow-list, 15 refused method/path shapes, base64 round trip).
+`architectureInvariants` still green. `tsc --noEmit` clean, `npm run build` clean; the
+proxy code lands only in the worker bundle and the content bundle no longer contains
+the API URL.
+
+**Not verified / notes.**
+- DOM glue not live-browser-tested (standing limitation): the proxy round trip inside a
+  loaded extension, `click()` on styled radios, react-select detection, question-text
+  walking on real Lever/Ashby markup, and whether the upload re-render still wipes text.
+- The live test's `el.value` failure ran in the PAGE world. A real content script runs in
+  an isolated world, where React's per-node tracker isn't visible, so plain assignment
+  may already have worked there; the native setter is correct in both worlds.
+- react-select comboboxes (Greenhouse Country, Yes/No questions) are never filled — their
+  options aren't in the DOM until opened — so a required one stops the run every pass,
+  and a bank answer can't clear it. Upgrade: open the menu, type, click the exact
+  `[role=option]`.
+- `submitApprovedApplication.ts` still fetches `claim-submission` from the content script
+  — the same CORS failure as #1. It's the Verify agent's file; the fix is one more
+  allow-listed route in `apiProxyCore.mjs` plus a `callApi` there.
+- Still open from the report (other owners): #4/#5 confirmation and Ashby's missing
+  `<form>`, #6/#9/#11/#12/#18 backend, #13 attach only in the final pass, #16 visible "✱"
+  as required.
+
+---
+
 ### 2026-09-27 (latest+36) — Scheduled runs: Maggie works without anyone pressing a button
 
 **What changed.** The IA audit's gap: nothing ran by itself. The scheduler only ran
