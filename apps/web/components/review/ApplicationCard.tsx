@@ -12,7 +12,7 @@ import type { ResumeFact, ReviewApplication, TailoredBullet } from "@/lib/api";
 import { needsInputView } from "@/lib/needs-input";
 
 /** Save a fetched file: the endpoint needs the Bearer header, so a plain link would 401. */
-function saveBlob(blob: Blob, filename: string) {
+export function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

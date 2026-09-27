@@ -113,6 +113,10 @@ export interface ReviewApplication {
   flagged_unsupported_claims: string[];
   // Questions an auto-apply run stopped on that the answer bank can't answer yet.
   pending_questions: string[];
+  // Questions the form asked that the answer bank already answers — ready to copy.
+  prepared_answers?: { question: string; answer: string }[];
+  // {coverage_before, coverage_after, missing} from tailoring, when it ran.
+  keyword_gap?: Record<string, unknown> | null;
   // Why the last auto-apply run stopped (apps/api/needs_input.py); null if it didn't.
   needs_input: NeedsInput | null;
   last_attempt: { outcome: "submitted" | "unconfirmed" | "failed" | "needs_human"; message: string } | null;
@@ -189,6 +193,8 @@ export interface ActivityItem {
 /** GET /today — counters across all the user's profiles (the viewer's local day). */
 export interface TodayCounts {
   sent_today: number;
+  // Prepared applications the user can send now (assisted apply); not also counted in needs_you.
+  ready_to_send?: number;
   // Of sent_today, how many the employer's page never confirmed.
   unconfirmed_today?: number;
   needs_you: number;
@@ -272,6 +278,16 @@ export const api = {
   listMatches: (profileId: string) => request<Match[]>(`/matches?profile_id=${profileId}`),
   listReviewQueue: (profileId: string) =>
     request<ReviewApplication[]>(`/applications/review-queue?profile_id=${profileId}`),
+  /** Assisted apply: prepared applications the user can send themselves now. */
+  listReadyToSend: (profileId: string) =>
+    request<ReviewApplication[]>(`/applications/ready-to-send?profile_id=${profileId}`),
+  /** "I've sent it". keepalive: it may be the last thing a closing tab sends. */
+  markApplied: (applicationId: string) =>
+    request<{ id: string; status: string }>(`/applications/${applicationId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "applied" }),
+      keepalive: true,
+    }),
   batchApprove: (applicationIds: string[]) =>
     request<{ approved: string[] }>("/applications/batch-approve", {
       method: "POST",
@@ -281,6 +297,7 @@ export const api = {
     request<ReviewApplication>(`/applications/${applicationId}`, {
       method: "PATCH",
       body: JSON.stringify({ status: "dismissed" }),
+      keepalive: true,
     }),
   listCampaigns: () => request<Campaign[]>("/campaigns"),
   createCampaign: (body: CampaignCreate) =>
@@ -308,6 +325,8 @@ export const api = {
     }),
   // A plain <a href> can't carry the Bearer header, so fetch it and let the caller save the blob.
   downloadResumeDocx: async (profileId: string) => (await send(`/profiles/${profileId}/resume.docx`)).blob(),
+  downloadTailoredResumeDocx: async (applicationId: string) =>
+    (await send(`/applications/${applicationId}/resume.docx`)).blob(),
 };
 
 export { ApiError };

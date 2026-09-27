@@ -130,11 +130,34 @@ def list_applications(profile: models.Profile = Depends(get_owned_profile), db: 
 
 @app.get("/applications/review-queue", response_model=list[schemas.ApplicationReviewOut])
 def list_review_queue(profile: models.Profile = Depends(get_owned_profile), db: Session = Depends(get_db)):
+    return _review_rows(db, profile, [models.ApplicationStatus.ready_for_review])
+
+
+@app.get("/applications/ready-to-send", response_model=list[schemas.ApplicationReviewOut])
+def list_ready_to_send(profile: models.Profile = Depends(get_owned_profile), db: Session = Depends(get_db)):
+    """Assisted apply: prepared applications the user can send themselves now."""
+    return _ready_to_send(db, profile)
+
+
+def _ready_to_send(db: Session, profile: models.Profile) -> list[schemas.ApplicationReviewOut]:
+    """Ready = tailored with at least one bullet, nothing flagged by the truth-check
+    (ADR-006), and no question only the user can answer. A captcha or account wall
+    that stopped Maggie is not a blocker here: the user is the one sending."""
+    rows = _review_rows(
+        db, profile, [models.ApplicationStatus.ready_for_review, models.ApplicationStatus.approved]
+    )
+    return [
+        r for r in rows
+        if r.tailored_bullets and not r.flagged_unsupported_claims and not r.pending_questions
+    ]
+
+
+def _review_rows(db: Session, profile: models.Profile, statuses) -> list[schemas.ApplicationReviewOut]:
     rows = (
         db.query(models.Application)
         .filter(
             models.Application.profile_id == profile.id,
-            models.Application.status == models.ApplicationStatus.ready_for_review,
+            models.Application.status.in_(statuses),
         )
         .order_by(models.Application.created_at.desc())
         .all()
@@ -150,10 +173,13 @@ def list_review_queue(profile: models.Profile = Depends(get_owned_profile), db: 
         tailored = row.tailored_resume_json or {}
         # Derived, not stored twice: a question drops off the moment the bank
         # can answer it, however the answer got there.
-        pending = [
-            q for q in (row.pending_questions or [])
-            if answer_bank_service.find_answer(db, profile.id, q) is None
-        ]
+        pending, prepared = [], []
+        for q in row.pending_questions or []:
+            hit = answer_bank_service.find_answer(db, profile.id, q)
+            if hit is None:
+                pending.append(q)
+            else:
+                prepared.append(schemas.PreparedAnswerOut(question=q, answer=hit.answer_text))
         result.append(schemas.ApplicationReviewOut(
             id=row.id,
             job=row.job,
@@ -165,6 +191,8 @@ def list_review_queue(profile: models.Profile = Depends(get_owned_profile), db: 
             tailored_cover_letter=row.tailored_cover_letter,
             flagged_unsupported_claims=row.flagged_unsupported_claims or [],
             pending_questions=pending,
+            prepared_answers=prepared,
+            keyword_gap=tailored.get("keyword_gap"),
             needs_input=needs_input(row.notes, pending),
             last_attempt=last_attempt(row.notes),
             created_at=row.created_at,
@@ -463,23 +491,27 @@ def update_application(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    app_row = (
-        db.query(models.Application)
-        .join(models.Profile)
-        .filter(models.Application.id == application_id, models.Profile.user_id == current_user.id)
-        .first()
-    )
-    if not app_row:
-        raise HTTPException(404, "Application not found")
+    app_row = _owned_application(db, current_user, application_id)
 
     if payload.status:
+        S = models.ApplicationStatus
+        was = app_row.status
         app_row.status = payload.status
-        if payload.status == "applied" and not app_row.applied_at:
+        if payload.status == S.applied and not app_row.applied_at:
             app_row.applied_at = datetime.utcnow()
+        # Undo of "I've sent it": back to a not-yet-sent status means it wasn't sent.
+        if was == S.applied and payload.status in (S.saved, S.ready_for_review, S.approved, S.dismissed):
+            app_row.applied_at = None
         write_event(
             db, current_user.id, "application.status_changed",
-            {"application_id": app_row.id, "status": payload.status},
+            {"application_id": app_row.id, "status": payload.status.value},
         )
+        if payload.status == S.applied and was != S.applied:
+            # The user pressed the employer's Submit themselves (assisted apply).
+            write_event(
+                db, current_user.id, "application.submitted",
+                {"application_id": app_row.id, "status": S.applied.value, "manual": True},
+            )
     if payload.portal is not None:
         app_row.portal = payload.portal
     if payload.notes is not None:
@@ -490,6 +522,18 @@ def update_application(
     db.commit()
     db.refresh(app_row)
     return app_row
+
+
+def _owned_application(db: Session, user: models.User, application_id: str) -> models.Application:
+    row = (
+        db.query(models.Application)
+        .join(models.Profile)
+        .filter(models.Application.id == application_id, models.Profile.user_id == user.id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Application not found")
+    return row
 
 
 # ---------- Campaigns (ADR-015 §2 — the unit of approval) ----------
@@ -947,8 +991,56 @@ def download_resume_docx(profile: models.Profile = Depends(get_owned_profile), d
         }
         for f in facts
     ]
+    return _verified_resume_response(profile, facts_list, "resume.docx")
 
-    docx_bytes = generate_resume_docx(profile.headline, facts_list)
+
+@app.get("/applications/{application_id}/resume.docx")
+def download_tailored_resume_docx(
+    application_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """The tailored resume for one application (assisted apply). Only bullets
+    whose every source_fact_id resolves to this profile's facts go in (ADR-009);
+    the LLM's free-text summary does not. Same linter + parse-back as the base."""
+    application = _owned_application(db, current_user, application_id)
+    facts = {
+        f.id: f for f in
+        db.query(models.ResumeFact).filter(models.ResumeFact.profile_id == application.profile_id)
+    }
+    facts_list = []
+    for i, bullet in enumerate((application.tailored_resume_json or {}).get("bullets") or []):
+        ids = bullet.get("source_fact_ids") or []
+        text = (bullet.get("text") or "").strip()
+        if not text or not ids or any(fid not in facts for fid in ids):
+            continue
+        cited = [facts[fid] for fid in ids]
+        # Dates only when every cited fact agrees — a merged bullet has no one period.
+        same_period = len({(f.period_from, f.period_to) for f in cited}) == 1
+        facts_list.append({
+            "id": f"bullet-{i}", "category": cited[0].category, "achievement": text,
+            "period_from": cited[0].period_from if same_period else None,
+            "period_to": cited[0].period_to if same_period else None,
+        })
+    if not facts_list:
+        raise HTTPException(409, "This application has no tailored bullets grounded in your facts, so there is no tailored resume to generate.")
+    return _verified_resume_response(application.profile, facts_list, "tailored-resume.docx")
+
+
+def _contact_header(profile: models.Profile) -> tuple[str | None, list[str]]:
+    """Name + one contact line from the profile's own basics; never guessed."""
+    name = profile.full_name or " ".join(p for p in (profile.given_name, profile.family_name) if p) or None
+    place = ", ".join(p for p in (profile.city, profile.region) if p)
+    links = [profile.website_url] + [n.get("url") for n in (profile.network_profiles or []) if isinstance(n, dict)]
+    contact = [profile.user.email, profile.phone, place, *links]
+    return name, list(dict.fromkeys(c for c in contact if c))
+
+
+def _verified_resume_response(profile: models.Profile, facts_list: list[dict], filename: str) -> Response:
+    """Render, then lint and parse-back before any bytes leave the server —
+    a document that fails either never ships."""
+    name, contact = _contact_header(profile)
+    docx_bytes = generate_resume_docx(profile.headline, facts_list, name=name, contact=contact)
 
     violations = lint_docx(docx_bytes)
     if violations:
@@ -961,7 +1053,7 @@ def download_resume_docx(profile: models.Profile = Depends(get_owned_profile), d
     return Response(
         content=docx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": "attachment; filename=resume.docx"},
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 
@@ -1131,6 +1223,8 @@ def list_activity(
             detail = p.get("reason") or fallback
         if e.type == "campaign.skipped" and not job:
             title = _RUN_SKIP_TITLES.get(p.get("reason_code"), "Maggie didn't apply")
+        if e.type == "application.submitted" and p.get("manual"):
+            title = "You sent it"
         unconfirmed = e.type == "application.unconfirmed"
         if unconfirmed and job:
             title = f"Sent to {job.company} — couldn't confirm it went through"
@@ -1158,13 +1252,20 @@ def get_today(
     mine = db.query(models.Profile.id).filter(models.Profile.user_id == current_user.id)
     apps = db.query(models.Application).filter(models.Application.profile_id.in_(mine))
     sent = apps.filter(models.Application.applied_at >= start)
+    ready = [
+        r for p in db.query(models.Profile).filter(models.Profile.user_id == current_user.id)
+        for r in _ready_to_send(db, p)
+    ]
     return schemas.TodayOut(
+        ready_to_send=len(ready),
         sent_today=sent.count(),
         unconfirmed_today=sent.filter(
             models.Application.status == models.ApplicationStatus.submitted_unconfirmed
         ).count(),
-        # Same set the review queue lists (needs_human lands back in ready_for_review).
-        needs_you=apps.filter(models.Application.status == models.ApplicationStatus.ready_for_review).count(),
+        # The review queue minus what's ready to send (needs_human lands back in ready_for_review).
+        # A prepared one is counted once, as ready_to_send, not also here.
+        needs_you=apps.filter(models.Application.status == models.ApplicationStatus.ready_for_review).count()
+        - sum(r.status == models.ApplicationStatus.ready_for_review.value for r in ready),
         new_matches_today=db.query(models.Match).filter(
             models.Match.profile_id.in_(mine), models.Match.created_at >= start
         ).count(),

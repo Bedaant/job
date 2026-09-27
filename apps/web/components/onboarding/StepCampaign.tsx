@@ -6,12 +6,14 @@ import { Label } from "@/components/ui/label";
 import { AVAILABLE_SOURCES, DAILY_CAP_MAX } from "@/lib/onboarding";
 import type { CampaignDraft, Errors, Preferences } from "@/lib/onboarding";
 import { Field } from "./fields";
+import { SubmitModeChoice } from "@/components/SubmitModeChoice";
 
 /**
  * ADR-015: approval happens once, here, at campaign level — not per application.
  * That is the whole reason this screen has to be blunt. The user is not
- * configuring a search; with auto-submit on they are authorising a machine to
+ * configuring a search; in Automatic mode they are authorising a machine to
  * send things to real employers under their name while they are not watching.
+ * Assisted (auto_submit=false) is the default: Maggie prepares, the user sends.
  */
 export function StepCampaign({
   campaign,
@@ -85,23 +87,7 @@ export function StepCampaign({
         hint={`The most applications this campaign will produce in one day, up to ${DAILY_CAP_MAX}. This is a hard stop, not a target — it exists so a bad match score or a flood of new postings cannot spend your whole search in an afternoon.`}
       />
 
-      <fieldset className="space-y-3 rounded-md border border-input p-4">
-        <legend className="px-1 text-sm font-medium">Submitting</legend>
-        <div className="flex items-start gap-3">
-          <Checkbox
-            id="auto-submit"
-            checked={campaign.auto_submit}
-            onCheckedChange={(checked) => set({ auto_submit: checked === true })}
-          />
-          <div className="space-y-1">
-            <Label htmlFor="auto-submit">Submit applications without asking me first</Label>
-            <p className="text-xs text-muted-foreground">
-              Off (recommended to start): we prepare everything and it waits in your review queue until you
-              approve it. On: we send it.
-            </p>
-          </div>
-        </div>
-
+      <SubmitModeChoice autoSubmit={campaign.auto_submit} onChange={(auto_submit) => set({ auto_submit })}>
         {campaign.auto_submit && (
           <div role="alert" className="flex gap-3 rounded-md border border-destructive/50 bg-destructive/5 p-3">
             <AlertTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />
@@ -117,7 +103,7 @@ export function StepCampaign({
             </div>
           </div>
         )}
-      </fieldset>
+      </SubmitModeChoice>
     </div>
   );
 }

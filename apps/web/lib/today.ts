@@ -79,7 +79,9 @@ const needs = (n: number) => `${count(n, "application needs", "applications need
 
 export function summaryLine(t: TodayCounts, status: CampaignStatus | undefined): string {
   if (!status || status === "archived") return "Set up a campaign and Maggie starts looking for you.";
-  const tail = t.needs_you > 0 ? ` ${needs(t.needs_you)}` : "";
+  const readyN = t.ready_to_send ?? 0;
+  const ready = readyN > 0 ? ` ${count(readyN, "application", "applications")} ready to send.` : "";
+  const tail = ready + (t.needs_you > 0 ? ` ${needs(t.needs_you)}` : "");
   if (status === "paused") return `Maggie is paused.${tail}`;
   if (status === "draft") return `Your campaign hasn't started yet.${tail}`;
   const unconfirmed = t.unconfirmed_today ? `, ${t.unconfirmed_today} not confirmed yet` : "";
