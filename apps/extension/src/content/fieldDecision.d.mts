@@ -7,6 +7,7 @@ export interface FieldDescriptor {
   input_type?: string;
   options?: string[];
   required?: boolean;
+  name?: string | null; // groups radio buttons for required-ness
 }
 
 export interface FieldMapping {
@@ -27,6 +28,8 @@ export function decideFieldActions(
   fields: FieldDescriptor[],
   mappings: FieldMapping[],
 ): { fill: { field_id: string; value: string }[]; flag: { field_id: string; reason: string }[] };
+export const NEEDS_USER_REASONS: Set<string>;
+export function needsHumanReason(blocking: { field_id: string; reason: string }[]): string;
 export function classifyFileInput(field: {
   label_text: string | null;
   name?: string | null;

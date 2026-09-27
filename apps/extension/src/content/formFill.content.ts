@@ -93,7 +93,9 @@ function extractFields(): {
       label_text: extractLabel(el),
       input_type: el.tagName === "SELECT" ? "select" : el.tagName === "TEXTAREA" ? "textarea" : inputEl.type || "text",
       options,
-      required: inputEl.required ?? false,
+      // aria-required on the element itself or on its radiogroup/group wrapper
+      // (custom ATS widgets rarely set the native attribute).
+      required: inputEl.required || el.closest('[aria-required="true"]') !== null,
       autocomplete: el.getAttribute("autocomplete"),
       name: el.getAttribute("name"),
       dom_id: el.getAttribute("id"),
@@ -105,8 +107,10 @@ function extractFields(): {
   return { descriptors, elements, fileFields };
 }
 
-function markField(el: HTMLElement, kind: "filled" | "flagged", title: string) {
-  el.style.outline = kind === "filled" ? "2px solid #2e7d32" : "2px solid #c62828";
+const OUTLINES = { filled: "2px solid #2e7d32", flagged: "2px solid #c62828", left_blank: "2px dashed #9e9e9e" };
+
+function markField(el: HTMLElement, kind: keyof typeof OUTLINES, title: string) {
+  el.style.outline = OUTLINES[kind];
   el.title = title;
 }
 
@@ -121,7 +125,9 @@ export type FillOutcome = {
 // only one the user can clear for good — saving the answer once means every
 // later form that asks it is filled from the answer bank.
 const FLAG_MESSAGES: Record<string, string> = {
-  demographic: "ApplyScout: needs your input (never auto-answered).",
+  demographic_required:
+    "ApplyScout: required self-identification question — only you can answer it (never auto-answered).",
+  demographic_left_blank: "Left blank for you — ApplyScout never answers these.",
   essay_no_stored_answer:
     "ApplyScout: needs your input — save the answer and we'll reuse it next time.",
   low_confidence: "ApplyScout: needs your input (low confidence).",
@@ -209,7 +215,11 @@ export async function fillForm(profileId: string, atsType?: string | null): Prom
   for (const { field_id, reason } of flag) {
     const el = elements.get(field_id);
     if (!el) continue;
-    markField(el, "flagged", FLAG_MESSAGES[reason] ?? FLAG_MESSAGES.low_confidence);
+    markField(
+      el,
+      reason === "demographic_left_blank" ? "left_blank" : "flagged",
+      FLAG_MESSAGES[reason] ?? FLAG_MESSAGES.low_confidence,
+    );
   }
 
   return {

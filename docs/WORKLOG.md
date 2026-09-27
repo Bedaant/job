@@ -102,6 +102,46 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+31) — EEO fields: optional ones are left blank and no longer stall auto-apply; required ones still stop
+
+**What changed.**
+- *Pure layer (`fieldDecision.mjs`).* A demographic field is still never filled, by
+  anything. `decideFieldActions` now splits the old `demographic` flag by required-ness:
+  `demographic_required` (blocks) vs `demographic_left_blank` (does not). A radio group is
+  required if any member with the same `name` is. Optional ones are left untouched — not
+  even "Decline to self-identify", since picking an option is answering.
+  `NEEDS_USER_REASONS` and the needs_human message (`needsHumanReason`) moved here from
+  `autoApply.content.ts` so the blocking rule is unit-tested. The message spells the reason
+  as "required demographic self-identification question": `needs_input.py` keys
+  `demographic_left_blank` on `\bdemographic\b`, and `_` is a word char, so the raw code
+  `demographic_required` would not have matched.
+- *DOM glue (`formFill.content.ts`).* `required` also reads `aria-required="true"` on the
+  element or any wrapper (ARIA puts it on the radiogroup, not the radios). Optional EEO
+  fields get a grey dashed outline + "Left blank for you — ApplyScout never answers
+  these."; required ones keep the red outline with a "required self-identification" note.
+
+**Why.** latest+28's Problems hit: every form with an EEO section (most Greenhouse/Lever
+forms, where it is optional voluntary self-identification) stopped at `needs_human` on
+every pass, so approving again could never send it.
+
+**Files.** extension: `src/content/fieldDecision.mjs`, `fieldDecision.d.mts`,
+`fieldDecision.test.mjs`, `autoApply.content.ts`, `formFill.content.ts`.
+
+**Dependencies added.** None.
+
+**Tests.** Red first: missing exports, then with stubs 5 failing (old `demographic`
+assertions, optional-vs-required, radio group, message word-boundary) → green. Extension
+33 → **36** (`npm test`). `tsc --noEmit` clean, `npm run build` clean.
+`unansweredQuestions` still never returns a demographic label (both reasons covered).
+
+**Not done / notes.** DOM glue not live-browser-tested (standing limitation). A radio's
+own label is usually the option ("Male"), not the question, so a radio EEO group is only
+recognised when its label text carries the keyword — pre-existing gap, unchanged. On a
+successful submit with blank optional EEO fields nothing is reported (fine: nothing was
+answered). Web copy for `demographic_left_blank` now only appears for required ones.
+
+---
+
 ### 2026-09-27 (latest+30) — Today home, phone tab bar, per-page titles
 
 **What changed.**
