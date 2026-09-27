@@ -38,6 +38,8 @@ profiles:
   location  VARCHAR  NULL
   prefs  JSON  NULL  -- default: app-level callable dict() — not a DB DEFAULT, set by the ORM on insert
   full_name  VARCHAR  NULL
+  given_name  VARCHAR  NULL
+  family_name  VARCHAR  NULL
   phone  VARCHAR  NULL
   website_url  VARCHAR  NULL
   street_address  VARCHAR  NULL

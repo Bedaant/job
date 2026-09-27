@@ -89,6 +89,10 @@ class Profile(Base):
     # No email column: login identity is User.email and there is no case yet for
     # a separate contact address.
     full_name = Column(String, nullable=True)        # basics.name
+    # User-entered name parts for ATS First/Last Name fields (0018). Never
+    # derived by splitting full_name — that would be a guess.
+    given_name = Column(String, nullable=True)
+    family_name = Column(String, nullable=True)
     phone = Column(String, nullable=True)            # basics.phone
     website_url = Column(String, nullable=True)      # basics.url
     street_address = Column(String, nullable=True)   # basics.location.address

@@ -29,6 +29,9 @@ export interface NetworkProfile {
  * is not. */
 export interface ApplicantBasics {
   full_name?: string | null;
+  /** Typed by the user for First/Last Name fields; never split from full_name. */
+  given_name?: string | null;
+  family_name?: string | null;
   phone?: string | null;
   website_url?: string | null;
   street_address?: string | null;

@@ -4,13 +4,25 @@ value the profile doesn't have; never fills a demographic/EEO/essay field
 regardless of what the model says.
 """
 import json
+import re
 
-from answer_bank import DEMOGRAPHIC_LABEL_KEYWORDS, is_demographic_label
+from answer_bank import DEMOGRAPHIC_LABEL_KEYWORDS, is_demographic_field, is_demographic_label  # noqa: F401
 from core.grounding import validate_ids_against_known_set
-from formfill.deterministic import match_field_deterministic
+from formfill.deterministic import bind_to_options, match_field_deterministic
 from tailoring.engine import call_llm
 
 CONFIDENCE_THRESHOLD = 0.75
+
+# docs/LIVE-FORM-TEST.md #15: one 3,302-option university <select> put 122 KB
+# into the prompt. The model sees the first N; binding still checks the full list.
+MAX_PROMPT_OPTIONS = 50
+
+# Fields nothing can answer (#10): anti-bot tokens, hidden inputs, search boxes
+# (intl-tel-input's country "Search"), fields with no label, name or options,
+# and option-less radios/checkboxes (see _unanswerable).
+_UNANSWERABLE_TYPES = {"hidden", "search", "file", "submit", "button"}
+_ANTI_BOT = re.compile(r"g-recaptcha|h-captcha|cf-turnstile", re.I)
+_CHOICE_TYPES = {"radio", "checkbox"}
 
 # Applicant-identity fields handed to the mapping model, mirroring
 # schemas.ApplicantBasics — these are the columns that actually make a form
@@ -18,6 +30,8 @@ CONFIDENCE_THRESHOLD = 0.75
 # phone, location and links always came back `unknown`).
 _BASICS_FIELDS = (
     "full_name",
+    "given_name",   # user-entered, never split from full_name (migration 0018)
+    "family_name",
     "phone",
     "website_url",
     "street_address",
@@ -86,7 +100,11 @@ SYSTEM_PROMPT = (
     'maps_to must be one of: "profile.<attr>" (attr present in the profile summary), '
     '"resume_fact:<category>", "literal:<short string derived only from given data>", '
     'or "unknown" if nothing in the profile answers it. confidence is 0.0-1.0 — use '
-    "low confidence rather than a guess when the label is ambiguous. Respond ONLY "
+    "low confidence rather than a guess when the label is ambiguous. "
+    "If a field lists options, value MUST be exactly one of those options, copied "
+    'verbatim (a Yes/No question gets "Yes" or "No", never a city or other profile '
+    'attribute) — otherwise maps_to "unknown" and value null. A select, radio, '
+    'checkbox or combobox with no options listed: "unknown". Respond ONLY '
     'with a valid JSON array: [{"field_id": "...", "maps_to": "...", '
     '"confidence": 0.0, "value": "... or null"}]'
 )
@@ -112,6 +130,32 @@ def is_essay_label(label_text: str | None) -> bool:
     return any(keyword in lower for keyword in ESSAY_LABEL_KEYWORDS)
 
 
+def _unanswerable(field: dict) -> bool:
+    ids = f"{field.get('name') or ''} {field.get('dom_id') or ''}"
+    return (
+        (field.get("input_type") or "").lower() in _UNANSWERABLE_TYPES
+        or bool(_ANTI_BOT.search(ids))
+        or not (field.get("label_text") or ids.strip() or field.get("options"))
+        # A lone radio/checkbox's label is an option ("White", "Telugu (TEL)"),
+        # not a question; a group arrives with its options.
+        or ((field.get("input_type") or "").lower() in _CHOICE_TYPES and not field.get("options"))
+    )
+
+
+def _prompt_field(field: dict) -> dict:
+    """What the model needs, nothing more: no autocomplete/dom_id noise, and
+    options capped at MAX_PROMPT_OPTIONS with the true count alongside."""
+    out = {k: field.get(k) for k in ("field_id", "label_text", "input_type")}
+    if not field.get("label_text") and field.get("name"):
+        out["name"] = field["name"]
+    options = field.get("options") or []
+    if options:
+        out["options"] = options[:MAX_PROMPT_OPTIONS]
+        if len(options) > MAX_PROMPT_OPTIONS:
+            out["options_total"] = len(options)
+    return out
+
+
 def _flagged(field_id: str) -> dict:
     return {"field_id": field_id, "maps_to": "unknown", "confidence": 0.0, "value": None}
 
@@ -134,9 +178,18 @@ def map_form_fields(
     """
     # Demographic first and unconditionally: these fields are excluded before
     # the deterministic matcher, before the bank, and before the model. Nothing
-    # downstream gets the chance to resolve one.
+    # downstream gets the chance to resolve one. Today's extension sends one
+    # descriptor per radio/checkbox ("Man", "Woman"), so same-name siblings'
+    # labels count as the group's options for this check. Unanswerable fields
+    # (captcha, hidden, no context) are dropped here too, flagged, never prompted.
+    group_labels: dict[str, list[str]] = {}
+    for f in fields:
+        if f.get("input_type") in _CHOICE_TYPES and f.get("name") and f.get("label_text"):
+            group_labels.setdefault(f["name"], []).append(f["label_text"])
     demographic_ids = {
-        f["field_id"] for f in fields if is_demographic_label(f.get("label_text"))
+        f["field_id"] for f in fields
+        if is_demographic_field(f.get("label_text"), (f.get("options") or []) + group_labels.get(f.get("name") or "", []))
+        or _unanswerable(f)
     }
 
     # Deterministic pass next (SPEC.md §3.7 / PRD "Known ATS... fills them
@@ -167,17 +220,21 @@ def map_form_fields(
 
         answer = answer_lookup(field.get("label_text")) if answer_lookup else None
         if answer:
-            bank_results[field_id] = _from_answer_bank(field_id, answer)
+            # Bound to the options or flagged — never falls through to the model.
+            bound = bind_to_options(answer, field.get("options"))
+            if bound:
+                bank_results[field_id] = _from_answer_bank(field_id, bound)
             continue
 
         remaining_fields.append(field)
 
     mapping_by_id: dict[str, dict] = {}
     if remaining_fields:
+        # ONE call for every field no rule or bank answered.
         known_field_ids = {f["field_id"] for f in remaining_fields}
         user_prompt = (
-            f"FIELDS:\n{json.dumps(remaining_fields, indent=2)}\n\n"
-            f"PROFILE:\n{json.dumps(profile_summary, indent=2)}"
+            f"FIELDS:\n{json.dumps([_prompt_field(f) for f in remaining_fields])}\n\n"
+            f"PROFILE:\n{json.dumps(profile_summary)}"
         )
         for _attempt in range(MAX_ATTEMPTS):
             raw = call_llm(SYSTEM_PROMPT, user_prompt)
@@ -216,13 +273,16 @@ def map_form_fields(
             result.append(bank_results[field_id])
         else:
             mapping = mapping_by_id.get(field_id)
-            if mapping is None:
+            value = mapping.get("value") if mapping else None
+            bound = bind_to_options(value, field.get("options"))
+            if mapping is None or (value is not None and bound is None):
+                # Live: "San Francisco" into a Yes/No relocation combobox at 0.8.
                 result.append(_flagged(field_id))
             else:
                 result.append({
                     "field_id": field_id,
                     "maps_to": mapping.get("maps_to", "unknown"),
                     "confidence": mapping.get("confidence", 0.0),
-                    "value": mapping.get("value"),
+                    "value": bound,
                 })
     return result
