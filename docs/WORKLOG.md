@@ -102,6 +102,66 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+36) — Scheduled runs: Maggie works without anyone pressing a button
+
+**What changed.** The IA audit's gap: nothing ran by itself. The scheduler only ran
+discovery; campaigns ran only on Launch/Start; and `Match` rows were only built when
+someone opened `GET /matches`, so even a scheduled run would have found nothing new.
+- *`workers.jobs.sweep_campaigns_task`* (new). For every `active` campaign: rebuild that
+  profile's matches with the existing `build_matches`, then enqueue `run_campaign_task`
+  with job id `campaign-<id>-sweep-<hour bucket>` + `unique=True` (layer 1) and the same
+  Redis claim inside the task (layer 2). `sweep` keeps these ids apart from the manual
+  per-minute ids; `[A-Za-z0-9_-]` only (rq 2.x, latest+27). No facts (no
+  `fact_centroid`) or no job embeddings (no `VOYAGE_API_KEY`) → `build_matches` returns
+  `[]` and the run uses existing matches — no special casing needed. Each campaign gets
+  its own `session_scope` + try/except + `logger.exception`; one failure is reported in
+  `failed` and the rest carry on.
+- *Cadence* (`workers/run_scheduler.py`, rq-scheduler — croniter is not used). Discovery
+  stays at `DISCOVERY_INTERVAL_SECONDS` = 4h (ARCHITECTURE §4.1); the sweep runs every
+  `CAMPAIGN_SWEEP_INTERVAL_SECONDS` = 1h (`workers/jobs.py`, also the job-id bucket). Both
+  are cancelled and re-registered on scheduler restart (was: discovery only).
+- *Cap.* The scheduled path is `run_campaign_task → run_campaign → remaining_quota`, the
+  same server-side rail as the manual run; nothing new computes quota.
+- *Tenancy.* The sweep runs on the owner role (`session_scope` → `SessionLocal`), no RLS
+  tenant. Every query is scoped by `campaign.id` / `profile_id` (`build_matches` by
+  profile, `run_campaign` by campaign); events go to `campaign.profile.user_id`.
+- *Observability.* `run_campaign_task(..., scheduled=True)` writes ONE
+  `campaign.scheduled_run` event per run: `{campaign_id, created, reason}` ("Started 2
+  applications." / "Nothing new to apply to."). `GET /activity` maps it to "Ran on
+  schedule" (one-line hunk in `_ACTIVITY`). Web needs no change: unknown row types
+  already fall back to a muted icon and link to /campaign.
+
+**Run it locally on Windows** (two terminals, from `apps/api`, venv active, `.env` with
+`REDIS_URL`/`DATABASE_URL`):
+1. `python -m workers.run_worker` — `WindowsSafeWorker` (SimpleWorker +
+   TimerDeathPenalty; the default forking worker crashes on Windows).
+2. `python -m workers.run_scheduler` — registers discovery (4h) + sweep (1h), both fire
+   immediately, then on interval. Enqueues only; the worker runs them.
+One-off sweep without the scheduler:
+`python -c "from workers.jobs import get_queue, sweep_campaigns_task; get_queue().enqueue(sweep_campaigns_task)"`.
+
+**Files.** `apps/api/workers/jobs.py`, `apps/api/workers/run_scheduler.py`,
+`apps/api/main.py` (one `_ACTIVITY` line), `apps/api/tests/test_scheduled_runs.py` (new).
+
+**Dependencies added.** None. No migration.
+
+**Tests.** 456 → **466**, all 10 new red first: sweep builds matches + enqueues only the
+active campaign with an rq-valid id and `scheduled=True`; same id within a window,
+new id next window; no facts / no embeddings → still enqueued, no error; one campaign's
+`build_matches` raising doesn't stop the next; 5 sweeps in 5 windows (claim always
+succeeds) → still exactly `daily_cap` applications; two users matching the same job →
+each gets their own match/application, every event goes to the campaign owner;
+`scheduled=True` writes exactly one event, a manual run none; `/activity` mapping;
+scheduler registers both intervals and cancels both on restart.
+
+**Not verified / notes.** Not run against live Redis/Postgres (the main checkout's worker
+is live; tests only). Sweep and discovery are independent intervals, not chained, so a
+sweep may run on jobs up to 4h old. Hourly "Nothing new to apply to." rows = up to 24
+activity rows/day per campaign; if that's noise, write the event only when `created > 0`.
+`build_matches` still scans every embedded job per profile (existing ponytail note).
+
+---
+
 ### 2026-09-27 (latest+34) — NVIDIA NIM is the production LLM provider (owner decision)
 
 **What changed.** New `LLM_PROVIDER=nvidia` (the old `nvidia_smoke` stays as the dev-only,
