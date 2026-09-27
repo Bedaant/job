@@ -60,7 +60,7 @@ export interface RawControl {
   label: string | null; // the control's own label (an option's, for a radio)
   question: string | null; // the group/question text around it
   value: string;
-  options: Choice[]; // <select> only
+  options: Choice[]; // <select>, or a combobox whose menu was read
   visible: boolean;
   labelVisible: boolean;
   inReactSelect: boolean;
@@ -91,6 +91,7 @@ export function planFill(
   | { kind: "text"; key: number; value: string }
   | { kind: "select"; key: number; value: string }
   | { kind: "check"; key: number }
+  | { kind: "combobox"; key: number; label: string }
   | { kind: "none" }
   | null;
 export function setNativeValue(el: EventTarget & { value: string }, value: string): void;
