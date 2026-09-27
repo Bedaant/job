@@ -1,6 +1,7 @@
 # Python
 .venv/
 tools/.venv-*/
+tools/browser-use-harness/reports/
 __pycache__/
 *.pyc
 .pytest_cache/
