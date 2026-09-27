@@ -74,6 +74,10 @@ croniter==6.2.4
 # machine (same standing reasoning as Postgres/Redis before Neon/Redis
 # Cloud) — clamd has nothing to connect to yet. Not wired into upload_resume.
 clamd==1.0.2
+# Pinned directly (was only transitive via pandas): GET /today counts the user's
+# local day with zoneinfo, which needs IANA data. A slim Linux image has none, and
+# campaigns.local_day_start would silently fall back to UTC for every user.
+tzdata==2026.3
 
 # garak (adversarial/injection red-team scan) is intentionally NOT here.
 # It fails to install on Windows: a transitive dep (litellm) needs a Rust/Cargo

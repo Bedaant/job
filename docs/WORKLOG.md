@@ -102,6 +102,22 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+33) — tzdata pinned; Redis replaced; worker loop verified live
+
+**What changed.** `tzdata==2026.3` added to `apps/api/requirements.txt` — it was only
+present transitively (pandas), but `GET /today` depends on it directly (zoneinfo local
+day); without IANA data on a slim Linux image every user silently counts on the UTC day.
+Same version already installed (`pip install --dry-run`: nothing to install). New Redis
+Cloud instance in `apps/api/.env` (`REDIS_URL`, gitignored; the old DB's host no longer
+resolved). Verified live: PING ok; `POST /campaigns/{id}/run` and `POST /discover/run`
+return queued; `workers/run_worker.py` processed a campaign run to "Job OK".
+
+**Dependencies added.** tzdata (pin of an already-installed transitive dep, owner-approved).
+
+**Next.** Rotate the Redis password (it was pasted in chat). Real `ANTHROPIC_API_KEY`.
+
+---
+
 ### 2026-09-27 (latest+32) — Skipped jobs show in Today; one meaning of "today"
 
 **What changed.**
