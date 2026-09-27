@@ -10,13 +10,23 @@ import {
   PauseIcon,
   PlayIcon,
   SendIcon,
+  SkipForwardIcon,
   SparklesIcon,
   TriangleAlertIcon,
   type LucideIcon,
 } from "lucide-react";
 import { api, ApiError, type ActivityItem, type Campaign } from "@/lib/api";
 import { statusView } from "@/lib/campaign-form";
-import { activityHref, formatWhen, greeting, homeState, maggieLabel, splitToday, summaryLine } from "@/lib/today";
+import {
+  activityHref,
+  dailyLimitCaption,
+  formatWhen,
+  greeting,
+  homeState,
+  maggieLabel,
+  splitToday,
+  summaryLine,
+} from "@/lib/today";
 import { AppShell, useRequireAuth } from "@/components/AppShell";
 import { useCampaignStatus } from "@/components/useCampaignStatus";
 import { Button } from "@/components/ui/button";
@@ -32,6 +42,7 @@ const ROW_ICON: Record<string, { Icon: LucideIcon; tone: string }> = {
   "application.ready_for_review": { Icon: InboxIcon, tone: "text-primary" },
   "application.approved": { Icon: SendIcon, tone: "text-muted-foreground" },
   "match.new": { Icon: SparklesIcon, tone: "text-primary" },
+  "campaign.skipped": { Icon: SkipForwardIcon, tone: "text-muted-foreground" },
 };
 
 const BADGE = {
@@ -136,7 +147,7 @@ const EMPTY: Record<string, string> = {
 export default function TodayPage() {
   const ready = useRequireAuth();
   const campaignsQuery = useQuery({ queryKey: ["campaigns"], queryFn: api.listCampaigns, enabled: ready });
-  const todayQuery = useQuery({ queryKey: ["today"], queryFn: api.getToday, enabled: ready });
+  const todayQuery = useQuery({ queryKey: ["today"], queryFn: () => api.getToday(), enabled: ready });
   const activityQuery = useQuery({ queryKey: ["activity"], queryFn: () => api.getActivity(50), enabled: ready });
 
   if (!ready) return null;
@@ -196,7 +207,7 @@ export default function TodayPage() {
 
           {counts && (
             <div className="grid gap-3 sm:grid-cols-3">
-              <Tile label="Sent today" value={counts.sent_today} sub={`Daily limit ${campaign.daily_cap}`} />
+              <Tile label="Sent today" value={counts.sent_today} sub={dailyLimitCaption(campaign.daily_cap)} />
               <Tile label="Needs you" value={counts.needs_you} sub="Open Review" href="/review" />
               <Tile label="New matches" value={counts.new_matches_today} sub="See matches" href="/matches" />
             </div>

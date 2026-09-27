@@ -1052,7 +1052,10 @@ _ACTIVITY = {
     "application.submitted": ("Applied", None),
     "application.needs_human": ("Stopped on a question", "Needs an answer from you before it can be sent."),
     "application.failed": ("Couldn't send", "Maggie will try again."),
+    "campaign.skipped": ("Skipped", None),
 }
+# campaign.skipped rows without a job are run-level notes; title by reason_code.
+_RUN_SKIP_TITLES = {"checked": "Checked new jobs", "daily_cap": "Daily limit reached", "not_active": "Didn't run"}
 
 
 @app.get("/activity", response_model=list[schemas.ActivityItemOut])
@@ -1094,6 +1097,8 @@ def list_activity(
             detail = f"{round(float(p['score']))}% match"  # Match.score is 0..100
         else:
             detail = p.get("reason") or fallback
+        if e.type == "campaign.skipped" and not job:
+            title = _RUN_SKIP_TITLES.get(p.get("reason_code"), "Maggie didn't apply")
         items.append(schemas.ActivityItemOut(
             id=e.id, type=e.type, at=e.created_at.replace(tzinfo=timezone.utc), title=title, detail=detail,
             application_id=application.id if application else None,
@@ -1103,12 +1108,17 @@ def list_activity(
 
 
 @app.get("/today", response_model=schemas.TodayOut)
-def get_today(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    """Home-screen counters across all the caller's profiles. Campaign status and
-    the daily cap come from /campaigns and /campaigns/{id}/stats, not here.
+def get_today(
+    tz: str | None = Query(None, max_length=64),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Home-screen counters across all the caller's profiles, over the caller's
+    local day (`tz` = IANA name; invalid or missing → UTC) so they agree with the
+    activity list. The daily cap stays on the UTC day. Campaign status and the
+    cap come from /campaigns and /campaigns/{id}/stats, not here.
     """
-    # ponytail: UTC day, same boundary as the daily cap; per-user timezone if users ask.
-    start = campaigns_service.utc_day_start()
+    start = campaigns_service.local_day_start(tz)
     mine = db.query(models.Profile.id).filter(models.Profile.user_id == current_user.id)
     apps = db.query(models.Application).filter(models.Application.profile_id.in_(mine))
     return schemas.TodayOut(

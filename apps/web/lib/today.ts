@@ -28,6 +28,13 @@ export function formatWhen(iso: string, now = new Date(), timeZone?: string): st
   return `${at.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone })}, ${time}`;
 }
 
+/** The daily limit counts per UTC day (a server-side rail), so say when that is locally. */
+export function dailyLimitCaption(cap: number, now = new Date(), timeZone?: string): string {
+  const nextUtcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+  const time = plain(nextUtcMidnight.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone }));
+  return `Daily limit ${cap} · resets ${time} your time`;
+}
+
 export function greeting(now = new Date()): string {
   const h = now.getHours();
   if (h >= 5 && h < 12) return "Good morning";

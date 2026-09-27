@@ -234,6 +234,91 @@ def test_run_campaign_on_paused_campaign_is_a_noop(mock_prepare):
     assert campaign.last_run_at is None
 
 
+# ---------- skip events: "Skipped X — reason" in What Maggie did ----------
+
+def _skips(db):
+    return db.query(models.Event).filter(models.Event.type == "campaign.skipped").order_by(models.Event.id).all()
+
+
+@patch("campaigns.prepare_application_for_review")
+def test_run_campaign_records_why_each_considered_job_was_skipped(mock_prepare):
+    db = _session()
+    profile = _profile(db)
+    campaign = _campaign(db, profile, daily_cap=1, min_match_score=0.8, roles=["backend"])
+    picked, capped, low, applied = (_job(db, n) for n in range(1, 5))
+    off_role = _job(db, 5, title="Frontend Engineer")
+    _match(db, profile, picked, score=95)
+    _match(db, profile, capped, score=90)
+    _match(db, profile, low, score=61)
+    _match(db, profile, applied, score=92)
+    _match(db, profile, off_role, score=99)
+    db.add(models.Application(profile_id=profile.id, job_id=applied.id))
+    db.commit()
+
+    campaigns_mod.run_campaign(db, campaign)
+
+    events = _skips(db)
+    assert all(e.user_id == profile.user_id and e.payload["campaign_id"] == campaign.id for e in events)
+    per_job = {e.payload["job_id"]: e.payload for e in events if e.payload.get("job_id")}
+    # Off-role jobs are never listed one by one — only counted in the summary.
+    assert set(per_job) == {capped.id, low.id, applied.id}
+    assert per_job[capped.id]["reason_code"] == "daily_cap"
+    assert per_job[low.id]["reason_code"] == "below_score"
+    assert per_job[low.id]["reason"] == "Score 61%, below your 80% minimum"
+    assert per_job[applied.id]["reason_code"] == "already_applied"
+    [summary] = [e.payload for e in events if not e.payload.get("job_id")]
+    assert summary["reason_code"] == "checked"
+    assert summary["reason"] == "Checked 5 new jobs; 4 fit your campaign."
+
+
+@patch("campaigns.prepare_application_for_review")
+def test_run_campaign_does_not_rereport_jobs_it_already_looked_at(mock_prepare):
+    db = _session()
+    profile = _profile(db)
+    campaign = _campaign(db, profile, daily_cap=1)
+    _match(db, profile, _job(db, 1))
+    _match(db, profile, _job(db, 2))
+
+    campaigns_mod.run_campaign(db, campaign)
+    before = len(_skips(db))
+    campaigns_mod.run_campaign(db, campaign)
+
+    new = _skips(db)[before:]
+    # Nothing new to look at and the cap is used: one run-level note, no per-job rows.
+    assert [e.payload["reason_code"] for e in new] == ["daily_cap"]
+    assert "job_id" not in new[0].payload
+
+
+@patch("campaigns.prepare_application_for_review")
+def test_run_campaign_caps_per_job_skip_events_and_summarizes_the_rest(mock_prepare):
+    db = _session()
+    profile = _profile(db)
+    campaign = _campaign(db, profile, daily_cap=1, min_match_score=0.9)
+    for n in range(25):
+        _match(db, profile, _job(db, n), score=50)
+
+    campaigns_mod.run_campaign(db, campaign)
+
+    events = _skips(db)
+    assert len([e for e in events if e.payload.get("job_id")]) == campaigns_mod.SKIP_EVENT_LIMIT == 20
+    [summary] = [e.payload for e in events if not e.payload.get("job_id")]
+    assert summary["reason"] == "Checked 25 new jobs; 25 fit your campaign. 5 more skipped, not listed."
+
+
+@patch("campaigns.prepare_application_for_review")
+def test_run_campaign_on_paused_campaign_records_one_skip(mock_prepare):
+    db = _session()
+    profile = _profile(db)
+    campaign = _campaign(db, profile, status=models.CampaignStatus.paused)
+    _match(db, profile, _job(db, 1))
+
+    campaigns_mod.run_campaign(db, campaign)
+
+    [event] = _skips(db)
+    assert event.payload == {"campaign_id": campaign.id, "reason_code": "not_active",
+                             "reason": "Your campaign is paused, so nothing was sent."}
+
+
 @patch("campaigns.prepare_application_for_review")
 def test_run_campaign_leaves_applications_ready_for_review_when_auto_submit_false(mock_prepare):
     """auto_submit False keeps the optional review step: prepared, not approved."""

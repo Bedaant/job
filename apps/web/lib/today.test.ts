@@ -2,7 +2,17 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { api } from "./api";
-import { activityHref, formatWhen, greeting, homeState, maggieLabel, parseUtc, splitToday, summaryLine } from "./today";
+import {
+  activityHref,
+  dailyLimitCaption,
+  formatWhen,
+  greeting,
+  homeState,
+  maggieLabel,
+  parseUtc,
+  splitToday,
+  summaryLine,
+} from "./today";
 
 const API_URL = "http://localhost:8000";
 const server = setupServer();
@@ -64,6 +74,16 @@ describe("activityHref", () => {
     expect(activityHref("application.failed")).toBe("/campaign");
     expect(activityHref("application.approved")).toBe("/campaign");
     expect(activityHref("something.unknown")).toBe("/campaign");
+    // Skips are campaign settings (score, limit, roles): change them there.
+    expect(activityHref("campaign.skipped")).toBe("/campaign");
+  });
+});
+
+describe("dailyLimitCaption", () => {
+  const now = new Date("2026-09-27T18:00:00Z");
+  it("says when the UTC-day limit resets, in the viewer's own clock", () => {
+    expect(dailyLimitCaption(10, now, "Asia/Kolkata")).toBe("Daily limit 10 · resets 5:30 AM your time");
+    expect(dailyLimitCaption(3, now, "UTC")).toBe("Daily limit 3 · resets 12:00 AM your time");
   });
 });
 
@@ -116,8 +136,16 @@ describe("GET /activity and /today", () => {
     expect(items[0].title).toBe("New match");
   });
 
-  it("reads the three counters", async () => {
-    server.use(http.get(`${API_URL}/today`, () => HttpResponse.json({ sent_today: 1, needs_you: 2, new_matches_today: 3 })));
+  it("reads the three counters over the viewer's local day", async () => {
+    const tzs: (string | null)[] = [];
+    server.use(
+      http.get(`${API_URL}/today`, ({ request }) => {
+        tzs.push(new URL(request.url).searchParams.get("tz"));
+        return HttpResponse.json({ sent_today: 1, needs_you: 2, new_matches_today: 3 });
+      }),
+    );
     expect(await api.getToday()).toEqual({ sent_today: 1, needs_you: 2, new_matches_today: 3 });
+    await api.getToday("Asia/Kolkata");
+    expect(tzs).toEqual([Intl.DateTimeFormat().resolvedOptions().timeZone, "Asia/Kolkata"]);
   });
 });
