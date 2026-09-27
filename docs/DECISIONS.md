@@ -10,7 +10,12 @@ Format: Context → Decision → Consequences → Trigger to revisit.
 
 ## ADR-001 — Human approves, machine executes
 
-**Date:** 2026-08-15 · **Status:** Accepted · **Decided by:** product owner
+**Date:** 2026-08-15 · **Status:** ⚠️ SUPERSEDED by ADR-015 (2026-09-26) · **Decided by:** product owner
+
+> **Superseded 2026-09-26.** The owner reversed this: per-application human approval is
+> dropped in favour of a single campaign-level approval, then autonomous submission. See
+> ADR-015. The structural submit-guard and per-item review gating built for this ADR are
+> to be removed. Original text kept below for history.
 
 **Context.** The stated goal is "no one has to go and manually apply." Three levels were
 on the table: draft-only (current MVP), review-queue with automated submission, and
@@ -36,7 +41,12 @@ still with a daily cap and a digest of what went out.
 
 ## ADR-002 — No server-side scraping; ingestion is API/RSS + user-side extension
 
-**Date:** 2026-08-15 · **Status:** Accepted
+**Date:** 2026-08-15 · **Status:** ⚠️ SUPERSEDED by ADR-015 (2026-09-26)
+
+> **Superseded 2026-09-26.** The owner reversed the no-scraping rule: multi-source
+> scraping across many job boards is now in scope (LinkedIn/Indeed still deprioritised,
+> not for legal reasons but because friendlier sources are easier and sufficient for v1).
+> See ADR-015. Original text kept below for history.
 
 **Context.** LinkedIn and Wellfound hold a large share of listings and have no public
 jobs API. Options: run headless browsers with proxy rotation, use a paid scraping
@@ -496,3 +506,52 @@ stop being correct). Revisit the *specific tool* if Promptfoo's OpenAI acquisiti
 (announced March 2026) visibly deprioritizes Anthropic/Claude support — the team states
 it stays MIT and multi-provider, but this is worth re-checking in 6-12 months before
 deep integration, not before adoption.
+
+---
+
+## ADR-015 — Pivot: autonomous multi-source auto-apply (reverses ADR-001 & ADR-002)
+
+**Date:** 2026-09-26 · **Status:** Accepted · **Decided by:** product owner
+
+**Context.** The owner judged the review-queue-per-application model (ADR-001) and the
+no-scraping stance (ADR-002) as too much friction for both the end user and the product's
+core promise ("the user clicks once, agents find jobs, tailor, and apply"). Many job
+boards beyond LinkedIn/Indeed are permissive or feed-friendly; most LinkedIn/aggregator
+"Apply" links resolve to the company's own ATS anyway, so LinkedIn is not required for v1.
+
+**Decision.**
+1. **Multi-source discovery.** One connector interface, one normalized job table. Sources
+   added as plugins, prioritised: (Tier A, real feeds/APIs) Remote OK, We Work Remotely,
+   Remotive, Himalayas, Working Nomads, NoDesk, Remote.co, 4 Day Week, YC WaaS, HN Who's
+   Hiring; (Tier B, scrape) Wellfound, Startup.jobs, Jobgether, Remote Rocketship,
+   Underdog, Otta; (Tier C, later) Indeed, Toptal, Upwork, FlexJobs. **JobSpy** flips from
+   Google-only to all non-LinkedIn sources it supports. **kalil0321/ats-scrapers**
+   (MIT, "jobhive") powers the company-ATS apply targets (Greenhouse/Lever/Ashby/Workday).
+2. **Campaign-level approval, not per-application.** The user approves a campaign once
+   (which roles/sources, the tailored template, caps); the agent then discovers, tailors,
+   and submits autonomously within those bounds. Replaces ADR-001's per-item gate.
+3. **Autonomous submission via the user's own browser session** (extension / browser-use
+   / workflow-use), never a shared server bot — keeps ban/legal exposure off shared infra.
+4. **LinkedIn parked** as a "special later" problem; `agent-reach` is a web/GitHub reader,
+   not a LinkedIn apply bot, so it is not the LinkedIn solution.
+
+**Non-negotiable rails (kept from the old design).**
+- **No fabrication.** Tailoring rewords/reorders the user's *real* facts only; it never
+  invents or inflates metrics. The truth-check (ADR-006) and Facts-KB-only rule (ADR-009)
+  stay. This is what keeps applications from being blacklisted.
+- **AGPL repos not vendored** (AIHawk and forks) — would force open-sourcing the SaaS.
+  Reuse MIT-licensed `ats-scrapers`/`JobSpy` and reimplement the rest under our licence.
+- **Daily submission caps + a digest** of what went out, so "autonomous" is bounded, not blind.
+
+**Consequences.**
+- Legal/ToS posture shifts from "defensible, human-authorized" to "user-authorized campaign,
+  executed in the user's own session, capped." The owner accepts the higher ToS/account-ban
+  risk this creates for end users.
+- Code to remove/change: the extension's ADR-001 structural submit-guard and
+  `submitApprovedApplication` gating; the `claim-submission` per-item flow; JobSpy's
+  Google-only restriction; the review-queue-as-mandatory-gate framing (becomes optional
+  review, not a hard gate).
+- Coverage rises sharply; maintenance shifts to per-source adapters that fail visibly.
+
+**Revisit when.** A source's ToS enforcement or a spike in user account bans makes a given
+connector not worth it — drop that connector, not the architecture.
