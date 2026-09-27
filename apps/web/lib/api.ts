@@ -57,6 +57,15 @@ export interface ResumeFact extends FactDraft {
   profile_id: string;
 }
 
+/** An answer-bank row — the user's own words, reused on similar questions. */
+export interface SavedAnswer {
+  id: string;
+  question_text: string;
+  answer_text: string;
+  times_used: number;
+  last_used_at?: string | null;
+}
+
 export interface Job {
   id: string;
   source: string;
@@ -275,6 +284,16 @@ export const api = {
       body: JSON.stringify({ facts }),
     }),
   listFacts: (profileId: string) => request<ResumeFact[]>(`/resume-facts?profile_id=${profileId}`),
+  updateFact: (factId: string, changes: Partial<FactDraft>) =>
+    request<ResumeFact>(`/resume-facts/${factId}`, { method: "PATCH", body: JSON.stringify(changes) }),
+  // keepalive: a pending undo-delete is flushed when the user leaves the page.
+  deleteFact: async (factId: string) => {
+    await send(`/resume-facts/${factId}`, { method: "DELETE", keepalive: true });
+  },
+  listAnswers: (profileId: string) => request<SavedAnswer[]>(`/profiles/${profileId}/answers`),
+  deleteAnswer: async (profileId: string, answerId: string) => {
+    await send(`/profiles/${profileId}/answers/${answerId}`, { method: "DELETE" });
+  },
   listMatches: (profileId: string) => request<Match[]>(`/matches?profile_id=${profileId}`),
   listReviewQueue: (profileId: string) =>
     request<ReviewApplication[]>(`/applications/review-queue?profile_id=${profileId}`),

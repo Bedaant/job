@@ -102,6 +102,58 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-28 (latest+45) — Profile: edit facts, identity and saved answers
+
+**What changed.**
+- **API.** `PATCH /resume-facts/{id}` (only the fields sent change; `achievement`/
+  `category` can't be null or blank) and `DELETE /resume-facts/{id}` (204). Both are
+  owner-scoped by joining the fact to a profile of the current user — another user's
+  fact is a 404. An edit that changes `achievement` clears the fact's vector, then
+  `_refresh_fact_vectors` embeds every fact of the profile still missing one and
+  recomputes `fact_centroid` from the embedded facts (None when there are none).
+  Voyage failing or unconfigured never blocks the edit: the fact stays unembedded and
+  out of the centroid, and is picked up on the next edit/delete. A delete recomputes
+  the centroid the same way. No migration.
+- **Web.** `/facts` is now "Profile" with three sections and an in-page nav:
+  *Facts* (upload as before; edit inline — kind, words, number, where; delete hides the
+  row with a 5-second Undo, then sends the DELETE, flushed if you leave the page; add
+  one by hand through `facts:bulk` so it gets embedded), *About you* (full/first/last
+  name, phone, address, country code, website, links, work authorisation — GET/PUT
+  basics, validated with onboarding's `validateBasics`), *Saved answers* (question,
+  answer, times used; edit re-saves via `PUT answers`, delete via `DELETE`). Copy
+  says changes apply to future applications.
+- `lib/profile.ts`: `factChanges` (only changed fields, so an untouched achievement
+  never costs a re-embed) and `undoableDeletes` (timer-based; no restore endpoint).
+  `lib/api.ts`: `updateFact`, `deleteFact`, `listAnswers`, `deleteAnswer`, `SavedAnswer`.
+
+**Why.** After onboarding, what Maggie knows could only grow: a wrong fact, an old
+phone number or an outdated saved answer stayed forever. User-edited facts are still
+the user's own words, so the no-fabrication rail holds.
+
+**Already-tailored applications.** Their bullet text lives in
+`tailored_resume_json`, so an edit doesn't change them. A *deleted* fact does drop
+the bullets citing it from a prepared resume downloaded later
+(`download_tailored_resume_docx` only keeps bullets whose fact ids resolve) — the
+UI says so rather than keeping a retracted claim alive.
+
+**Files.** `apps/api/{main.py,schemas.py,tests/test_resume_fact_edit.py (new)}`,
+`apps/web/app/facts/page.tsx`, `apps/web/lib/{api.ts,profile.ts (new),profile.test.ts (new)}`.
+
+**Dependencies added:** none.
+
+**Tests.** Red first. api 578 → 587 (9 new: re-embed on edit, Voyage failure clears
+and still saves, catch-up embedding, no Voyage call without a text change, blank/null
+rejected, delete recomputes/clears the centroid, cross-user 404, 401). web 105 → 115
+(factChanges, undo timing/undo/flush with fake timers, msw PATCH/DELETE 204/answers).
+`tsc` clean, `next build` clean.
+
+**Next.** Onboarding's "once saved, facts can't be edited yet" copy
+(`components/onboarding/StepFacts.tsx`) is now false — owned elsewhere, needs a
+one-line change. `POST /resume-facts` still doesn't embed (the page uses `facts:bulk`).
+Not verified in a browser this pass.
+
+---
+
 ### 2026-09-27 (latest+42) — Legal consent is never automated; country codes bind to option names
 
 **What changed.** `answer_bank.is_consent_field(label, options)` — arbitration

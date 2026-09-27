@@ -209,6 +209,25 @@ class ResumeFactIn(BaseModel):
     period_to: Optional[date] = None  # null = present
 
 
+class ResumeFactPatch(BaseModel):
+    """PATCH /resume-facts/{id}: only the fields sent change. Text is the user's
+    own words, so the no-fabrication rail holds (ADR-006)."""
+    category: Optional[str] = None
+    achievement: Optional[Annotated[str, Field(pattern=r"\S")]] = None
+    proof: Optional[str] = None
+    metric: Optional[str] = None
+    tags: Optional[List[str]] = None
+    period_from: Optional[date] = None
+    period_to: Optional[date] = None
+
+    @field_validator("category", "achievement")
+    @classmethod
+    def _not_null(cls, value):
+        if value is None:
+            raise ValueError("cannot be null")
+        return value
+
+
 class ResumeFactOut(ResumeFactIn):
     id: str
     profile_id: str

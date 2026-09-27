@@ -691,6 +691,74 @@ def add_resume_fact(
     return fact
 
 
+def _owned_fact(db: Session, user: models.User, fact_id: str) -> models.ResumeFact:
+    fact = (
+        db.query(models.ResumeFact)
+        .join(models.Profile, models.Profile.id == models.ResumeFact.profile_id)
+        .filter(models.ResumeFact.id == fact_id, models.Profile.user_id == user.id)
+        .first()
+    )
+    if not fact:
+        raise HTTPException(404, "Fact not found")
+    return fact
+
+
+def _refresh_fact_vectors(db: Session, profile: models.Profile) -> None:
+    """Embed every fact still missing a vector (an edit, or an earlier Voyage
+    outage), then recompute the centroid from the facts that have one. Voyage
+    failing never blocks the edit: the fact stays unembedded until next time."""
+    facts = db.query(models.ResumeFact).filter(models.ResumeFact.profile_id == profile.id).all()
+    pending = [f for f in facts if f.embedding is None]
+    if pending:
+        try:
+            vectors = embed_texts([f.achievement for f in pending], input_type="document")
+        except Exception:
+            logging.getLogger(__name__).exception("re-embedding %d facts failed", len(pending))
+            vectors = None
+        for fact, vector in zip(pending, vectors or []):
+            fact.embedding = vector
+    embedded = [[float(x) for x in f.embedding] for f in facts if f.embedding is not None]
+    profile.fact_centroid = compute_centroid(embedded) if embedded else None
+
+
+@app.patch("/resume-facts/{fact_id}", response_model=schemas.ResumeFactOut)
+def update_resume_fact(
+    fact_id: str,
+    payload: schemas.ResumeFactPatch,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Future tailoring only: applications already tailored keep their own copy
+    of the bullet text (tailored_resume_json)."""
+    fact = _owned_fact(db, current_user, fact_id)
+    changes = payload.model_dump(exclude_unset=True)
+    if "achievement" in changes and changes["achievement"] != fact.achievement:
+        fact.embedding = None  # never match on a vector of words that are gone
+    for key, value in changes.items():
+        setattr(fact, key, value)
+    if fact.embedding is None:
+        db.flush()
+        _refresh_fact_vectors(db, fact.profile)
+    db.commit()
+    db.refresh(fact)
+    return fact
+
+
+@app.delete("/resume-facts/{fact_id}", status_code=204)
+def delete_resume_fact(
+    fact_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    fact = _owned_fact(db, current_user, fact_id)
+    profile = fact.profile
+    db.delete(fact)
+    db.flush()
+    _refresh_fact_vectors(db, profile)
+    db.commit()
+    return Response(status_code=204)
+
+
 # ---------- Tailoring ----------
 
 @app.post("/tailor", response_model=schemas.TailorResponse)
