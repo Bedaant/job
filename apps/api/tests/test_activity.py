@@ -154,8 +154,8 @@ def test_today_counts():
     db.close()
 
     assert client.get("/today").status_code == 401
-    assert client.get("/today", headers=headers_a).json() == {"sent_today": 1, "unconfirmed_today": 0, "needs_you": 1, "new_matches_today": 1}
-    assert client.get("/today", headers=headers_b).json() == {"sent_today": 0, "unconfirmed_today": 0, "needs_you": 1, "new_matches_today": 0}
+    assert client.get("/today", headers=headers_a).json() == {"sent_today": 1, "unconfirmed_today": 0, "ready_to_send": 0, "needs_you": 1, "new_matches_today": 1}
+    assert client.get("/today", headers=headers_b).json() == {"sent_today": 0, "unconfirmed_today": 0, "ready_to_send": 0, "needs_you": 1, "new_matches_today": 0}
 
 
 def test_activity_maps_campaign_skips():

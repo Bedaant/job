@@ -3,6 +3,8 @@ from datetime import date, datetime
 from typing import Annotated, Optional, List, Literal, Union
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+from models import ApplicationStatus
+
 
 class UserCreate(BaseModel):
     email: EmailStr
@@ -176,7 +178,7 @@ class ApplicationCreate(BaseModel):
 
 
 class ApplicationUpdate(BaseModel):
-    status: Optional[str] = None
+    status: Optional[ApplicationStatus] = None  # a real status or 422, never a free string
     portal: Optional[str] = None
     notes: Optional[str] = None
     next_follow_up_at: Optional[datetime] = None
@@ -381,6 +383,11 @@ class LastAttemptOut(BaseModel):
     message: str
 
 
+class PreparedAnswerOut(BaseModel):
+    question: str
+    answer: str
+
+
 class ApplicationReviewOut(BaseModel):
     """Sub-project #2/#3's exact contract — the review-queue frontend
     (apps/web/app/review/page.tsx) was built against this shape before this
@@ -396,6 +403,10 @@ class ApplicationReviewOut(BaseModel):
     tailored_cover_letter: Optional[str] = None
     flagged_unsupported_claims: List[str] = []
     pending_questions: List[str] = []
+    # Questions the form asked that the answer bank already answers (assisted apply: copy them).
+    prepared_answers: List["PreparedAnswerOut"] = []
+    # {coverage_before, coverage_after, missing} from tailoring, when it ran.
+    keyword_gap: Optional[dict] = None
     # Why the last auto-apply run stopped (needs_input.py), so the card can say it.
     needs_input: Optional[NeedsInputOut] = None
     last_attempt: Optional[LastAttemptOut] = None
@@ -487,6 +498,8 @@ class ActivityItemOut(BaseModel):
 
 class TodayOut(BaseModel):
     sent_today: int
+    # Prepared applications the user can send now (assisted apply); not also in needs_you.
+    ready_to_send: int = 0
     # Of sent_today, how many the employer's page never confirmed.
     unconfirmed_today: int = 0
     needs_you: int

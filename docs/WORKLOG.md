@@ -102,6 +102,68 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+41) — Assisted apply: Maggie prepares, you send
+
+**What changed.** Owner decision: the proven pattern (the agent finds, ranks and tailors;
+the human clicks Submit) is the default; auto-submit stays opt-in while the extension hardens.
+- *API.* `GET /applications/{id}/resume.docx` — the **tailored** resume: only bullets whose
+  every `source_fact_id` resolves to the profile's facts (ADR-009; the LLM summary is not
+  used), grouped by the first cited fact's category, dates only when all cited facts share
+  one period. Same ATS linter + parse-back as the base resume (shared
+  `_verified_resume_response`); 409 when nothing grounded; owner-scoped 404. Both resumes now
+  open with a name + contact line (full_name or given+family; email, phone, city/region,
+  website, profile links) as body paragraphs — not a Word header (rule 3) nor a heading (rule 5).
+- *API.* `PATCH /applications/{id}` `status` is now `ApplicationStatus` (422 on anything
+  else). Moving to `applied` stamps `applied_at` and writes `application.submitted` with
+  `manual: true` → `/activity` titles it "You sent it". Leaving `applied` for a pre-send
+  status clears `applied_at`.
+- *API.* `GET /applications/ready-to-send?profile_id=` = `ready_for_review`/`approved` with ≥1
+  tailored bullet, no truth-check flags, no unanswered question. Captcha/account stops don't
+  block it — the human is the one sending. Review rows (both endpoints, one builder) gain
+  `prepared_answers` (bank answers to questions the form asked) and `keyword_gap`.
+  `/today` gains `ready_to_send`; `needs_you` no longer counts those (one list each).
+- *Web /review.* "Ready to send" section on top (not a new route: nav stays 5 on phone and
+  Review is already where prepared applications wait). Per card: role, company, match %,
+  keyword coverage before → after, then 3 steps — Download tailored resume (blob with auth),
+  Copy cover letter + each prepared answer (visible "Copied" in `role=status`; clipboard
+  refused → readonly textarea to copy by hand), Open application form (new tab, sr-only
+  hint, http(s) only) — then "I've sent it" / "Not for me". Both hide the card at once and
+  wait 6s with Undo (focused, announced) before the PATCH; leaving the page sends it
+  (`pagehide` + unmount flush, `keepalive`). The extension note ("Fill this form", you press
+  Submit) is said once in the section intro. Below: "Needs you first" = the old cards minus
+  anything ready.
+- *Web copy.* `auto_submit` is a two-option radio (`SubmitModeChoice`, used by onboarding
+  StepCampaign and /campaign): "Assisted — Maggie prepares, you send (recommended)" /
+  "Automatic — Maggie sends within your daily limit". /campaign status line and StepDone use
+  the same `submitModeLine`; StepDone says the extension is optional in Assisted mode.
+- *Web /today.* "Ready to send" tile → `/review#ready-to-send`; summary line counts it.
+- *Web, pre-existing bug.* `components/ui/card.tsx` used v4-only `px-(--card-spacing)` /
+  `--spacing(4)`; under Tailwind 3.4 every Card had zero padding. Now `px-5`/`py-5`/`gap-5`.
+
+**Files.** api: `main.py`, `schemas.py`, `documents/generate_docx.py`,
+`tests/test_assisted_apply.py` (new), `tests/test_activity.py` (new key in two exact-dict
+asserts). web: `lib/assisted.ts` + `.test.ts` (new), `lib/today.ts` + `.test.ts`, `lib/api.ts`,
+`components/review/SendCard.tsx` (new), `components/SubmitModeChoice.tsx` (new),
+`components/review/ApplicationCard.tsx` (export `saveBlob`), `components/ui/card.tsx`,
+`components/onboarding/{StepCampaign,StepDone}.tsx`, `app/{review,today,campaign}/page.tsx`.
+
+**Dependencies added.** None. No migration.
+
+**Tests.** Red first. api 554 → **565** (10 red: 404/405 routes, 422 not raised, missing
+`ready_to_send`), then `test_activity` exact dict updated. web 91 → **105** (module-not-found
+red; summaryLine red). `tsc` clean, `next build` clean (/review 11.3 kB).
+Browser (scratch SQLite API on :8100, `next start` :3100, never Neon): Today tile + summary,
+/review at 390px (no horizontal scroll), tailored docx 200 via fetch with auth, Copy →
+"Copied", I've sent it → Undo → count restored, second press → after 6s `/today`
+sent_today 1 and one "You sent it" activity row; /campaign radio pair.
+
+**Not done / notes.** Undo after the 6s window isn't offered (the API supports it). An
+`approved` row in ready-to-send can still be claimed by a running extension; if the user
+then marks it applied, the extension's report 409s (nothing double-sends). Extension
+untouched (another agent owns it).
+
+---
+
 ### 2026-09-27 (latest+39) — browser-use harness: automated fill-never-submit checks on real forms
 
 **What changed.** New `tools/browser-use-harness/` automates `docs/LIVE-FORM-TEST.md` against the REAL

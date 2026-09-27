@@ -122,6 +122,12 @@ describe("summaryLine", () => {
     );
     expect(summaryLine({ ...t, sent_today: 3 }, "active")).toBe("3 applications sent today.");
   });
+  it("counts what's ready for the user to send, before what needs them", () => {
+    expect(summaryLine({ ...t, ready_to_send: 2, needs_you: 1 }, "active")).toBe(
+      "Nothing sent yet today. 2 applications ready to send. 1 application needs you.",
+    );
+    expect(summaryLine({ ...t, ready_to_send: 1 }, "paused")).toBe("Maggie is paused. 1 application ready to send.");
+  });
   it("never lets an unconfirmed send read as a plain success", () => {
     expect(summaryLine({ ...t, sent_today: 3, unconfirmed_today: 1 }, "active")).toBe(
       "3 applications sent today, 1 not confirmed yet.",

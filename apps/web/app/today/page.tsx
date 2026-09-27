@@ -197,7 +197,8 @@ export default function TodayPage() {
       {loading && (
         <div className="space-y-6" aria-busy="true" aria-label="Loading today">
           <Skeleton className="h-28 w-full rounded-2xl" />
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Skeleton className="h-32 rounded-2xl" />
             <Skeleton className="h-32 rounded-2xl" />
             <Skeleton className="h-32 rounded-2xl" />
             <Skeleton className="h-32 rounded-2xl" />
@@ -223,8 +224,9 @@ export default function TodayPage() {
           <MaggieStatus campaign={campaign} />
 
           {counts && (
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Tile label="Sent today" value={counts.sent_today} sub={dailyLimitCaption(campaign.daily_cap)} />
+              <Tile label="Ready to send" value={counts.ready_to_send ?? 0} sub="Send them" href="/review#ready-to-send" />
               <Tile label="Needs you" value={counts.needs_you} sub="Open Review" href="/review" />
               <Tile label="New matches" value={counts.new_matches_today} sub="See matches" href="/matches" />
             </div>

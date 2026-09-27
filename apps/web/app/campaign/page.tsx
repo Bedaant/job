@@ -9,6 +9,8 @@ import { buildCampaignPatch, formFromCampaign, statusView, validateCampaignForm,
 import { DAILY_CAP_MAX, type Errors } from "@/lib/onboarding";
 import { AppShell, useRequireAuth } from "@/components/AppShell";
 import { useCampaignStatus } from "@/components/useCampaignStatus";
+import { SubmitModeChoice } from "@/components/SubmitModeChoice";
+import { submitModeLine } from "@/lib/assisted";
 import { Chips, Field } from "@/components/onboarding/fields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -141,9 +143,7 @@ function StatusCard({ campaign }: { campaign: Campaign }) {
           </h2>
           {campaign.status === "active" && (
             <p className="text-muted-foreground">
-              {campaign.auto_submit
-                ? "She sends applications herself, within the settings below."
-                : "She prepares applications and they wait in Review for your approval."}
+              {submitModeLine(campaign.auto_submit)}
             </p>
           )}
         </div>
@@ -259,16 +259,7 @@ function SettingsForm({ campaign }: { campaign: Campaign }) {
         error={errors.min_match_score}
         hint="Maggie skips jobs that fit less well than this."
       />
-      <Switch
-        label="Send without asking me first"
-        checked={form.auto_submit}
-        onChange={(auto_submit) => set({ auto_submit })}
-        description={
-          form.auto_submit
-            ? "On: Maggie sends applications to employers herself, up to your daily cap. Anything sent stays sent."
-            : "Off: Maggie prepares each application and it waits in Review until you approve it."
-        }
-      />
+      <SubmitModeChoice autoSubmit={form.auto_submit} onChange={(auto_submit) => set({ auto_submit })} />
       <div className="space-y-1.5">
         <Label htmlFor="tailoring-notes">Notes for writing applications</Label>
         <Textarea

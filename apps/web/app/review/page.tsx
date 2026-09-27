@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
@@ -9,6 +9,54 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApplicationCard } from "@/components/review/ApplicationCard";
+import { SendCard } from "@/components/review/SendCard";
+import type { ReviewApplication } from "@/lib/api";
+import { EXTENSION_NOTE, needsYouOnly, undoMessage, UNDO_MS, type SendAction } from "@/lib/assisted";
+
+type Pending = { application: ReviewApplication; action: SendAction };
+
+/**
+ * "I've sent it" / "Not for me" hide the card at once and wait UNDO_MS before
+ * telling the server, so Undo never has to reverse a write. Leaving the page
+ * (or acting on another card) sends the waiting change immediately.
+ */
+function useUndoable(commit: (p: Pending) => void) {
+  const [pending, setPending] = useState<Pending | null>(null);
+  const ref = useRef<Pending | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const commitRef = useRef(commit);
+  commitRef.current = commit;
+
+  const flush = useCallback(() => {
+    clearTimeout(timer.current);
+    if (ref.current) commitRef.current(ref.current);
+    ref.current = null;
+    setPending(null);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, [flush]);
+
+  function start(p: Pending) {
+    flush();
+    ref.current = p;
+    setPending(p);
+    timer.current = setTimeout(flush, UNDO_MS);
+  }
+
+  function undo() {
+    clearTimeout(timer.current);
+    ref.current = null;
+    setPending(null);
+  }
+
+  return { pending, start, undo };
+}
 
 export default function ReviewPage() {
   const queryClient = useQueryClient();
@@ -37,6 +85,36 @@ export default function ReviewPage() {
     queryFn: () => api.listFacts(profile!.id),
     enabled: !!profile,
   });
+
+  const readyQuery = useQuery({
+    queryKey: ["ready-to-send", profile?.id],
+    queryFn: () => api.listReadyToSend(profile!.id),
+    enabled: !!profile,
+  });
+  const [sendError, setSendError] = useState<string | null>(null);
+  const undoButton = useRef<HTMLButtonElement>(null);
+
+  const { pending, start, undo } = useUndoable(({ application, action }) => {
+    const done = action === "sent" ? api.markApplied(application.id) : api.dismissApplication(application.id);
+    done
+      .then(() => {
+        queryClient.setQueryData<ReviewApplication[]>(["ready-to-send", profile?.id], (old) =>
+          old?.filter((a) => a.id !== application.id),
+        );
+        queryClient.invalidateQueries({ queryKey: ["today"] });
+      })
+      .catch((err) => {
+        setSendError(
+          `Couldn't save that for ${application.job.company}: ${err instanceof ApiError ? err.message : "network error"}. It's back in the list.`,
+        );
+        queryClient.invalidateQueries({ queryKey: ["ready-to-send", profile?.id] });
+      });
+  });
+
+  // The card the user acted on is gone; keep keyboard focus somewhere useful.
+  useEffect(() => {
+    if (pending) undoButton.current?.focus();
+  }, [pending]);
 
   const approveMutation = useMutation({
     mutationFn: (ids: string[]) => api.batchApprove(ids),
@@ -72,7 +150,10 @@ export default function ReviewPage() {
 
   if (!ready) return null;
 
-  const queue = queueQuery.data ?? [];
+  const readyAll = readyQuery.data ?? [];
+  const readyList = readyAll.filter((a) => a.id !== pending?.application.id);
+  // A prepared application shows once, as ready to send — not again below.
+  const queue = needsYouOnly(queueQuery.data ?? [], readyAll);
   const allSelected = queue.length > 0 && selected.size === queue.length;
 
   function toggleAll(checked: boolean) {
@@ -91,8 +172,61 @@ export default function ReviewPage() {
   return (
     <AppShell
       title="Review"
-      description="Applications Maggie tailored from your facts, plus anything a form asked that only you can answer. Approve to send."
+      description="Applications Maggie prepared from your facts. You send them; she never makes anything up."
     >
+      {(readyList.length > 0 || pending) && (
+        <section id="ready-to-send" aria-labelledby="ready-heading" className="mb-10 scroll-mt-20 space-y-4">
+          <div className="space-y-1">
+            <h2 id="ready-heading" className="text-xl font-semibold tracking-tight">
+              Ready to send <span className="font-normal text-muted-foreground">({readyList.length})</span>
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Everything is prepared. Download the resume, copy the text, open the form and press Submit. {EXTENSION_NOTE}
+            </p>
+          </div>
+
+          <div role="status" aria-live="polite">
+            {pending && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted px-4 py-3">
+                <p className="text-sm font-medium">{undoMessage(pending.action, pending.application.job)}</p>
+                <Button ref={undoButton} type="button" variant="outline" className="min-h-11" onClick={undo}>
+                  Undo
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {sendError && (
+            <p role="alert" className="rounded-xl bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+              {sendError}
+            </p>
+          )}
+
+          {readyList.map((application) => (
+            <SendCard
+              key={application.id}
+              application={application}
+              onDownloadResume={() => api.downloadTailoredResumeDocx(application.id)}
+              onSent={() => {
+                setSendError(null);
+                start({ application, action: "sent" });
+              }}
+              onDismiss={() => {
+                setSendError(null);
+                start({ application, action: "dismissed" });
+              }}
+            />
+          ))}
+        </section>
+      )}
+
+      {readyQuery.isError && (
+        <p role="alert" className="mb-6 text-sm text-destructive">
+          Couldn&apos;t load what&apos;s ready to send:{" "}
+          {readyQuery.error instanceof ApiError ? readyQuery.error.message : "unknown error"}
+        </p>
+      )}
+
       {(profilesQuery.isLoading || (!!profile && queueQuery.isLoading)) && (
         <div className="space-y-4">
           <Skeleton className="h-48 w-full rounded-2xl" />
@@ -110,7 +244,11 @@ export default function ReviewPage() {
         </div>
       )}
 
-      {queueQuery.isSuccess && queue.length === 0 && (
+      {queue.length > 0 && readyList.length > 0 && (
+        <h2 className="mb-4 text-xl font-semibold tracking-tight">Needs you first</h2>
+      )}
+
+      {queueQuery.isSuccess && queue.length === 0 && readyList.length === 0 && !pending && (
         <div className="rounded-2xl border border-dashed px-6 py-12 text-center">
           <p className="text-lg font-semibold">You&apos;re all caught up</p>
           <p className="mx-auto mt-1 max-w-md text-muted-foreground">
@@ -167,6 +305,8 @@ export default function ReviewPage() {
                   // The backend derives pending_questions from the bank, so a
                   // refetch is what removes the answered one.
                   await queryClient.invalidateQueries({ queryKey: ["review-queue", profile?.id] });
+                  // Answering the last question can make it ready to send.
+                  await queryClient.invalidateQueries({ queryKey: ["ready-to-send", profile?.id] });
                 }}
               />
             ))}

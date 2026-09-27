@@ -8,6 +8,7 @@ import { ApiError, api } from "@/lib/api";
 import type { Campaign } from "@/lib/api";
 import { errorText } from "@/lib/onboarding";
 import { ExtensionStatus } from "@/components/ExtensionStatus";
+import { submitModeLine } from "@/lib/assisted";
 import { FailureNotice } from "./fields";
 
 export function StepDone({ campaign, profileId, started }: { campaign: Campaign; profileId: string; started: boolean }) {
@@ -38,9 +39,7 @@ export function StepDone({ campaign, profileId, started }: { campaign: Campaign;
           Maggie checks {campaign.sources.length} {campaign.sources.length === 1 ? "source" : "sources"} for{" "}
           {campaign.roles.join(", ")}, keeping anything above {Math.round(campaign.min_match_score * 100)}%, up to{" "}
           {campaign.daily_cap} a day.{" "}
-          {campaign.auto_submit
-            ? "Applications will be submitted without asking you again."
-            : "Everything waits in your review queue until you approve it."}
+          {submitModeLine(campaign.auto_submit)}
         </p>
       </div>
 
@@ -50,7 +49,10 @@ export function StepDone({ campaign, profileId, started }: { campaign: Campaign;
         </h3>
         <p className="text-sm text-muted-foreground">
           Maggie finds and tailors from here, but she sends applications from <em>your</em> browser, signed in as
-          you — never from a shared bot. Until the ApplyScout extension is running, nothing is sent.
+          you — never from a shared bot.{" "}
+          {campaign.auto_submit
+            ? "Until the ApplyScout extension is running, nothing is sent."
+            : "In Assisted mode it's optional: it fills in the employer's form for you, and you press Submit."}
         </p>
         <ol className="list-decimal space-y-2 pl-5 text-sm">
           <li>

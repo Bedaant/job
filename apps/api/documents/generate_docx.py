@@ -31,13 +31,24 @@ def _format_date_range(period_from, period_to) -> str | None:
     return f"{period_from.strftime('%b %Y')} – {end}"
 
 
-def generate_resume_docx(headline: str | None, facts: list[dict]) -> bytes:
+def generate_resume_docx(
+    headline: str | None, facts: list[dict], name: str | None = None, contact: list[str] | None = None
+) -> bytes:
     document = docx.Document()
 
     normal = document.styles["Normal"]
     normal.font.name = BODY_FONT
     normal.font.size = Pt(11)
     document.styles.add_style(DATE_RANGE_STYLE, WD_STYLE_TYPE.PARAGRAPH)
+
+    # Name + contact in the body, not a Word header: ATS parsers skip headers
+    # (SPEC §3.5 rule 3 keeps them empty), and a heading would break rule 5.
+    if name:
+        run = document.add_paragraph().add_run(name)
+        run.bold = True
+        run.font.size = Pt(16)
+    if contact:
+        document.add_paragraph(" · ".join(contact))
 
     if headline:
         document.add_paragraph("Summary", style="Heading 1")
