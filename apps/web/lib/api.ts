@@ -142,6 +142,10 @@ export interface Campaign extends CampaignCreate {
   last_run_at: string | null;
 }
 
+/** PATCH /campaigns/{id} — every field optional; send only what changed.
+ * `status` moves are validated server-side (campaigns.ALLOWED_TRANSITIONS). */
+export type CampaignUpdate = Partial<CampaignCreate> & { status?: CampaignStatus };
+
 export interface CampaignStats {
   applied_today: number;
   daily_cap: number;
@@ -237,6 +241,8 @@ export const api = {
     request<Campaign>("/campaigns", { method: "POST", body: JSON.stringify(body) }),
   runCampaign: (campaignId: string) =>
     request<{ job_id: string }>(`/campaigns/${campaignId}/run`, { method: "POST" }),
+  updateCampaign: (campaignId: string, body: CampaignUpdate) =>
+    request<Campaign>(`/campaigns/${campaignId}`, { method: "PATCH", body: JSON.stringify(body) }),
   getCampaignStats: (campaignId: string) => request<CampaignStats>(`/campaigns/${campaignId}/stats`),
   getBasics: (profileId: string) => request<ApplicantBasics>(`/profiles/${profileId}/basics`),
   putBasics: (profileId: string, basics: ApplicantBasics) =>

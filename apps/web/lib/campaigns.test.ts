@@ -85,3 +85,36 @@ describe("POST /campaigns", () => {
     expect((await api.getCampaignStats("c1")).remaining_today).toBe(8);
   });
 });
+
+describe("PATCH /campaigns/{id}", () => {
+  it("sends exactly the given body and returns the updated campaign", async () => {
+    let method = "";
+    let received: unknown = null;
+    server.use(
+      http.patch(`${API_URL}/campaigns/c1`, async ({ request }) => {
+        method = request.method;
+        received = await request.json();
+        return HttpResponse.json({ id: "c1", status: "paused" });
+      }),
+    );
+
+    const updated = await api.updateCampaign("c1", { status: "paused" });
+
+    expect(method).toBe("PATCH");
+    expect(received).toEqual({ status: "paused" });
+    expect(updated.status).toBe("paused");
+  });
+
+  it("surfaces a 422 (e.g. an illegal status move) as an ApiError with the server's message", async () => {
+    server.use(
+      http.patch(`${API_URL}/campaigns/c1`, () =>
+        HttpResponse.json({ detail: "Cannot move a archived campaign to active" }, { status: 422 }),
+      ),
+    );
+
+    const err = await api.updateCampaign("c1", { status: "active" }).catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.status).toBe(422);
+    expect(err.message).toBe("Cannot move a archived campaign to active");
+  });
+});
