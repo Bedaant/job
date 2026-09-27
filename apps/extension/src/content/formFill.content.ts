@@ -157,7 +157,7 @@ function attachFile(el: HTMLInputElement, file: File): void {
  * the driver's per-item timeout. The interactive path below catches and alerts,
  * so nothing changes for a user who triggered the fill themselves.
  */
-export async function fillForm(profileId: string): Promise<FillOutcome> {
+export async function fillForm(profileId: string, atsType?: string | null): Promise<FillOutcome> {
   const { descriptors, elements, fileFields } = extractFields();
   if (descriptors.length === 0 && fileFields.length === 0) {
     throw new Error("no form found on page");
@@ -173,7 +173,7 @@ export async function fillForm(profileId: string): Promise<FillOutcome> {
     const resp = await fetch(`${API_BASE_URL}/extension/map-fields`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ profile_id: profileId, url: location.href, fields: descriptors }),
+      body: JSON.stringify({ profile_id: profileId, url: location.href, fields: descriptors, ats_type: atsType ?? null }),
     });
     if (!resp.ok) {
       throw new Error(`could not map fields (${resp.status})`);

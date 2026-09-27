@@ -24,6 +24,7 @@ export type WorkItem = {
   apply_url: string;
   company: string;
   title: string;
+  ats_type?: string | null;
 };
 
 type Outcome = "submitted" | "failed" | "needs_human";

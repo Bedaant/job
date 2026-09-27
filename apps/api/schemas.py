@@ -325,6 +325,10 @@ class MapFieldsRequest(BaseModel):
     profile_id: str
     url: str
     fields: List[FieldDescriptorIn]
+    # From the work item (/extension/work-queue). A bounded string, not a
+    # Literal: the resolver can return an LLM-classified type, and an unknown
+    # one must fall through to generic matching, not 422 the whole fill.
+    ats_type: Optional[str] = Field(None, max_length=32)
 
 
 class FieldMappingOut(BaseModel):

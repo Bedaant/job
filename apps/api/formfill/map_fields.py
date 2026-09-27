@@ -123,7 +123,9 @@ def _from_answer_bank(field_id: str, value: str) -> dict:
     return {"field_id": field_id, "maps_to": "answer_bank", "confidence": 1.0, "value": value}
 
 
-def map_form_fields(fields: list[dict], profile_summary: dict, answer_lookup=None) -> list[dict]:
+def map_form_fields(
+    fields: list[dict], profile_summary: dict, answer_lookup=None, ats_type: str | None = None
+) -> list[dict]:
     """`answer_lookup(question_text) -> str | None` is the answer bank, injected
     rather than imported so this module stays free of a DB session and its tests
     stay free of a database. main.py passes
@@ -158,7 +160,7 @@ def map_form_fields(fields: list[dict], profile_summary: dict, answer_lookup=Non
                 bank_results[field_id] = _from_answer_bank(field_id, answer)
             continue
 
-        match = match_field_deterministic(field, profile_summary)
+        match = match_field_deterministic(field, profile_summary, ats_type)
         if match is not None:
             deterministic_results[field_id] = match
             continue

@@ -932,7 +932,7 @@ def extension_map_fields(
             return None
         return answer_bank_service.serve_answer(db, profile.id, question_text)
 
-    return map_form_fields(fields, profile_summary, answer_lookup=answer_lookup)
+    return map_form_fields(fields, profile_summary, answer_lookup=answer_lookup, ats_type=payload.ats_type)
 
 
 # ---------- Answer bank (ADR-015): answer once, reuse on every later form ----
