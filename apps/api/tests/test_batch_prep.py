@@ -42,6 +42,7 @@ TAILOR_RESULT = {
     "bullets": [{"text": "Led a team", "source_fact_ids": ["f1"]}],
     "cover_letter": "Dear hiring manager...",
     "flagged_unsupported_claims": ["invented claim"],
+    "keyword_gap": {"coverage_before": 0.5, "coverage_after": 0.75, "missing": ["Terraform"]},
 }
 
 
@@ -66,6 +67,7 @@ def test_prepare_application_for_review_persists_tailored_content_and_flags(_moc
     assert result.status == models.ApplicationStatus.ready_for_review
     assert result.tailored_resume_json["summary"] == "A backend engineer."
     assert result.flagged_unsupported_claims == ["invented claim"]
+    assert result.tailored_resume_json["keyword_gap"]["missing"] == ["Terraform"]
     assert db.query(models.Event).filter(models.Event.type == "application.ready_for_review").count() == 1
 
 

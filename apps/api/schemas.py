@@ -499,3 +499,5 @@ class TailorResponse(BaseModel):
     bullets: List[BulletOut]
     cover_letter: str
     flagged_unsupported_claims: List[str] = []
+    # {coverage_before, coverage_after, missing} — missing is a gap to show, never resume text.
+    keyword_gap: Optional[dict] = None

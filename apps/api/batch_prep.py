@@ -27,7 +27,9 @@ def prepare_application_for_review(db: Session, application: models.Application)
 
     result = tailor_application(job_dict, facts_list)
 
-    application.tailored_resume_json = {"summary": result["summary"], "bullets": result["bullets"]}
+    application.tailored_resume_json = {
+        "summary": result["summary"], "bullets": result["bullets"], "keyword_gap": result.get("keyword_gap"),
+    }
     application.tailored_cover_letter = result["cover_letter"]
     application.flagged_unsupported_claims = result["flagged_unsupported_claims"]
     application.status = models.ApplicationStatus.ready_for_review

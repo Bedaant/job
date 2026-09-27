@@ -635,7 +635,9 @@ def tailor(
         .first()
     )
     if application:
-        application.tailored_resume_json = {"summary": result["summary"], "bullets": result["bullets"]}
+        application.tailored_resume_json = {
+            "summary": result["summary"], "bullets": result["bullets"], "keyword_gap": result.get("keyword_gap"),
+        }
         application.tailored_cover_letter = result["cover_letter"]
         db.commit()
 
