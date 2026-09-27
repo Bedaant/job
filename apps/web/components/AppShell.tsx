@@ -12,10 +12,13 @@ import { ExtensionStatus } from "@/components/ExtensionStatus";
 const NAV = [
   { href: "/today", label: "Today", Icon: HouseIcon },
   { href: "/review", label: "Review", Icon: InboxIcon },
+  // Matches is a section of Applications (/applications/matches); /matches redirects there.
+  { href: "/applications", label: "Applications", Icon: BriefcaseIcon },
   { href: "/campaign", label: "Campaign", Icon: RocketIcon },
-  { href: "/matches", label: "Matches", Icon: BriefcaseIcon },
-  { href: "/facts", label: "Your facts", Icon: IdCardIcon },
+  { href: "/facts", label: "Profile", Icon: IdCardIcon },
 ];
+
+const isCurrent = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
 /** Redirects to /login when there is no token; true once it is safe to render. */
 export function useRequireAuth(): boolean {
@@ -82,7 +85,7 @@ export function AppShell({
           </Link>
           <nav aria-label="Main" className="hidden items-center gap-1 sm:flex">
             {NAV.map((item) => {
-              const current = pathname === item.href;
+              const current = isCurrent(pathname, item.href);
               return (
                 <Link
                   key={item.href}
@@ -117,7 +120,7 @@ export function AppShell({
       >
         <ul className="grid grid-cols-5">
           {NAV.map(({ href, label, Icon }) => {
-            const current = pathname === href;
+            const current = isCurrent(pathname, href);
             return (
               <li key={href}>
                 <Link

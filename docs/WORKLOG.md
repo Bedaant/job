@@ -102,6 +102,74 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-28 (latest+46) — Applications: tracker, detail page, match actions
+
+**What changed.**
+- *API (one block at the end of `main.py`, after review-queue/ready-to-send so
+  `/applications/{id}` can't swallow those paths).* `GET /applications` rows gain `job
+  {id, title, company, location, apply_url}` + `created_at`/`updated_at`
+  (`ApplicationListOut`). New `GET /applications/{id}` (owner-scoped 404): job, status,
+  match score, timestamps, tailored summary, bullets each with `sources: [{id,
+  achievement}]` (the user's own fact text; ids that don't resolve are left out), cover
+  letter, flags, pending questions (bank-answered ones dropped, same as review), stored
+  `keyword_gap`, `keywords {matched, reworded, missing}` (live `compute_keyword_gap` —
+  deterministic, no model call; `reworded` = its `reword` suggestions), `needs_input`,
+  `last_attempt`, `history` (every `[outcome] reason` stamp, new
+  `needs_input.attempt_history`). `PATCH /matches/{id}` `{state: new|saved|dismissed}`
+  (422 otherwise). `GET /matches` hides dismissed and adds `application_id` /
+  `application_status`. `POST /matches/{id}/prepare`: get-or-create the Application
+  (`saved`), mark the match saved, enqueue the existing `prepare_applications_task([id])`
+  (batch_prep path, not duplicated); already-prepared → `queued: false`, no re-tailor;
+  enqueue failure → 503 with the application kept (retry reuses it).
+- *API, new status `withdrawn`* (migration **`0020_application_status_withdrawn.py`**,
+  `ALTER TYPE … ADD VALUE`, **not applied to Neon**). Numbered 0020 because 0019 is the
+  profile agent's; `down_revision = "0018"` — **if 0019 merges, change it to "0019"** or
+  Alembic has two heads. Not `dismissed`: that means declined-before-sending and its undo
+  clears `applied_at`; a withdrawal keeps the sent date.
+- *Web NAV:* Today, Review, Applications, Campaign, Profile (→ /facts). 5 items on the
+  phone tab bar; `aria-current` also on sub-paths (`/applications/…`).
+- *Web /applications (Pipeline):* columns Applied (applied, submitted_unconfirmed,
+  submitting) / Heard back (recruiter, oa) / Interviewing / Offer, plus a collapsed
+  `<details>` Closed (rejected, withdrawn). Not-yet-sent rows are a one-line count linking
+  to Review. Moving a card = a native labelled `<select>` "Move to" (44px, keyboard/screen
+  reader for free, no drag, no new deps) → PATCH status, optimistic with rollback; one live
+  region announces "Moved X to Y" or the failure (`role=alert`). `submitted_unconfirmed`
+  shows as a warning-toned "Couldn't confirm" pill; its menu offers "I've confirmed it was sent".
+- *Web /applications/matches (Matches):* Prepare this one / Save (aria-pressed) / Not for
+  me / View listing; a match with an application links to its detail instead. `/matches`
+  now redirects there (Today's links keep working). Pipeline/Matches are two real links
+  (`aria-current`), not JS tabs.
+- *Web /applications/[id]:* status + Move menu, match %, sent/found times, "Couldn't
+  confirm" note, why Maggie stopped (only while not yet sent), Open the job, Download
+  tailored resume, keyword coverage before → after + Already in your facts / Reworded /
+  "Not in your facts — left out", tailored bullets next to the fact each came from, truth-
+  check flags, cover letter, "What happened" history.
+
+**Files.** api: `main.py`, `schemas.py`, `models.py`, `needs_input.py`,
+`alembic/versions/0020_application_status_withdrawn.py`, `tests/test_applications_tracker.py`
+(new). web: `lib/applications.ts` + `.test.ts` (new), `lib/api.ts`,
+`components/AppShell.tsx`, `app/applications/{page,parts}.tsx`,
+`app/applications/matches/page.tsx`, `app/applications/[id]/page.tsx` (new),
+`app/matches/page.tsx` (now a redirect).
+
+**Dependencies added.** None.
+
+**Tests.** Red first. api 578 → **590** (11 red: missing job on list rows, 404/405 routes,
+`withdrawn` 422). web 105 → **118** (module-not-found red). `tsc` clean, `next build`
+clean. Browser (scratch SQLite API :8100, `next start` :3100, never Neon): /matches →
+/applications/matches, "Not for me" hides the card, 390px no horizontal scroll, Move
+SRE (Couldn't confirm) → "I've confirmed it was sent" announced and moved, select 44px
+tall, detail page renders keywords/bullets-with-facts/cover letter/history; desktop 1280
+four columns + collapsed Closed. Found in the browser and fixed: the "Maggie stopped"
+callout showed on an application already sent.
+
+**Not done / notes.** "Prepare this one" not clicked in the browser (would enqueue on the
+real Redis); covered by pytest. No undo for a move (the menu can move it back). Today's
+tiles still link `/matches` (redirects; `lib/today.ts` not mine). Apply 0020 before
+deploying (a `withdrawn` write fails on 0018).
+
+---
+
 ### 2026-09-27 (latest+42) — Legal consent is never automated; country codes bind to option names
 
 **What changed.** `answer_bank.is_consent_field(label, options)` — arbitration

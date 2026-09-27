@@ -12,7 +12,7 @@ from rq.exceptions import DuplicateJobError
 from rq.job import Job as RQJob
 
 import answer_bank as answer_bank_service
-from needs_input import last_attempt, needs_input
+from needs_input import attempt_history, last_attempt, needs_input
 from core.config import get_settings
 from core.deps import get_current_user, get_owned_profile, resolve_profile_ownership
 from database import get_db
@@ -114,16 +114,6 @@ def create_application(
     db.commit()
     db.refresh(application)
     return application
-
-
-@app.get("/applications", response_model=list[schemas.ApplicationOut])
-def list_applications(profile: models.Profile = Depends(get_owned_profile), db: Session = Depends(get_db)):
-    return (
-        db.query(models.Application)
-        .filter(models.Application.profile_id == profile.id)
-        .order_by(models.Application.created_at.desc())
-        .all()
-    )
 
 
 # ---------- Review queue (sub-projects #2/#3, ADR-001's approval checkpoint) ----------
@@ -935,11 +925,6 @@ def update_profile_basics(
 
 # ---------- Matching (Phase 3, SPEC.md §3.2) ----------
 
-@app.get("/matches", response_model=list[schemas.MatchOut])
-def list_matches(profile: models.Profile = Depends(get_owned_profile), db: Session = Depends(get_db)):
-    return build_matches(db, profile)
-
-
 @app.get("/matches/{match_id}/keyword-gap", response_model=schemas.KeywordGapOut)
 def get_match_keyword_gap(
     match_id: str,
@@ -1302,6 +1287,153 @@ def update_notification(
     db.commit()
     db.refresh(notif)
     return notif
+
+
+# ---------- Applications tracker + detail, match actions (WORKLOG latest+46) ----------
+# Registered after /applications/review-queue and /ready-to-send on purpose: a
+# `/applications/{application_id}` route declared first would swallow those paths.
+
+@app.get("/applications", response_model=list[schemas.ApplicationListOut])
+def list_applications(profile: models.Profile = Depends(get_owned_profile), db: Session = Depends(get_db)):
+    return (
+        db.query(models.Application)
+        .filter(models.Application.profile_id == profile.id)
+        .order_by(models.Application.created_at.desc())
+        .all()
+    )
+
+
+@app.get("/applications/{application_id}", response_model=schemas.ApplicationDetailOut)
+def get_application_detail(
+    application_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    row = _owned_application(db, current_user, application_id)
+    job = row.job
+    facts = db.query(models.ResumeFact).filter(models.ResumeFact.profile_id == row.profile_id).all()
+    facts_by_id = {f.id: f for f in facts}
+    tailored = row.tailored_resume_json or {}
+    bullets = [
+        {
+            **b,
+            "sources": [
+                {"id": fid, "achievement": facts_by_id[fid].achievement}
+                for fid in b.get("source_fact_ids") or [] if fid in facts_by_id
+            ],
+        }
+        for b in tailored.get("bullets") or [] if b.get("text")
+    ]
+    # Deterministic and free (no model call), so it runs on every view.
+    gap = compute_keyword_gap(job.description or "", facts, job_skills=job.skills, job_title=job.title)
+    reworded = sorted({s["keyword"] for s in gap["suggestions"] if s["action"] == "reword"})
+    match = (
+        db.query(models.Match)
+        .filter(models.Match.profile_id == row.profile_id, models.Match.job_id == row.job_id)
+        .first()
+    )
+    pending = [
+        q for q in row.pending_questions or []
+        if answer_bank_service.find_answer(db, row.profile_id, q) is None
+    ]
+    return schemas.ApplicationDetailOut(
+        id=row.id, status=row.status.value, job=job, portal=row.portal,
+        match_score=float(match.score) if match else None,
+        created_at=row.created_at, updated_at=row.updated_at,
+        applied_at=row.applied_at, next_follow_up_at=row.next_follow_up_at,
+        tailored_summary=tailored.get("summary"), tailored_bullets=bullets,
+        tailored_cover_letter=row.tailored_cover_letter,
+        flagged_unsupported_claims=row.flagged_unsupported_claims or [],
+        pending_questions=pending,
+        keyword_gap=tailored.get("keyword_gap"),
+        keywords=schemas.KeywordsOut(
+            matched=[m["keyword"] for m in gap["matched"] if m["keyword"] not in reworded],
+            reworded=reworded,
+            missing=[m["keyword"] for m in gap["missing"]],
+        ),
+        needs_input=needs_input(row.notes, pending),
+        last_attempt=last_attempt(row.notes),
+        history=attempt_history(row.notes),
+    )
+
+
+@app.get("/matches", response_model=list[schemas.MatchListOut])
+def list_matches(profile: models.Profile = Depends(get_owned_profile), db: Session = Depends(get_db)):
+    apps = {
+        a.job_id: a
+        for a in db.query(models.Application).filter(models.Application.profile_id == profile.id)
+    }
+    result = []
+    for m in build_matches(db, profile):
+        if m.state == "dismissed":
+            continue
+        a = apps.get(m.job_id)
+        result.append(schemas.MatchListOut(
+            id=m.id, job=m.job, score=float(m.score), breakdown=m.breakdown, state=m.state,
+            application_id=a.id if a else None,
+            application_status=a.status.value if a else None,
+        ))
+    return result
+
+
+def _owned_match(db: Session, user: models.User, match_id: str) -> models.Match:
+    match = (
+        db.query(models.Match)
+        .join(models.Profile)
+        .filter(models.Match.id == match_id, models.Profile.user_id == user.id)
+        .first()
+    )
+    if not match:
+        raise HTTPException(404, "Match not found")
+    return match
+
+
+@app.patch("/matches/{match_id}", response_model=schemas.MatchOut)
+def update_match(
+    match_id: str,
+    payload: schemas.MatchUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    match = _owned_match(db, current_user, match_id)
+    match.state = payload.state
+    db.commit()
+    db.refresh(match)
+    return match
+
+
+@app.post("/matches/{match_id}/prepare", response_model=schemas.PrepareOut)
+def prepare_match(
+    match_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """"Prepare this one": get-or-create the Application, then the same RQ batch-prep
+    task /applications/batch-prepare uses (tailor + truth-check -> ready_for_review).
+    Only a `saved` (never prepared) application is enqueued, so a second press
+    doesn't re-tailor."""
+    match = _owned_match(db, current_user, match_id)
+    application = (
+        db.query(models.Application)
+        .filter(models.Application.profile_id == match.profile_id, models.Application.job_id == match.job_id)
+        .first()
+    )
+    if application is None:
+        application = models.Application(
+            profile_id=match.profile_id, job_id=match.job_id, status=models.ApplicationStatus.saved
+        )
+        db.add(application)
+    match.state = "saved"
+    db.commit()
+    db.refresh(application)
+    if application.status != models.ApplicationStatus.saved:
+        return schemas.PrepareOut(application_id=application.id, status=application.status.value, queued=False)
+    try:
+        get_queue().enqueue(prepare_applications_task, [application.id])
+    except Exception:
+        logging.getLogger(__name__).exception("prepare enqueue failed for %s", application.id)
+        raise HTTPException(503, "Maggie couldn't start preparing this one right now. It's saved — try again in a minute.")
+    return schemas.PrepareOut(application_id=application.id, status=application.status.value, queued=True)
 
 
 @app.get("/health")
