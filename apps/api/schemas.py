@@ -368,6 +368,17 @@ class BulletOut(BaseModel):
     source_fact_ids: List[str] = []  # SPEC.md §3.3 — empty only on the nvidia_smoke dev path
 
 
+class NeedsInputOut(BaseModel):
+    kind: Literal["question", "upload", "captcha", "account", "other"]
+    message: str
+    demographic_left_blank: bool = False
+
+
+class LastAttemptOut(BaseModel):
+    outcome: Literal["submitted", "failed", "needs_human"]
+    message: str
+
+
 class ApplicationReviewOut(BaseModel):
     """Sub-project #2/#3's exact contract — the review-queue frontend
     (apps/web/app/review/page.tsx) was built against this shape before this
@@ -383,6 +394,9 @@ class ApplicationReviewOut(BaseModel):
     tailored_cover_letter: Optional[str] = None
     flagged_unsupported_claims: List[str] = []
     pending_questions: List[str] = []
+    # Why the last auto-apply run stopped (needs_input.py), so the card can say it.
+    needs_input: Optional[NeedsInputOut] = None
+    last_attempt: Optional[LastAttemptOut] = None
     created_at: datetime
 
 
