@@ -58,7 +58,7 @@ export function StepResume({
         <div className="space-y-3">
           <FailureNotice
             title="We could not read that file"
-            detail={`${error} You can try the other format (.pdf or .docx) — or skip the upload and write your facts yourself.`}
+            detail={error}
           />
           <button
             type="button"

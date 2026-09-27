@@ -1,7 +1,7 @@
 // Onboarding wizard state, gating and payload shaping — kept out of the React
 // components on purpose so the rules that decide "can this user move on" and
 // "what exactly gets posted" are testable without a DOM (no jsdom installed).
-import { api, type ApplicantBasics, type Campaign, type CampaignCreate, type FactDraft } from "./api";
+import { api, ApiError, type ApplicantBasics, type Campaign, type CampaignCreate, type FactDraft } from "./api";
 
 export type WizardStep = "resume" | "facts" | "preferences" | "campaign" | "done";
 
@@ -224,4 +224,11 @@ export async function launchCampaign(body: CampaignCreate): Promise<{ campaign: 
     () => false,
   );
   return { campaign, started };
+}
+
+/** User-facing text for any failure: the API's own message (written for users),
+ *  otherwise a connection hint. Never a raw exception string. */
+export function errorText(err: unknown): string {
+  if (err instanceof ApiError && err.message) return err.message;
+  return "We couldn't reach ApplyScout. Check your connection and try again.";
 }

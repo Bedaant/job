@@ -163,3 +163,26 @@ def test_facts_bulk_never_auto_persists_from_parsing_alone(client):
 
     resp = test_client.get(f"/resume-facts?profile_id={profile_id}", headers=headers)
     assert resp.json() == [], "facts must not be persisted until facts:bulk is explicitly called"
+
+
+def test_a_failed_parse_never_shows_the_raw_provider_error(client):
+    """Found by the a11y audit: a bad/missing ANTHROPIC_API_KEY showed users
+    "Error code: 401 - {'type': 'error', ... 'API key is invalid.'}" and told them
+    to try another file format. The raw exception is internal; the user gets a
+    plain message that points at the by-hand path instead."""
+    test_client, SessionLocal = client
+    token = _signup_and_login(test_client, "resume-fail@example.com")
+    profile_id = _create_profile(SessionLocal, "resume-fail@example.com")
+    raw = "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'API key is invalid.'}}"
+
+    with patch("main.extract_facts_from_text", side_effect=RuntimeError(raw)):
+        resp = test_client.post(
+            f"/profiles/{profile_id}/resume",
+            headers={"Authorization": f"Bearer {token}"},
+            files={"file": ("resume.docx", _resume_docx_bytes(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        )
+
+    body = resp.json()
+    assert body["status"] == "failed"
+    assert "API key" not in body["error"] and "401" not in body["error"] and "{" not in body["error"]
+    assert "by hand" in body["error"]

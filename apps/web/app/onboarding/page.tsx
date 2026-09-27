@@ -15,7 +15,7 @@ import {
   emptyPreferences,
   stepErrors,
 } from "@/lib/onboarding";
-import { launchCampaign } from "@/lib/onboarding";
+import { errorText, launchCampaign } from "@/lib/onboarding";
 import type { CampaignDraft, Preferences, WizardStep } from "@/lib/onboarding";
 import { getToken } from "@/lib/auth";
 import { FailureNotice } from "@/components/onboarding/fields";
@@ -47,6 +47,10 @@ export default function OnboardingPage() {
     if (!getToken()) router.push("/login");
     else setAuthed(true);
   }, [router]);
+
+  useEffect(() => {
+    document.title = "Set up · ApplyScout";
+  }, []);
 
   // Focus management: a wizard that swaps the whole panel without moving focus
   // leaves a keyboard or screen-reader user stranded on a button that no longer
@@ -184,7 +188,7 @@ export default function OnboardingPage() {
         {profilesQuery.isError && (
           <FailureNotice
             title="Could not load your account"
-            detail={`${String(profilesQuery.error)} — the API may not be running. Nothing you type here will save until it is.`}
+            detail={`${errorText(profilesQuery.error)} Nothing you type here will save until this works.`}
           />
         )}
 
@@ -229,7 +233,7 @@ export default function OnboardingPage() {
                     ? upload.error.message
                     : "Upload failed."
                   : upload.data?.status === "failed"
-                    ? upload.data.error || "The parser could not read it."
+                    ? upload.data.error || "We couldn't read this resume. You can add your facts by hand instead."
                     : null
               }
               onByHand={() => {
@@ -257,7 +261,7 @@ export default function OnboardingPage() {
             <div className="mt-4">
               <FailureNotice
                 title="Your facts were not saved"
-                detail={`${saveFacts.error instanceof ApiError ? saveFacts.error.message : String(saveFacts.error)} — nothing was lost from this page, but you cannot continue until this succeeds.`}
+                detail={`${errorText(saveFacts.error)} Nothing on this page was lost.`}
               />
             </div>
           )}

@@ -183,3 +183,15 @@ describe("buildCampaignBody", () => {
     expect(body.locations).toEqual(["Berlin"]);
   });
 });
+
+describe("errorText", () => {
+  it("shows the API's own message, never a raw exception", async () => {
+    const { errorText } = await import("./onboarding");
+    const { ApiError } = await import("./api");
+    expect(errorText(new ApiError(422, "Daily cap must be at least 1"))).toBe("Daily cap must be at least 1");
+    expect(errorText(new TypeError("Failed to fetch"))).toBe(
+      "We couldn't reach ApplyScout. Check your connection and try again.",
+    );
+    expect(errorText(undefined)).not.toMatch(/undefined|Error/);
+  });
+});

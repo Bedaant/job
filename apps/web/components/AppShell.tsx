@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { BriefcaseIcon, HouseIcon, IdCardIcon, InboxIcon, RocketIcon } from "lucide-react";
 import { clearToken, getToken } from "@/lib/auth";
 import { cn } from "@/lib/utils";
+import { ExtensionStatus } from "@/components/ExtensionStatus";
 
 const NAV = [
   { href: "/today", label: "Today", Icon: HouseIcon },
@@ -97,10 +98,13 @@ export function AppShell({
               );
             })}
           </nav>
+          {/* Sending only happens from the user's own browser (ADR-015 §3), so its
+              connection is status, not a setting — always visible on desktop. */}
+          <ExtensionStatus className="ml-auto hidden whitespace-nowrap lg:flex" />
           <button
             type="button"
             onClick={logOut}
-            className="ml-auto inline-flex h-10 items-center whitespace-nowrap rounded-full px-4 text-[15px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="ml-auto lg:ml-0 inline-flex h-10 items-center whitespace-nowrap rounded-full px-4 text-[15px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             Log out
           </button>

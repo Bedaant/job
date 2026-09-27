@@ -49,13 +49,13 @@ export default function FactsPage() {
       setUploadError(null);
       setConfirmedCount(null);
       if (result.status === "failed") {
-        setUploadError(result.error || "Parsing failed");
+        setUploadError(result.error || "We couldn't read this resume. You can add your facts by hand instead.");
         setDraftFacts(null);
       } else {
         setDraftFacts(result.facts);
       }
     },
-    onError: (err) => setUploadError(err instanceof ApiError ? err.message : "Upload failed"),
+    onError: (err) => setUploadError(err instanceof ApiError ? err.message : "We couldn't upload this file. Check your connection and try again."),
   });
 
   const confirmMutation = useMutation({
@@ -123,7 +123,7 @@ export default function FactsPage() {
             <div aria-live="polite" className="mt-3 space-y-2">
               {uploadError && (
                 <p role="alert" className="rounded-xl bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
-                  We couldn&apos;t read this resume: {uploadError}
+                  {uploadError}
                 </p>
               )}
               {confirmedCount !== null && (

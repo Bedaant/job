@@ -1,3 +1,4 @@
+import logging
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -709,6 +710,12 @@ def list_profiles(db: Session = Depends(get_db), current_user: models.User = Dep
 # Synchronous for now — RQ/Redis is Phase 2 scope (ADR-008). The API shape
 # (upload_id, pollable status) stays stable for the later async migration.
 
+RESUME_PARSE_FAILED = (
+    "We couldn't read this resume right now. You can add your facts by hand instead, "
+    "or try again in a few minutes."
+)
+
+
 @app.post("/profiles/{profile_id}/resume", response_model=schemas.ResumeUploadOut)
 async def upload_resume(
     profile: models.Profile = Depends(get_owned_profile),
@@ -732,8 +739,11 @@ async def upload_resume(
         upload = models.ResumeUpload(profile_id=profile.id, status="ready", draft_facts=facts)
     except HTTPException:
         raise
-    except Exception as exc:
-        upload = models.ResumeUpload(profile_id=profile.id, status="failed", error=str(exc))
+    except Exception:
+        # The raw error (model/provider/parser internals, e.g. an auth failure) is
+        # for the server log only; the user gets what they can act on.
+        logging.getLogger(__name__).exception("resume parse failed for profile %s", profile.id)
+        upload = models.ResumeUpload(profile_id=profile.id, status="failed", error=RESUME_PARSE_FAILED)
 
     # Identity extraction is a separate, non-fatal step: the facts KB is the
     # thing ADR-009 actually requires, so a failed or unvalidatable identity
