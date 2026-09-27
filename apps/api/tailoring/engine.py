@@ -76,6 +76,19 @@ def _get_instructor_client() -> instructor.Instructor:
     return _instructor_client
 
 
+NVIDIA_STRUCTURED_MAX_TOKENS = 4096
+_nvidia_instructor_client: instructor.Instructor | None = None
+
+
+def _get_nvidia_instructor_client() -> instructor.Instructor:
+    # JSON mode, not tool calling: not every NIM model supports tools, and the
+    # schema is still enforced by instructor's validation + bounded retry.
+    global _nvidia_instructor_client
+    if _nvidia_instructor_client is None:
+        _nvidia_instructor_client = instructor.from_openai(_get_nvidia_client(), mode=instructor.Mode.JSON)
+    return _nvidia_instructor_client
+
+
 class Bullet(BaseModel):
     """SPEC.md §3.3: 'source_fact_ids is mandatory per bullet. A bullet that
     cites no fact is rejected at validation, before the truth-checker even
@@ -108,11 +121,11 @@ class TruthCheckResult(BaseModel):
 def call_llm(system: str, user: str) -> str:
     provider = _settings.llm_provider
 
-    if provider == "nvidia_smoke":
-        # Mechanical pipeline smoke test only — NIM serves open models, not
-        # Claude, so this does NOT validate real tailoring quality.
+    if provider in ("nvidia", "nvidia_smoke"):
+        nvidia_model = _settings.nvidia_model if provider == "nvidia" else _settings.nvidia_smoke_model
         response = _get_nvidia_client().chat.completions.create(
-            model=_settings.nvidia_smoke_model,
+            model=nvidia_model,
+            extra_body=_settings.nvidia_extra_body(),
             max_tokens=1500,
             messages=[
                 {"role": "system", "content": system},
@@ -120,7 +133,7 @@ def call_llm(system: str, user: str) -> str:
             ],
         )
         text = response.choices[0].message.content or ""
-        model_used = _settings.nvidia_smoke_model
+        model_used = nvidia_model
         usage_details = (
             {
                 "input": response.usage.prompt_tokens,
@@ -163,17 +176,32 @@ def _call_claude_structured(system: str, user: str, response_model: type, contex
     tailor_application) — the free smoke model isn't asked to honor this
     contract, so it must never be credited with having validated against it.
     """
-    result = _get_instructor_client().messages.create(
-        model=MODEL,
-        max_tokens=1500,
-        system=system,
-        messages=[{"role": "user", "content": user}],
-        response_model=response_model,
-        max_retries=2,
-        context=context,
-    )
+    if _settings.llm_provider == "nvidia":
+        # OpenAI shape: the system prompt is a message, there is no `system=` kwarg.
+        model_used = _settings.nvidia_model
+        result = _get_nvidia_instructor_client().chat.completions.create(
+            model=model_used,
+            # Open models spend tokens before the JSON; 1500 truncated the draft live.
+            max_tokens=NVIDIA_STRUCTURED_MAX_TOKENS,
+            extra_body=_settings.nvidia_extra_body(),
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            response_model=response_model,
+            max_retries=2,
+            context=context,
+        )
+    else:
+        model_used = MODEL
+        result = _get_instructor_client().messages.create(
+            model=MODEL,
+            max_tokens=1500,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+            response_model=response_model,
+            max_retries=2,
+            context=context,
+        )
     if _langfuse is not None:
-        get_client().update_current_generation(input=user, output=result.model_dump_json(), model=MODEL)
+        get_client().update_current_generation(input=user, output=result.model_dump_json(), model=model_used)
     return result
 
 

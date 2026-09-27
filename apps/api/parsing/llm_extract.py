@@ -54,11 +54,10 @@ def extract_facts_from_text(resume_text: str) -> list[dict]:
         raise ValueError("resume text is empty — nothing to extract facts from")
 
     settings = get_settings()
-    if settings.llm_provider == "nvidia_smoke":
-        # Mechanical smoke path - NIM serves open models, not Claude, so this
-        # does NOT validate real fact-extraction quality.
+    if settings.llm_provider in ("nvidia", "nvidia_smoke"):
         response = _get_nvidia_client().chat.completions.create(
-            model=settings.nvidia_smoke_model,
+            model=settings.nvidia_model if settings.llm_provider == "nvidia" else settings.nvidia_smoke_model,
+            extra_body=settings.nvidia_extra_body(),
             max_tokens=4096,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -75,7 +74,10 @@ def extract_facts_from_text(resume_text: str) -> list[dict]:
         )
         raw = "".join(block.text for block in response.content if getattr(block, "type", None) == "text")
 
-    cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    # Open models often wrap the JSON in a sentence or code fence: take the
+    # outermost object rather than trusting the whole reply to be JSON.
+    start, end = raw.find("{"), raw.rfind("}")
+    cleaned = raw[start:end + 1] if start != -1 and end > start else raw
 
     try:
         parsed = json.loads(cleaned)
@@ -169,14 +171,15 @@ def extract_basics(resume_text: str) -> ApplicantBasics:
     settings = get_settings()
     user_content = resume_text[:20_000]
 
-    if settings.llm_provider == "nvidia_smoke":
+    if settings.llm_provider in ("nvidia", "nvidia_smoke"):
         # OpenAI-shaped APIs (NIM included) have no separate `system` param —
         # the system prompt is a role in the messages list, unlike Anthropic's
         # native shape below. Found live: Anthropic's `system=` kwarg passed
         # straight through raised "Completions.create() got an unexpected
         # keyword argument 'system'" against the real NVIDIA endpoint.
         return _get_nvidia_instructor_client().messages.create(
-            model=settings.nvidia_smoke_model,
+            model=settings.nvidia_model if settings.llm_provider == "nvidia" else settings.nvidia_smoke_model,
+            extra_body=settings.nvidia_extra_body(),
             max_tokens=1024,
             messages=[
                 {"role": "system", "content": BASICS_SYSTEM_PROMPT},

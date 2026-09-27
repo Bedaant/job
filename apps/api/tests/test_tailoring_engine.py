@@ -153,3 +153,43 @@ def test_keyword_gap_summary_reports_coverage_before_and_after():
     gap = result["keyword_gap"]
     assert 0 < gap["coverage_before"] < 1
     assert 0 <= gap["coverage_after"] <= 1
+
+
+# ---------- nvidia as the real provider (owner choice, 2026-09-27) ----------
+
+def test_nvidia_provider_uses_the_validated_path_on_the_nvidia_model():
+    """"nvidia" is a production provider, not the smoke test: it must go through
+    the same instructor-validated path as Claude (every bullet cites a real fact
+    id, bounded retry), never the unvalidated raw-JSON smoke branch."""
+    from tailoring.engine import TruthCheckResult
+
+    bullet = Bullet.model_validate(
+        {"text": "Led a team of 5 engineers", "source_fact_ids": ["f1"]},
+        context={"known_fact_ids": {"f1", "f2"}},
+    )
+    nvidia_instructor = MagicMock()
+    nvidia_instructor.chat.completions.create.side_effect = [
+        TailoredDraft(summary="S.", bullets=[bullet], cover_letter="C."),
+        TruthCheckResult(unsupported_claims=[]),
+    ]
+    with patch("tailoring.engine._get_nvidia_instructor_client", return_value=nvidia_instructor), \
+            patch("tailoring.engine._get_instructor_client") as anthropic_instructor, \
+            patch("tailoring.engine.call_llm") as raw_call, \
+            patch("tailoring.engine._settings") as mock_settings:
+        mock_settings.llm_provider = "nvidia"
+        mock_settings.nvidia_model = "nvidia/nemotron-3-super-120b-a12b"
+        mock_settings.nvidia_extra_body.return_value = {"chat_template_kwargs": {"enable_thinking": False}}
+        result = tailor_application({"title": "Backend Engineer", "company": "Acme"}, FACTS)
+
+    anthropic_instructor.assert_not_called()
+    raw_call.assert_not_called()
+    first = nvidia_instructor.chat.completions.create.call_args_list[0].kwargs
+    assert first["model"] == "nvidia/nemotron-3-super-120b-a12b"
+    assert first["context"] == {"known_fact_ids": {"f1", "f2"}}
+    assert first["messages"][0]["role"] == "system"  # OpenAI shape: no `system=` kwarg
+    # Found live: at 1500 the NIM model's draft was cut off (IncompleteOutputException).
+    assert first["max_tokens"] >= 4096
+    # Found live: the model "thinks" for thousands of tokens by default and the
+    # JSON got cut off; thinking off answered the same in 0.7s vs 4.4s.
+    assert first["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
+    assert result["bullets"] == [{"text": "Led a team of 5 engineers", "source_fact_ids": ["f1"]}]

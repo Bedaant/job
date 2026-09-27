@@ -31,6 +31,22 @@ class Settings(BaseSettings):
     nvidia_api_key: str | None = None
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     nvidia_smoke_model: str = "google/diffusiongemma-26b-a4b-it"
+    # "nvidia" (the owner's production choice, 2026-09-27): NIM through the SAME
+    # validated paths as Claude — instructor + fact-id grounding + truth-check.
+    # Picked by a live bake-off on a fabrication-trap tailoring task: fastest of
+    # the models that cited only real facts and didn't invent a skill (WORKLOG
+    # latest+34). Override with NVIDIA_MODEL.
+    nvidia_model: str = "nvidia/nemotron-3-super-120b-a12b"
+    # Off by default: measured live, thinking made the same answer 6x slower
+    # (4.4s vs 0.7s) and pushed tailoring's JSON past its token cap.
+    nvidia_enable_thinking: bool = False
+
+    def nvidia_extra_body(self) -> dict:
+        """Request extras for NIM. Only the real "nvidia" provider — the smoke
+        model may not accept chat_template_kwargs."""
+        if self.llm_provider != "nvidia":
+            return {}
+        return {"chat_template_kwargs": {"enable_thinking": self.nvidia_enable_thinking}}
 
     jwt_secret: str
     jwt_algorithm: str = "HS256"

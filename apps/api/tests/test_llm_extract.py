@@ -91,3 +91,36 @@ def test_extract_facts_uses_nvidia_client_when_provider_is_nvidia_smoke():
     assert facts[0]["achievement"] == "Rust"
     nvidia_client.chat.completions.create.assert_called_once()
     assert nvidia_client.chat.completions.create.call_args.kwargs["model"] == "some/model"
+
+
+def test_extract_facts_uses_the_nvidia_model_when_provider_is_nvidia():
+    response = MagicMock()
+    response.choices = [MagicMock()]
+    response.choices[0].message.content = 'Sure! {"facts": [{"category": "skill", "achievement": "Python"}]}'
+    with patch("parsing.llm_extract.get_settings") as mock_settings, \
+         patch("parsing.llm_extract._get_nvidia_client") as mock_get_nvidia:
+        mock_settings.return_value.llm_provider = "nvidia"
+        mock_settings.return_value.nvidia_model = "nvidia/nemotron-3-super-120b-a12b"
+        nvidia_client = MagicMock()
+        nvidia_client.chat.completions.create.return_value = response
+        mock_get_nvidia.return_value = nvidia_client
+
+        from parsing.llm_extract import extract_facts_from_text
+        facts = extract_facts_from_text("Python developer")
+
+    assert nvidia_client.chat.completions.create.call_args.kwargs["model"] == "nvidia/nemotron-3-super-120b-a12b"
+    # Open models often wrap JSON in a sentence — the object must still be found.
+    assert facts == [{"category": "skill", "achievement": "Python"}]
+
+
+def test_nvidia_extra_body_turns_thinking_off_only_for_the_real_nvidia_provider():
+    from core.config import Settings
+    base = dict(database_url="sqlite://", jwt_secret="x", redis_url="redis://localhost")
+    assert Settings(**base, llm_provider="nvidia").nvidia_extra_body() == {
+        "chat_template_kwargs": {"enable_thinking": False}
+    }
+    assert Settings(**base, llm_provider="nvidia", nvidia_enable_thinking=True).nvidia_extra_body() == {
+        "chat_template_kwargs": {"enable_thinking": True}
+    }
+    # The smoke model may not accept the kwarg; leave its requests untouched.
+    assert Settings(**base, llm_provider="nvidia_smoke").nvidia_extra_body() == {}

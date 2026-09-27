@@ -1,3 +1,11 @@
+import os
+
+# Tests are hermetic: the developer's .env (e.g. LLM_PROVIDER=nvidia) must not
+# route a test to a live model. Env vars beat .env in pydantic-settings, and this
+# runs before anything imports core.config. Tests that need another provider
+# patch it explicitly.
+os.environ["LLM_PROVIDER"] = "anthropic"
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker

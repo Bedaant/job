@@ -102,6 +102,38 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+34) — NVIDIA NIM is the production LLM provider (owner decision)
+
+**What changed.** New `LLM_PROVIDER=nvidia` (the old `nvidia_smoke` stays as the dev-only,
+unvalidated path). `nvidia` runs through the SAME validated paths as Claude: tailoring
+uses instructor (`from_openai`, JSON mode) with fact-id grounding + bounded retry +
+truth-check; resume facts, identity and form mapping all route to NIM.
+`core/config.py`: `nvidia_model` (default `nvidia/nemotron-3-super-120b-a12b`),
+`nvidia_enable_thinking` (default off) and `nvidia_extra_body()`. `tests/conftest.py`
+pins `LLM_PROVIDER=anthropic` so a developer's `.env` can never route a test to a live
+model (found live: switching `.env` sent 4 tests to NVIDIA and took 3 minutes).
+
+**Model choice — live bake-off** (fabrication-trap task: 3 true facts, JD demanding
+Kafka): nemotron-3-super 4.8s, valid JSON, only real fact ids, no Kafka ✓ (chosen).
+kimi-k3 passed but 31s and embellished ("distributed"). glm-5.3-flash 259s.
+deepseek-v4.1-flash, glm-5.3, gemma-4-31b timed out; mistral-large, kimi-k2.6 → 404 on this key.
+
+**Problems hit.** Tailoring hit `IncompleteOutputException` at max_tokens 1500, then
+intermittently at 4096: the model reasons by default. Measured: thinking off answered
+in 0.7s vs 4.4s with ~¼ the tokens. Now off via `chat_template_kwargs.enable_thinking`;
+two consecutive live runs all four paths OK (tailoring 5–11s).
+**Quality caveat (measured, not fixed):** with thinking off the truth-check is weaker —
+run 1 bullets added unsupported padding ("on-time delivery", "across microservices")
+and nothing was flagged; run 2 flagged a line that was supported. Needs the ADR-014
+eval run on `nvidia` before trusting auto-submit; options: thinking on for the
+truth-check pass only, or a stricter "no added claims" rewrite prompt.
+
+**Tests.** 456/456 (new: nvidia uses validated path + model + OpenAI message shape +
+max_tokens + thinking-off body; extract routes to NVIDIA and finds JSON inside prose;
+`nvidia_extra_body` only for the real provider). Red before green each time.
+
+---
+
 ### 2026-09-27 (latest+33) — tzdata pinned; Redis replaced; worker loop verified live
 
 **What changed.** `tzdata==2026.3` added to `apps/api/requirements.txt` — it was only
