@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
-import { setToken } from "@/lib/auth";
+import { safeNext, setToken } from "@/lib/auth";
 import { Logo } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,11 @@ export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [expired, setExpired] = useState(false);
   const signup = mode === "signup";
+
+  // Read after mount (not useSearchParams) so the page stays statically renderable.
+  useEffect(() => setExpired(new URLSearchParams(window.location.search).has("expired")), []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,7 +31,7 @@ export default function LoginPage() {
       const { access_token } = await api.login(email, password);
       setToken(access_token);
       // A new account has nothing yet — onboarding is where it starts.
-      router.push(signup ? "/onboarding" : "/review");
+      router.push(signup ? "/onboarding" : safeNext(new URLSearchParams(window.location.search).get("next")) ?? "/review");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "We couldn't reach the server. Check your connection and try again.");
     } finally {
@@ -56,6 +60,12 @@ export default function LoginPage() {
             </p>
           </div>
         </div>
+
+        {expired && !signup && (
+          <p role="status" className="rounded-xl bg-muted px-4 py-3 text-center text-sm text-muted-foreground">
+            Your session ended. Sign in again to pick up where you left off.
+          </p>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-5 rounded-2xl border bg-card p-6 shadow-sm">
           <div className="space-y-2">

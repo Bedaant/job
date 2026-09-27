@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   STEPS,
+  blankFact,
   buildCampaignBody,
   canAdvance,
   editFact,
@@ -14,7 +15,7 @@ import {
 import type { FactDraft } from "./api";
 
 const fact = (achievement: string): FactDraft => ({
-  category: "impact",
+  category: "experience",
   achievement,
   proof: null,
   metric: null,
@@ -61,7 +62,7 @@ describe("facts editor round-trip", () => {
 
     expect(next[1].achievement).toBe("second, corrected");
     expect(next[1].metric).toBe("12%");
-    expect(next[1].category).toBe("impact");
+    expect(next[1].category).toBe("experience");
     expect(next[0]).toBe(facts[0]);
     expect(next[2]).toBe(facts[2]);
     expect(facts[1].achievement).toBe("second"); // original not mutated
@@ -74,6 +75,25 @@ describe("facts editor round-trip", () => {
 
   it("requires at least one fact", () => {
     expect(validateFacts([])).toHaveProperty("_");
+  });
+
+  it("rejects a category the backend does not know, keyed so it shows inline", () => {
+    expect(validateFacts([{ ...fact("Led a team"), category: "" }])).toHaveProperty("0.category");
+    expect(validateFacts([{ ...fact("Led a team"), category: "impact" }])).toHaveProperty("0.category");
+    expect(validateFacts([{ ...fact("AWS SA"), category: "certification" }])).toEqual({});
+  });
+});
+
+describe("adding facts by hand (parser failed or no resume)", () => {
+  it("starts from a blank row that cannot be saved until the user writes it", () => {
+    const row = blankFact();
+    expect(row).toEqual({ category: "experience", achievement: "", proof: null, metric: null, tags: [] });
+    expect(canAdvance("facts", { facts: [row], basics: {}, prefs: emptyPreferences(), campaign: emptyCampaignDraft() })).toBe(false);
+  });
+
+  it("continues once every hand-written row has a category and an achievement", () => {
+    const facts = [{ ...blankFact(), achievement: "Shipped the billing rewrite" }, { ...blankFact(), category: "skill", achievement: "Go" }];
+    expect(canAdvance("facts", { facts, basics: {}, prefs: emptyPreferences(), campaign: emptyCampaignDraft() })).toBe(true);
   });
 });
 

@@ -88,7 +88,7 @@ export default function FactsPage() {
   return (
     <AppShell
       title="Your facts"
-      description="Everything Maggie writes comes from these — nothing else. Upload a resume and confirm what's true; you can edit any time."
+      description="Everything Maggie writes comes from these — nothing else. Upload a resume and check each fact before you keep it — once kept, a fact can't be edited or removed yet."
     >
       {!profile && <Skeleton className="h-40 w-full rounded-2xl" />}
 
