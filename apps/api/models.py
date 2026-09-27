@@ -30,6 +30,11 @@ class ApplicationStatus(str, enum.Enum):
     # believing they had applied when they had not. This names that window;
     # POST /applications/{id}/submission-result is the only thing that closes it.
     submitting = "submitting"
+    # The submit was sent but the employer's page never confirmed it (no thank-you
+    # page, no error). Not `applied` — that would claim something unverified — and
+    # never back to `approved`, since a retry could apply twice. The user checks
+    # their email and PATCHes it to `applied` (applied_at = when it was sent).
+    submitted_unconfirmed = "submitted_unconfirmed"
     applied = "applied"
     oa = "oa"                # online assessment
     recruiter = "recruiter"

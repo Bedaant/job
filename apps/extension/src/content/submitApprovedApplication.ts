@@ -19,7 +19,14 @@
 import { _adr001OriginalRequestSubmit } from "./formFill.content";
 import { API_BASE_URL } from "../apiConfig";
 
-export async function submitApprovedApplication(form: HTMLFormElement, applicationId: string): Promise<void> {
+// `beforeSubmit` runs after the claim succeeds and before the native submit; if it
+// throws, nothing is submitted. autoApply uses it to tell the driver "verify from
+// here on" — it must land before the submit can navigate the tab away.
+export async function submitApprovedApplication(
+  form: HTMLFormElement,
+  applicationId: string,
+  beforeSubmit: () => Promise<void> = async () => {},
+): Promise<void> {
   const { jc_token: token } = await chrome.storage.local.get("jc_token");
   if (!token) {
     throw new Error("ApplyScout: not logged in — cannot claim submission.");
@@ -36,5 +43,6 @@ export async function submitApprovedApplication(form: HTMLFormElement, applicati
     );
   }
 
+  await beforeSubmit();
   _adr001OriginalRequestSubmit.call(form);
 }

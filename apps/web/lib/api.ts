@@ -112,7 +112,7 @@ export interface ReviewApplication {
   pending_questions: string[];
   // Why the last auto-apply run stopped (apps/api/needs_input.py); null if it didn't.
   needs_input: NeedsInput | null;
-  last_attempt: { outcome: "submitted" | "failed" | "needs_human"; message: string } | null;
+  last_attempt: { outcome: "submitted" | "unconfirmed" | "failed" | "needs_human"; message: string } | null;
   created_at: string;
 }
 
@@ -179,11 +179,15 @@ export interface ActivityItem {
   detail?: string | null;
   application_id?: string | null;
   job?: { title: string; company: string } | null;
+  // Only on application.unconfirmed: the form, so the user can check it went through.
+  apply_url?: string | null;
 }
 
 /** GET /today — counters across all the user's profiles (the viewer's local day). */
 export interface TodayCounts {
   sent_today: number;
+  // Of sent_today, how many the employer's page never confirmed.
+  unconfirmed_today?: number;
   needs_you: number;
   new_matches_today: number;
 }

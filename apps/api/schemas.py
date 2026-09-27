@@ -375,7 +375,7 @@ class NeedsInputOut(BaseModel):
 
 
 class LastAttemptOut(BaseModel):
-    outcome: Literal["submitted", "failed", "needs_human"]
+    outcome: Literal["submitted", "unconfirmed", "failed", "needs_human"]
     message: str
 
 
@@ -479,10 +479,14 @@ class ActivityItemOut(BaseModel):
     detail: Optional[str] = None
     application_id: Optional[str] = None
     job: Optional[ActivityJob] = None
+    # Only on application.unconfirmed: the form, so the user can go and check.
+    apply_url: Optional[str] = None
 
 
 class TodayOut(BaseModel):
     sent_today: int
+    # Of sent_today, how many the employer's page never confirmed.
+    unconfirmed_today: int = 0
     needs_you: int
     new_matches_today: int
 
@@ -521,7 +525,7 @@ class WorkQueueItemOut(BaseModel):
 class SubmissionResultIn(BaseModel):
     # Literal, not a plain str: an unrecognised outcome must be a 422, never a
     # silently ignored no-op that leaves the row stuck in `submitting` forever.
-    outcome: Literal["submitted", "failed", "needs_human"]
+    outcome: Literal["submitted", "unconfirmed", "failed", "needs_human"]
     reason: Optional[str] = Field(default=None, max_length=2000)
     # The form questions a needs_human run could not answer, so the user can answer
     # each once into the answer bank. Bounded: this is client-supplied text.

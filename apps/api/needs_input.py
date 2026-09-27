@@ -7,7 +7,7 @@ and autoApply.content.ts's blocking flag reasons.
 """
 import re
 
-_STAMP = re.compile(r"^\[(submitted|failed|needs_human)\] (.*)$")
+_STAMP = re.compile(r"^\[(submitted|unconfirmed|failed|needs_human)\] (.*)$")
 
 # Order matters: a captcha or an account wall blocks the form whatever else it asks.
 _KINDS = [

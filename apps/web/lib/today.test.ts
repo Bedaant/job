@@ -4,7 +4,9 @@ import { setupServer } from "msw/node";
 import { api } from "./api";
 import {
   activityHref,
+  activityLink,
   dailyLimitCaption,
+  unconfirmedAction,
   formatWhen,
   greeting,
   homeState,
@@ -119,6 +121,40 @@ describe("summaryLine", () => {
       "1 application sent today. 1 application needs you.",
     );
     expect(summaryLine({ ...t, sent_today: 3 }, "active")).toBe("3 applications sent today.");
+  });
+  it("never lets an unconfirmed send read as a plain success", () => {
+    expect(summaryLine({ ...t, sent_today: 3, unconfirmed_today: 1 }, "active")).toBe(
+      "3 applications sent today, 1 not confirmed yet.",
+    );
+    expect(summaryLine({ ...t, sent_today: 2, unconfirmed_today: 2, needs_you: 1 }, "active")).toBe(
+      "2 applications sent today, 2 not confirmed yet. 1 application needs you.",
+    );
+  });
+});
+
+describe("unconfirmed sends", () => {
+  const row = {
+    id: 1,
+    type: "application.unconfirmed",
+    at: "2026-09-27T14:00:00Z",
+    title: "Sent to Stripe — couldn't confirm it went through",
+    job: { title: "SRE", company: "Stripe" },
+    apply_url: "https://jobs.lever.co/stripe/1",
+  };
+  it("tells the user what to do, naming the company", () => {
+    expect(unconfirmedAction("Stripe")).toBe("Check your email for a confirmation from Stripe, or open the form.");
+    expect(unconfirmedAction(undefined)).toBe("Check your email for a confirmation, or open the form.");
+  });
+  it("links the row to the form itself, in a new tab", () => {
+    expect(activityLink(row)).toEqual({ href: "https://jobs.lever.co/stripe/1", external: true });
+    expect(activityLink({ ...row, apply_url: null })).toEqual({ href: "/campaign", external: false });
+    expect(activityLink({ ...row, type: "application.needs_human", apply_url: null })).toEqual({
+      href: "/review",
+      external: false,
+    });
+  });
+  it("never offers a non-http link", () => {
+    expect(activityLink({ ...row, apply_url: "javascript:alert(1)" })).toEqual({ href: "/campaign", external: false });
   });
 });
 

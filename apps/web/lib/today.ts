@@ -48,6 +48,19 @@ export function activityHref(type: string): string {
   return "/campaign";
 }
 
+/** The submit went out but the employer's page never confirmed it: what the user can do. */
+export function unconfirmedAction(company: string | undefined): string {
+  return `Check your email for a confirmation${company ? ` from ${company}` : ""}, or open the form.`;
+}
+
+/** Where a row leads. An unconfirmed send opens the form itself (external, new tab). */
+export function activityLink(item: { type: string; apply_url?: string | null }): { href: string; external: boolean } {
+  if (item.type === "application.unconfirmed" && item.apply_url && /^https?:\/\//i.test(item.apply_url)) {
+    return { href: item.apply_url, external: true };
+  }
+  return { href: activityHref(item.type), external: false };
+}
+
 export type HomeState = "no-campaign" | "not-started" | "paused" | "waiting" | "active";
 
 export function homeState(status: CampaignStatus | undefined, activityCount: number): HomeState {
@@ -69,6 +82,10 @@ export function summaryLine(t: TodayCounts, status: CampaignStatus | undefined):
   const tail = t.needs_you > 0 ? ` ${needs(t.needs_you)}` : "";
   if (status === "paused") return `Maggie is paused.${tail}`;
   if (status === "draft") return `Your campaign hasn't started yet.${tail}`;
-  const sent = t.sent_today === 0 ? "Nothing sent yet today." : `${count(t.sent_today, "application", "applications")} sent today.`;
+  const unconfirmed = t.unconfirmed_today ? `, ${t.unconfirmed_today} not confirmed yet` : "";
+  const sent =
+    t.sent_today === 0
+      ? "Nothing sent yet today."
+      : `${count(t.sent_today, "application", "applications")} sent today${unconfirmed}.`;
   return sent + tail;
 }
