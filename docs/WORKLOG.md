@@ -102,6 +102,110 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+38) — Form mapping on real forms: EEO rule, option-bound answers, name fields
+
+**What changed.** Backend fixes for the findings in `docs/LIVE-FORM-TEST.md`. The
+extension side (CORS proxy, native value setter, radio/checkbox grouping, submit
+confirmation) belongs to the extension agent and is not in this entry.
+- *EEO rule, one place (#2, P0).* `answer_bank.is_demographic_field(label, options)` is
+  the whole rule. `is_demographic_label` is now its label half. `save_answer`,
+  `find_answer`/`serve_answer`, the needs_human question filter and `map_form_fields`
+  all go through it, and `map_form_fields` checks it before anything else. All text is
+  normalized first (lowercase, punctuation → space).
+  - Question rule: whole-word keywords race, ethnicity, ethnic, hispanic,
+    latino/a/x, gender, sex, sexual orientation, transgender, pronoun, veteran,
+    disability, disabled.
+  - Option rule: a decline phrase plus any demographic option, or ≥2 *distinct*
+    demographic terms. An option has a term only if it equals it or starts with it
+    followed by a space. So "White (Not Hispanic or Latino)" counts, and a university
+    list with "Asian Institute of Technology" does not.
+  - Same spec as the extension's `fieldDecision.mjs`. One server-only extra: an
+    optional plural "s" ("Pronouns"), which can only make the server stricter.
+  - Per-radio descriptors that share a `name` are checked as one group, because
+    today's extension sends Ashby's "Man"/"Woman" one radio at a time.
+  - Existing bank rows that match the new rule stay in the table and are never served.
+    `find_answer` filters them, so no data migration was needed; the live
+    "Are you Hispanic/Latino?" row is now unreachable.
+- *Deterministic false hits (#6, P1).*
+  - name/id are split into tokens (camelCase, `_`, brackets). `tel` must be a whole
+    token, so `hotel_preference` no longer matches.
+  - Label rules match whole words. They have no bare "tel", so "Telugu (TEL)" is out.
+  - Label rules only run on labels of ≤6 words that don't mention
+    sponsor/authoriz/visa/eligib/citizen/permit/relocat/willing. That rules out the
+    Greenhouse visa question.
+  - A checkbox, radio, hidden or file input never gets a profile value.
+  - autocomplete uses its last token, so `section-x tel` works.
+- *Option-bound answers (#9, P1).* `deterministic.bind_to_options` checks every value
+  from the rules, the bank or the LLM against the field's options.
+  - Matching is case-insensitive and trimmed. yes/y/true (or no/n/false) picks the
+    single option that starts with that word.
+  - No match means the field is flagged; it is never filled with a nearby value.
+  - The system prompt now says: pick exactly one listed option, or return "unknown".
+- *Latency and payload (#10, #15, P2).*
+  - These fields are flagged without being sent to the model: g-recaptcha,
+    h-captcha and cf-turnstile, hidden and search inputs, fields with no
+    label/name/id/options, and lone radios or checkboxes with no options (their label
+    is an option, not a question: "White", the 26 Lever language boxes).
+  - The prompt keeps only field_id/label/input_type/options, with options capped at 50
+    plus `options_total`, and uses compact JSON.
+  - Still exactly one LLM call per form (tested).
+  - Prompt size measured by replaying the live `*-extract.json` descriptors through
+    `map_form_fields`:
+
+    | Form | Before | After |
+    |---|---|---|
+    | Greenhouse | 7.8 KB | 2.1 KB |
+    | Lever | 144 KB | 3.5 KB |
+    | Ashby | 12.1 KB | 1.1 KB |
+
+- *Empty resume (#12, P2).* `GET /profiles/{id}/resume.docx` now returns 409 "This
+  profile has no resume facts yet…" instead of a 200 empty document. The existing
+  endpoint test had been passing on an empty document: its fact POST lacked
+  `profile_id` and 422'd without anyone noticing. It is fixed and now asserts the
+  POST succeeds.
+- *First/last name (#11, P2).*
+  - New optional `given_name`/`family_name` columns (migration `0018`) are added to
+    `schemas.ApplicantBasics` and GET/PUT `/profiles/{id}/basics`.
+  - They fill deterministically from: autocomplete `given-name`/`family-name`; id
+    tokens first/given/last/family name and surname; the labels "First name"/"Last
+    name"; Greenhouse `first_name`/`last_name` in `ats_schemas.py`.
+  - They are still never split from `full_name`. Without the user's own values these
+    fields fall through, as before.
+  - The onboarding "You" section has two new inputs (`StepFacts.tsx`, `lib/api.ts`).
+    No new logic, so no vitest was added.
+
+**Findings closed.** #2 (EEO leak), #6 (Telugu/visa), #9 (San Francisco into Yes/No
+when options are sent), #10 (server side), #11 (backend + onboarding), #12 (409), #15
+(payload).
+
+**Files.** api: `answer_bank.py`, `formfill/deterministic.py`, `formfill/map_fields.py`,
+`formfill/ats_schemas.py`, `main.py`, `models.py`, `schemas.py`,
+`alembic/versions/0018_profile_given_family_name.py` (new),
+`tests/test_live_form_fixes.py` (new), `tests/test_resume_docx_endpoint.py`. web:
+`components/onboarding/StepFacts.tsx`, `lib/api.ts`. `docs/SPEC.md` schema regenerated.
+
+**Dependencies added.** None.
+
+**Tests.** Every new test failed first: a collection error, then 3 reds on the
+mirrored option rule, then 1 red on the lone checkbox. api 469 → **547** passed. web
+`tsc --noEmit` clean, vitest 87/87.
+
+**Not done / notes.**
+- Migration `0018` is written but NOT applied. It declares `down_revision = "0017"`
+  (the Verify agent's migration, not on this branch), so the chain resolves only
+  after both are merged.
+- The Greenhouse relocation question arrived as `input_type: "text"` with no options
+  (react-select). Server-side binding can't catch it until the extension sends the
+  options; the prompt rule is the only guard for now.
+- Greenhouse "Country" is a react-select typeahead but still matches `country_code`
+  by id, so "US" is typed into it and ignored. It needs a role/combobox hint from
+  the extension.
+- Age brackets ("Under 30"…) are not in the shared EEO spec.
+- `extract_basics` may now propose given/family name from a resume. It is only a
+  draft the user reviews in onboarding.
+
+---
+
 ### 2026-09-27 (latest+37) — Extension on real forms: proxy, React-safe fills, groups, EEO options
 
 **What changed.** Closes the extension-side findings of `docs/LIVE-FORM-TEST.md` (the live

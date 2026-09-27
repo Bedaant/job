@@ -1,17 +1,20 @@
 """Deterministic field matching (PRD: "Known ATS... fills them
 deterministically"; SPEC.md §3.7). Zero LLM calls — an ordered rule table
 over each field's own attributes: HTML `autocomplete` (a real web standard,
-WHATWG HTML spec §autofill-field-name) first, then name/id/label regex
-patterns. Checked in map_fields.py::map_form_fields BEFORE the bounded LLM
-path, not instead of it — anything this can't resolve falls through
-unchanged, same confidence-threshold/forbidden-label behavior as before.
+WHATWG HTML spec §autofill-field-name) first, then name/id/label patterns.
+Checked in map_fields.py::map_form_fields BEFORE the bounded LLM path, not
+instead of it — anything this can't resolve falls through unchanged.
 
-Deliberately does not attempt given-name/family-name fields: Profile has no
-structured name-parts column, only a single `full_name` string, and
-guessing a split (first token = given, rest = family) would be exactly the
-kind of invention the null-over-guess rule already forbids for identity
-data (schemas.ApplicantBasics's validators). Those fields fall through to
-the LLM path, same as any other field this module doesn't recognize.
+Given/family name fill only from the user's own given_name/family_name
+basics (migration 0018), never from a split of full_name — a split is a
+guess, which the null-over-guess rule forbids for identity data.
+
+Rules match whole tokens (docs/LIVE-FORM-TEST.md #6: `tel` matched
+"Telugu", `country` matched a visa question). name/id are split into tokens
+(camelCase, `_`, `-`, brackets); labels match whole words, only when short,
+and never when they ask about work authorization. A checkbox/radio never
+takes a profile value, and a field with options only takes a value that is
+one of them (bind_to_options).
 
 When the caller passes an `ats_type`, formfill/ats_schemas.py's verified
 per-ATS system field names are consulted first (ADR-015 Phase 2).
@@ -28,6 +31,8 @@ _AUTOCOMPLETE_MAP = {
     "tel": "phone",
     "tel-national": "phone",
     "name": "full_name",
+    "given-name": "given_name",
+    "family-name": "family_name",
     "address-level2": "city",
     "address-level1": "region",
     "postal-code": "postal_code",
@@ -37,25 +42,79 @@ _AUTOCOMPLETE_MAP = {
     "address-line1": "street_address",
 }
 
-# name/id/label regex -> profile_summary key, checked in this order (email
-# and phone first — the most unambiguous signals — down to the vaguer
-# address fields). No given-name/family-name entry: see module docstring.
-_PATTERN_RULES: list[tuple[re.Pattern, str]] = [
-    (re.compile(r"e[-_]?mail", re.I), "email"),
-    (re.compile(r"phone|mobile|tel(?:ephone)?", re.I), "phone"),
-    (re.compile(r"^\s*full[-_ ]?name\s*$|^\s*name\s*$|your[-_ ]?name", re.I), "full_name"),
-    (re.compile(r"portfolio|personal[-_ ]?(?:site|website)|\bwebsite\b", re.I), "website_url"),
-    (re.compile(r"\bcity\b|\btown\b", re.I), "city"),
-    (re.compile(r"\bstate\b|\bprovince\b|\bregion\b", re.I), "region"),
-    (re.compile(r"zip|postal", re.I), "postal_code"),
-    (re.compile(r"\bcountry\b", re.I), "country_code"),
-    (re.compile(r"street[-_ ]?address|address[-_ ]?line", re.I), "street_address"),
+# Checked in order over the TOKENIZED name/id ("applicant_phone_number" ->
+# "applicant phone number"), so \b is a token boundary. Given/family before
+# full_name: "first name" contains "name".
+_ID_RULES: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\b(?:first|given) ?name\b"), "given_name"),
+    (re.compile(r"\b(?:last|family) ?name\b|\bsurname\b"), "family_name"),
+    (re.compile(r"\be ?mail"), "email"),
+    (re.compile(r"\b(?:phone|telephone|mobile)|\btel\b"), "phone"),
+    (re.compile(r"^(?:full ?name|name|your ?name)$|\bfull ?name\b"), "full_name"),
+    (re.compile(r"\bportfolio|\bpersonal ?(?:site|website)\b|\bwebsite\b"), "website_url"),
+    (re.compile(r"\bcity\b|\btown\b"), "city"),
+    (re.compile(r"\bstate\b|\bprovince\b|\bregion\b"), "region"),
+    (re.compile(r"\bzip|\bpostal"), "postal_code"),
+    (re.compile(r"\bcountry\b"), "country_code"),
+    (re.compile(r"\bstreet ?address\b|\baddress ?line"), "street_address"),
 ]
+
+# Labels are prose: whole words only ("Telugu (TEL)" has a word "tel", so no
+# bare "tel" here), and only short ones — a question long enough to mention a
+# country in passing is not asking for the applicant's country.
+_LABEL_RULES: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\b(?:first|given) name\b"), "given_name"),
+    (re.compile(r"\b(?:last|family) name\b|\bsurname\b"), "family_name"),
+    (re.compile(r"\be-?mail\b"), "email"),
+    (re.compile(r"\b(?:phone|mobile|telephone)\b"), "phone"),
+    (re.compile(r"^(?:full )?name$|\byour name\b|\bfull name\b"), "full_name"),
+    (re.compile(r"\bportfolio\b|\bpersonal (?:site|website)\b|\bwebsite\b"), "website_url"),
+    (re.compile(r"\bcity\b|\btown\b"), "city"),
+    (re.compile(r"\bstate\b|\bprovince\b|\bregion\b"), "region"),
+    (re.compile(r"\bzip\b|\bpostal\b"), "postal_code"),
+    (re.compile(r"\bcountry\b"), "country_code"),
+    (re.compile(r"\bstreet address\b|\baddress line\b"), "street_address"),
+]
+_MAX_LABEL_WORDS = 6
+# A label about eligibility is a yes/no legal question, whatever noun it uses.
+_NOT_A_PROFILE_QUESTION = re.compile(r"sponsor|authori[sz]|visa|eligib|citizen|permit|relocat|willing")
+
+_NO_PROFILE_VALUE_TYPES = {"checkbox", "radio", "hidden", "file", "submit", "button"}
 
 # Checked before the generic rules above — a field naming a specific
 # network (LinkedIn/GitHub/...) must resolve to THAT network's URL or fall
 # through, never to a generic website_url guess.
 _NETWORK_PATTERN = re.compile(r"linkedin|github|gitlab", re.I)
+
+_YES, _NO = {"yes", "y", "true"}, {"no", "n", "false"}
+
+
+def _tokens(text: str) -> str:
+    """"applicantPhone_number[0]" -> "applicant phone number 0"."""
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", text)
+    return " ".join(re.findall(r"[a-z0-9]+", spaced.lower()))
+
+
+def bind_to_options(value: str | None, options: list[str] | None) -> str | None:
+    """The option a value selects, or None. No options = any value stands.
+
+    Case-insensitive, trimmed, exact. The one normalization: a yes/no value
+    (yes/y/true, no/n/false) picks the single option starting with that word
+    ("Yes" -> "Yes, I will relocate"); two such options = ambiguous = None.
+    """
+    if not options:
+        return value
+    if value is None:
+        return None
+    wanted = value.strip().lower()
+    for option in options:
+        if option.strip().lower() == wanted:
+            return option
+    for words, word in ((_YES, "yes"), (_NO, "no")):
+        if wanted in words:
+            hits = [o for o in options if re.match(rf"{word}\b", o.strip().lower())]
+            return hits[0] if len(hits) == 1 else None
+    return None
 
 
 def _find_network_url(profile_summary: dict, network_name: str) -> str | None:
@@ -74,10 +133,14 @@ def match_field_deterministic(field: dict, profile_summary: dict, ats_type: str 
     resolved without any model call, else None — the caller (map_fields.py)
     sends None results to the bounded LLM path unchanged.
     """
-    autocomplete = (field.get("autocomplete") or "").lower()
+    if (field.get("input_type") or "").lower() in _NO_PROFILE_VALUE_TYPES:
+        return None  # a profile string never belongs here (live: phone -> "Telugu" checkbox)
+
     name_attr = field.get("name") or ""
     dom_id = field.get("dom_id") or ""
-    label = field.get("label_text") or ""
+    ids = [_tokens(name_attr), _tokens(dom_id)]
+    label = (field.get("label_text") or "").strip().lower().rstrip("*✱: ")
+    label_usable = len(label.split()) <= _MAX_LABEL_WORDS and not _NOT_A_PROFILE_QUESTION.search(label)
 
     # A verified system field on a known ATS wins over every generic rule.
     schema = ATS_FIELD_SCHEMAS.get(ats_type, {})
@@ -90,24 +153,27 @@ def match_field_deterministic(field: dict, profile_summary: dict, ats_type: str 
             or _NETWORK_PATTERN.search(label)
         )
         if network_match:
-            network_name = network_match.group(0)
+            network_name = network_match.group(0).lower()
             url = _find_network_url(profile_summary, network_name)
             if url:
-                return _mapping(field["field_id"], f"network_profile:{network_name.lower()}", url)
+                return _mapping(field["field_id"], f"network_profile:{network_name}", url)
             return None  # a real network field, but we don't have that one — flag, don't guess
 
-        key = _AUTOCOMPLETE_MAP.get(autocomplete)
+        # The last token names the field; earlier ones are section/hint tokens.
+        tokens = (field.get("autocomplete") or "").lower().split()
+        key = next((_AUTOCOMPLETE_MAP[t] for t in reversed(tokens) if t in _AUTOCOMPLETE_MAP), None)
     if key is None:
-        for pattern, candidate_key in _PATTERN_RULES:
-            if pattern.search(name_attr) or pattern.search(dom_id) or pattern.search(label):
-                key = candidate_key
-                break
+        key = next((k for pattern, k in _ID_RULES if any(pattern.search(i) for i in ids)), None)
+    if key is None and label_usable:
+        key = next((k for pattern, k in _LABEL_RULES if pattern.search(label)), None)
 
     if key is None:
         return None
 
-    value = profile_summary.get(key)
+    # Rule matched structurally, but the data isn't there (or isn't one of the
+    # field's options) — flag, don't guess.
+    value = bind_to_options(profile_summary.get(key) or None, field.get("options"))
     if not value:
-        return None  # rule matched structurally, but the data isn't there — flag, don't guess
+        return None
 
     return _mapping(field["field_id"], f"profile.{key}", value)

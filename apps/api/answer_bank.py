@@ -39,16 +39,41 @@ from sqlalchemy.orm import Session
 import models
 
 # EEO/demographic. Never fillable by anything, under any circumstances.
-# Substring match on a lowercased label, same convention as
-# formfill/map_fields.py's original combined list (which this was split out of).
+# SHARED SPEC with apps/extension (fieldDecision.mjs implements the identical
+# rule client-side) — change both or neither. All text is normalized first
+# (lowercase, punctuation -> space, whitespace collapsed); question keywords
+# match as whole words ("Sussex" is not "sex", "embrace" is not "race").
+# ponytail: plus an optional plural "s" ("Pronouns", "Races") — server-side only
+# unless the extension mirrors it; it can only make the server stricter.
+# Live miss that forced the rewrite (docs/LIVE-FORM-TEST.md #2): "Are you
+# Hispanic/Latino?" passed the old list and was then served from the bank.
 DEMOGRAPHIC_LABEL_KEYWORDS = [
-    "race",
-    "ethnicity",
-    "gender",
-    "veteran status",
-    "disability status",
-    "sexual orientation",
+    "race", "ethnicity", "ethnic", "hispanic", "latino", "latina", "latinx",
+    "gender", "sexual orientation", "transgender", "pronoun",
+    "veteran", "disability", "disabled",
 ]
+_DEMOGRAPHIC_QUESTION = re.compile(
+    r"\b(?:" + "|".join(re.escape(k) for k in [*DEMOGRAPHIC_LABEL_KEYWORDS, "sex"]) + r")s?\b"
+)
+
+# Option-only EEO groups (Ashby sends "Man"/"Woman" with no question text). An
+# option carries a term only if it EQUALS it or STARTS WITH it plus a space
+# ("White (Not Hispanic or Latino)"), and terms count DISTINCT — so a
+# university list's "Asian Institute of Technology" and "Texas Woman's
+# University" stay one term at most.
+DEMOGRAPHIC_OPTION_TERMS = (
+    "man", "woman", "male", "female", "non binary", "white", "black or african american",
+    "asian", "hispanic or latino", "native hawaiian", "american indian", "two or more races",
+    "protected veteran", "i am a veteran", "not a veteran", "i have a disability", "no disability",
+)
+# Whole words, anywhere in an option (normalized, so "don't" is "don t").
+DECLINE_PHRASES = ("decline to self identify", "i don t wish to answer", "prefer not to say")
+_NOT_WORD_CHARS = re.compile(r"[^a-z0-9\s]+")
+
+
+def _normalize_eeo(text: str | None) -> str:
+    return _WHITESPACE.sub(" ", _NOT_WORD_CHARS.sub(" ", (text or "").lower())).strip()
+
 
 # Two gates, both measured against the real pairs below rather than picked
 # because they felt right. NEITHER IS SUFFICIENT ALONE, which is the finding
@@ -109,12 +134,24 @@ def normalize_question(text: str | None) -> str:
     return _WHITESPACE.sub(" ", _NOT_QUESTION_CHARS.sub(" ", text.lower())).strip()
 
 
+def is_demographic_field(label_text: str | None, options: list[str] | None = None) -> bool:
+    """Rail 1, the one place the EEO rule lives. True means unfillable, full
+    stop — not "flag for review". Demographic if (a) the label/question names
+    one, or (b) the options are an EEO answer set: a decline phrase alongside
+    any demographic option, or at least two demographic options.
+    """
+    if _DEMOGRAPHIC_QUESTION.search(_normalize_eeo(label_text)):
+        return True
+
+    normalized = [_normalize_eeo(o) for o in options or []]
+    terms = {t for o in normalized for t in DEMOGRAPHIC_OPTION_TERMS if o == t or o.startswith(t + " ")}
+    declines = any(f" {p} " in f" {o} " for o in normalized for p in DECLINE_PHRASES)
+    return len(terms) >= 2 or (declines and bool(terms))
+
+
 def is_demographic_label(label_text: str | None) -> bool:
-    """Rail 1. True means unfillable, full stop — not "flag for review"."""
-    if not label_text:
-        return False
-    lower = label_text.lower()
-    return any(keyword in lower for keyword in DEMOGRAPHIC_LABEL_KEYWORDS)
+    """The label half of is_demographic_field — for callers holding only a question."""
+    return is_demographic_field(label_text)
 
 
 def _content_tokens(normalized: str) -> list[str]:
@@ -168,7 +205,7 @@ def find_answer(db: Session, profile_id: str, question: str) -> models.AnswerBan
     it never increments the usage counters, because a lookup is not a use.
     Returns None for a demographic question regardless of what is stored.
     """
-    if is_demographic_label(question):
+    if is_demographic_field(question):
         return None
 
     normalized = normalize_question(question)
@@ -181,7 +218,9 @@ def find_answer(db: Session, profile_id: str, question: str) -> models.AnswerBan
     # into the thousands, the ix_answer_bank_question_normalized index plus a
     # trigram/prefix prefilter is the upgrade path — not an in-process cache.
     rows = db.query(models.AnswerBank).filter(models.AnswerBank.profile_id == profile_id).all()
-    rows = [row for row in rows if not is_demographic_label(row.question_text)]
+    # Also the cleanup for rows saved before the rule grew (the live
+    # "Are you Hispanic/Latino?" row): they stay in the table, never served.
+    rows = [row for row in rows if not is_demographic_field(row.question_text)]
 
     for row in rows:
         if row.question_normalized == normalized:
@@ -203,7 +242,7 @@ def save_answer(db: Session, profile_id: str, question: str, answer: str) -> mod
     Refuses demographic questions with a 400 rather than storing-and-ignoring:
     a row that exists but can never be served is a trap for the next reader.
     """
-    if is_demographic_label(question):
+    if is_demographic_field(question):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             "Demographic/EEO questions are never stored or auto-filled.",

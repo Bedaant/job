@@ -846,6 +846,8 @@ def get_profile_basics(profile: models.Profile = Depends(get_owned_profile)):
     """
     return schemas.ApplicantBasics(
         full_name=profile.full_name,
+        given_name=profile.given_name,
+        family_name=profile.family_name,
         phone=profile.phone,
         website_url=profile.website_url,
         street_address=profile.street_address,
@@ -872,6 +874,8 @@ def update_profile_basics(
     either.
     """
     profile.full_name = payload.full_name
+    profile.given_name = payload.given_name
+    profile.family_name = payload.family_name
     profile.phone = payload.phone
     profile.website_url = payload.website_url
     profile.street_address = payload.street_address
@@ -932,6 +936,10 @@ def download_resume_docx(profile: models.Profile = Depends(get_owned_profile), d
     fails either never ships, rather than shipping a document nobody verified.
     """
     facts = db.query(models.ResumeFact).filter(models.ResumeFact.profile_id == profile.id).all()
+    if not facts:
+        # docs/LIVE-FORM-TEST.md #12: an empty 200 docx was attached as the
+        # candidate's resume on three real forms. No facts = no resume to send.
+        raise HTTPException(409, "This profile has no resume facts yet, so there is no resume to generate.")
     facts_list = [
         {
             "id": f.id, "category": f.category, "achievement": f.achievement,

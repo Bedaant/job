@@ -75,6 +75,8 @@ class NetworkProfile(BaseModel):
 
 class ApplicantBasics(BaseModel):
     full_name: Optional[str] = None       # basics.name
+    given_name: Optional[str] = None      # user-entered, never split from full_name
+    family_name: Optional[str] = None
     phone: Optional[str] = None           # basics.phone
     website_url: Optional[str] = None     # basics.url
     street_address: Optional[str] = None  # basics.location.address

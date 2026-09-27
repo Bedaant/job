@@ -38,10 +38,13 @@ def test_download_resume_docx_returns_a_real_ats_safe_document():
     profile = client.post(
         "/profiles", headers=headers, json={"persona": "developer", "headline": "Backend Engineer"}
     ).json()
-    client.post(
-        "/resume-facts", headers=headers,
+    # profile_id was missing here before, so the fact 422'd and this test was
+    # passing on an EMPTY document (docs/LIVE-FORM-TEST.md #12).
+    fact = client.post(
+        "/resume-facts", headers=headers, params={"profile_id": profile["id"]},
         json={"category": "experience", "achievement": "Led a team of 5 engineers"},
     )
+    assert fact.status_code == 200
 
     resp = client.get(f"/profiles/{profile['id']}/resume.docx", headers=headers)
 

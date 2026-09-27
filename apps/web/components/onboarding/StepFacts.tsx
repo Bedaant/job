@@ -57,6 +57,17 @@ export function StepFacts({
             error={errors.full_name}
           />
           <Field
+            label="First name"
+            value={basics.given_name ?? ""}
+            onChange={(v) => set({ given_name: orNull(v) })}
+            hint="Most forms ask for first and last name separately. We won't guess them from your full name."
+          />
+          <Field
+            label="Last name"
+            value={basics.family_name ?? ""}
+            onChange={(v) => set({ family_name: orNull(v) })}
+          />
+          <Field
             label="Phone"
             type="tel"
             inputMode="tel"
