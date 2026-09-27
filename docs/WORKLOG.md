@@ -102,6 +102,70 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+26) — P0: /campaign — see it, pause it, change it
+
+**What changed.** New `/campaign` screen (inside `AppShell`, `useRequireAuth`), and
+"Campaign" in the nav between Matches and Your facts.
+- **Status first, one action.** A card states Active ("Maggie is applying") / Paused
+  ("Nothing will be sent until you resume") / Draft, with one primary button: Pause,
+  Resume, or Start (draft→active). No "are you sure" — pausing is safe and reversible.
+  Optimistic: the status flips on press via the `["campaigns"]` cache; a failed PATCH
+  restores the old status and shows a `role="alert"` saying nothing changed. The status
+  block is `aria-live="polite"` so the flip is announced.
+- **Today's pace** from `GET /campaigns/{id}/stats` (read the real shape in `main.py`):
+  `applied_today` of `daily_cap` plus `total_applied`. Worded "applications started
+  today" because the cap counts every `applications` row created, sent or not.
+- **Settings the user approved in onboarding**, editable inline: roles and locations
+  (reused `Chips`), remote only and "Send without asking me first" as real
+  `role="switch"`/`aria-checked` buttons with a plain one-line description of the
+  current state, daily cap as a −/+ stepper (44px buttons, bounds disable them), minimum
+  match score (reused `Field`), tailoring notes. One Save, disabled until something
+  differs; the PATCH carries only changed fields; success is announced via `aria-live`.
+- **Empty state** → `/onboarding`. More than one (non-archived) campaign → a row of
+  `aria-pressed` buttons to pick one; switching resets the form (`key={campaign.id}`).
+
+**Why.** ADR-015 lets Maggie apply autonomously inside a campaign approved once. After
+onboarding there was no way to see that campaign, stop it, or change it — for an agent
+sending applications under the user's name, that was the biggest trust gap.
+
+**Files.** New: `apps/web/app/campaign/page.tsx`, `apps/web/lib/campaign-form.ts`
+(`formFromCampaign`, `buildCampaignPatch`, `validateCampaignForm`, `statusView`),
+`apps/web/lib/campaign-form.test.ts`. Changed: `apps/web/lib/api.ts` (added
+`CampaignUpdate` type + `updateCampaign` only; `request()` untouched),
+`apps/web/lib/campaigns.test.ts` (PATCH contract tests), `apps/web/components/AppShell.tsx`
+(NAV entry).
+
+**Dependencies added.** None.
+
+**Tests.** Web 27 → 41. Red first: the new files failed with `Cannot find module
+'./campaign-form'` and `api.updateCampaign is not a function` (2 failed / 27 passed),
+then green after the implementation. Covered: patch contains only changed fields, lists
+compared by value, notes trimmed and cleared with `""` (the API's `exclude_none` drops
+nulls, so null could never clear a note), validation reuses onboarding's
+`validatePreferences`/`validateCampaign` rather than restating them, status→label/tone/
+action mapping incl. archived = no action, and msw: PATCH sends exactly the body given
+and a 422 surfaces as `ApiError` with the server's message. `tsc --noEmit` clean,
+`next build` clean (`/campaign` 8.17 kB, 137 kB first load).
+
+**Problems hit.**
+- The worktree was created at `fa419cd`, behind the `ee7a853` the task assumed (no
+  `AppShell.tsx`); fast-forwarded the clean branch to `ee7a853` first.
+- **422 field errors can't be field-level yet.** `request()` flattens FastAPI's
+  `detail[].loc` into one string, and it is off-limits here (a parallel agent owns it).
+  So client validation mirrors the server bounds and places errors per field; a
+  server-side 422 shows as one form-level alert. Field mapping needs `ApiError` to keep
+  the raw `detail`.
+- Daily-cap ceiling is onboarding's `DAILY_CAP_MAX` (50), stricter than the API's 200 —
+  kept consistent with what the user approved.
+- `api.runCampaign` is typed `{ job_id }` but the endpoint returns `{ task_id, status }`.
+  Not used here; not fixed.
+- Not verified in a browser: no backend was started (by instruction).
+
+**Next.** Keep `detail` on `ApiError` so 422s map to fields; a digest of what was sent
+today on this screen (ADR-015 rail); rendering tests once jsdom is approved.
+
+---
+
 ### 2026-09-27 (latest+24) — apps/web UX pass: one theme, one shell, accessible controls
 
 **What changed.** Audit (redesign-skill + ui-ux-pro-max checklist) found the web app
