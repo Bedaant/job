@@ -9,6 +9,18 @@
 //   3. if anything was flagged as needing the user, STOP and report needs_human
 //   4. only then submit, through submitApprovedApplication, which claims
 //      server-side first and is the single audited native-submit call site
+//   5. VERIFY before reporting: `submitted` only when the employer's page confirms
+//      it (submitVerification.mjs decides; this file only observes)
+//
+// Step 5 across a navigation: most ATS forms POST and load a new page, which
+// kills this script and injects a fresh one. So right before the native submit,
+// we tell the driver `jc:submit-sent` and wait for its ack; the driver marks the
+// tab's assignment as verifying ({urlBefore, sentAt}). The fresh script's
+// `jc:what-am-i-doing` then returns that `verify` block, and it only watches —
+// never fills or submits again. The state lives in the driver's in-memory
+// assignment, not chrome.storage.session: it is only useful while the driver's
+// runItem loop is alive to receive the report, and that loop is in-memory too.
+// Whichever script decides first reports; the driver takes the first report.
 //
 // Step 3 is not politeness: a blocking flag is a field nobody may or can answer
 // for the user (a REQUIRED demographic question, or an essay). An optional
@@ -24,6 +36,9 @@ import { classifyFailure } from "../background/driverCore.mjs";
 import { NEEDS_USER_REASONS, needsHumanReason } from "./fieldDecision.mjs";
 import { fillForm } from "./formFill.content";
 import { submitApprovedApplication } from "./submitApprovedApplication";
+import { decideVerification, isCaptchaChallengeSrc, verificationReport } from "./submitVerification.mjs";
+
+type Verify = { urlBefore: string; sentAt: number };
 
 type WorkItem = {
   application_id: string;
@@ -32,10 +47,14 @@ type WorkItem = {
   company: string;
   title: string;
   ats_type?: string | null;
+  // Set by the driver once the submit was sent: this page only verifies.
+  verify?: Verify;
 };
 
+const POLL_MS = 500;
+
 function report(
-  outcome: "submitted" | "failed" | "needs_human",
+  outcome: "submitted" | "unconfirmed" | "failed" | "needs_human",
   reason?: string,
   questions: string[] = [],
 ): void {
@@ -57,6 +76,68 @@ function findForm(): HTMLFormElement | null {
   );
 }
 
+const visible = (el: Element) => {
+  const style = getComputedStyle(el);
+  return el.getClientRects().length > 0 && style.visibility !== "hidden" && style.display !== "none";
+};
+
+function labelOf(el: HTMLElement): string {
+  const labelled = (el as HTMLInputElement).labels?.[0]?.innerText;
+  return (labelled || el.getAttribute("aria-label") || el.getAttribute("name") || "a field").trim();
+}
+
+// Error texts inside the form only — a page-level role=alert (cookie banner) is not ours.
+function errorTexts(form: HTMLFormElement): string[] {
+  const texts = new Set<string>();
+  form
+    .querySelectorAll<HTMLElement>('[role="alert"], .error, .errors, .field-error, .error-message, [class*="error-message"], [class*="field-error"]')
+    .forEach((el) => {
+      const text = el.innerText?.trim();
+      if (text && visible(el)) texts.add(text.slice(0, 300));
+    });
+  form.querySelectorAll<HTMLElement>('[aria-invalid="true"]').forEach((el) => {
+    const described = (el.getAttribute("aria-errormessage") || el.getAttribute("aria-describedby") || "")
+      .split(/\s+/)
+      .map((id) => (id ? document.getElementById(id)?.innerText?.trim() : ""))
+      .filter(Boolean)
+      .join(" ");
+    texts.add(`${labelOf(el)}: ${described || "marked invalid"}`);
+  });
+  // requestSubmit() runs native constraint validation and silently doesn't submit.
+  form.querySelectorAll<HTMLInputElement>("input, select, textarea").forEach((el) => {
+    if (el.willValidate && !el.checkValidity()) texts.add(`${labelOf(el)}: ${el.validationMessage}`);
+  });
+  return [...texts];
+}
+
+/** Watch this page until submitVerification decides, then report once. */
+async function verify(v: Verify, submittedForm: HTMLFormElement | null): Promise<void> {
+  for (;;) {
+    // Same page (SPA / slow POST): the form we submitted. After a navigation: the
+    // application form, if the ATS re-rendered it (server-side validation).
+    const form = submittedForm?.isConnected ? submittedForm : findForm();
+    const formStillPresent =
+      !!form && visible(form) && form.querySelectorAll("input, select, textarea").length >= 3;
+    const result = decideVerification({
+      urlBefore: v.urlBefore,
+      urlAfter: location.href,
+      pageText: (document.body?.innerText ?? "").slice(0, 5000),
+      formStillPresent,
+      visibleErrorTexts: formStillPresent && form ? errorTexts(form) : [],
+      captchaVisible: Array.from(document.querySelectorAll("iframe")).some(
+        (f) => isCaptchaChallengeSrc(f.src) && visible(f),
+      ),
+      elapsedMs: Date.now() - v.sentAt,
+    });
+    if (result.verdict !== "pending") {
+      const { outcome, reason } = verificationReport(result);
+      report(outcome, reason);
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+  }
+}
+
 async function run(): Promise<void> {
   let item: WorkItem | null = null;
   try {
@@ -66,6 +147,20 @@ async function run(): Promise<void> {
   }
   if (!item) return; // the user is just browsing; do nothing
 
+  // The page the submit navigated to: verify only. Filling or submitting here
+  // would be a second application.
+  if (item.verify) {
+    try {
+      await verify(item.verify, null);
+    } catch (error) {
+      report("unconfirmed", `Couldn't check the page after submit: ${String(error)}`.slice(0, 2000));
+    }
+    return;
+  }
+
+  // Once the submit is sent, no error may become `failed`: that returns the row
+  // to `approved` and a retry could apply twice.
+  let sent = false;
   try {
     const { flagged, questions } = await fillForm(item.profile_id, item.ats_type);
 
@@ -83,15 +178,34 @@ async function run(): Promise<void> {
 
     const form = findForm();
     if (!form) {
-      report("failed", "no form found on page");
+      // Ashby renders its application with no <form> at all. Submitting there means
+      // clicking the ATS's own button, which also needs the React value fix
+      // (LIVE-FORM-TEST.md #3) or it sends empty fields. Until both land, hand it
+      // to the user rather than `failed`, which would just retry the same wall.
+      report(
+        "needs_human",
+        "This application page has no form Maggie can submit (Ashby-style). Open the form and submit it yourself.",
+      );
       return;
     }
 
     // Claims server-side, then submits. Throws if the claim is refused, in which
     // case nothing was submitted.
-    await submitApprovedApplication(form, item.application_id);
-    report("submitted");
+    const pending: Verify = { urlBefore: location.href, sentAt: Date.now() };
+    await submitApprovedApplication(form, item.application_id, async () => {
+      // The driver must know before the submit can navigate this tab away. No ack
+      // (driver timed out or gone) -> throw, and the native submit never fires.
+      pending.sentAt = Date.now(); // after the claim round trip, so the 20s is the page's
+      const ack = await chrome.runtime.sendMessage({ type: "jc:submit-sent", ...pending });
+      if (ack !== true) throw new Error("driver is no longer waiting for this tab; not submitting");
+      sent = true;
+    });
+    await verify(pending, form);
   } catch (error) {
+    if (sent) {
+      report("unconfirmed", `Couldn't check the page after submit: ${String(error)}`.slice(0, 2000));
+      return;
+    }
     // The SAME classifier the driver uses. Reporting every error as `failed`
     // here would mean a captcha or an account wall is retried forever and never
     // reaches the user's review queue — the classification has to happen

@@ -102,6 +102,92 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+35) — Verify: 'submitted' only when the employer's page confirms it
+
+**What changed.**
+- *Extension, pure (`src/content/submitVerification.mjs`, new).* `decideVerification`
+  takes `{urlBefore, urlAfter, pageText, formStillPresent, visibleErrorTexts,
+  captchaVisible, elapsedMs}` → `confirmed | rejected (captcha | required_field |
+  validation_errors) | unconfirmed | pending`. Confirmed: URL changed to a
+  `/thanks`, `/confirmation`, `/thank-you`, `/success`… path, or confirmation text
+  ("thank you for applying", "application (has been|was) (successfully) submitted|received",
+  "we('ve| have) received your application") **once the page moved on** (new URL or
+  form gone — a careers header can say "thank you for applying" above the form).
+  Rejected: a visible captcha challenge frame (reCAPTCHA `bframe`, hCaptcha
+  `frame=challenge`, Cloudflare), or the form still there with errors after 1.5s.
+  Unconfirmed: nothing by 20s. `verificationReport` maps confirmed→`submitted`,
+  rejected→`needs_human`, unconfirmed→`unconfirmed`.
+- *Extension, glue.* `autoApply.content.ts` polls the page every 500ms after submit
+  (errors read inside the form only: `role=alert`, error classes, `aria-invalid` +
+  its described-by text, native `:invalid` — `requestSubmit()` silently refuses an
+  invalid form). **Navigation handoff:** right before the native submit
+  (`submitApprovedApplication`'s new `beforeSubmit` hook, after the claim) the page
+  sends `jc:submit-sent {urlBefore, sentAt}` and waits for the driver's ack; no ack →
+  throw → nothing is submitted. The driver stores `verify` on the tab's in-memory
+  assignment and swaps its 60s timer for 20s+10s → `unconfirmed`. The page the submit
+  navigates to gets a fresh content script; `jc:what-am-i-doing` now returns the item
+  with `verify`, so it only watches, never fills or submits again. First report wins.
+  Not `chrome.storage.session`: the state is only useful while the driver's `runItem`
+  loop is alive to take the report, and that loop is in-memory too. Once sent, any
+  error reports `unconfirmed`, never `failed` (a retry could apply twice).
+- *Ashby has no `<form>`* (docs/LIVE-FORM-TEST.md #5): now `needs_human` with a plain
+  reason instead of `failed`. Clicking Ashby's own button was not built: it needs the
+  React value fix (#3) first, or it would submit empty fields.
+- *API.* `SubmissionResultIn.outcome` gains `unconfirmed` →
+  `ApplicationStatus.submitted_unconfirmed` (migration **`0017`**, `ALTER TYPE ... ADD
+  VALUE IF NOT EXISTS ... BEFORE 'applied'`, same as 0013; **not applied to Neon**).
+  Stamps `applied_at` (= when it was sent), never re-enters the work queue or the
+  review queue; the user PATCHes it to `applied` (applied_at kept). `/today` gains
+  `unconfirmed_today` (of `sent_today`). `/activity` maps `application.unconfirmed` to
+  "Sent to {company} — couldn't confirm it went through" plus `apply_url`. Daily cap
+  unchanged: it counts rows created, whatever their status. `needs_input.py` reads
+  `[unconfirmed]` stamps so an older needs_human line isn't taken as the last attempt.
+- *API, pre-existing bug fixed.* `failed`/`needs_human` reported **before** a claim
+  (blocking field, no form, captcha on load) hit a row still `approved` and 409'd, so
+  those cards never reached the review queue live. They now close from `approved`
+  too; `submitted`/`unconfirmed` still require the claim.
+- *Web.* Today row: mail-question icon in warning tone, "Check your email for a
+  confirmation from {company}, or open the form."; the row opens the form (new tab,
+  http(s) only). Summary: "3 applications sent today, 1 not confirmed yet."
+
+**Why rejected → needs_human, not failed.** A retry refills the same data and hits
+the same error, up to 3 times; the review card ("other" kind) shows the employer's
+error text and "open the form". A captcha reason keeps the word "captcha" so the card
+says so.
+
+**Files.** extension: `src/content/submitVerification.mjs/.d.mts/.test.mjs` (new),
+`autoApply.content.ts`, `submitApprovedApplication.ts`, `background/driver.ts`,
+`package.json` (test list). api: `models.py`, `schemas.py`, `main.py`,
+`needs_input.py`, `alembic/versions/0017_application_status_submitted_unconfirmed.py`,
+`tests/test_submission_unconfirmed.py` (new), `tests/test_activity.py` (new key in two
+exact-dict asserts). web: `lib/today.ts`, `lib/today.test.ts`, `lib/api.ts`,
+`app/today/page.tsx`.
+
+**Dependencies added.** None.
+
+**Tests.** Red first on every layer. api 456 → **462** (5 red on `submitted_unconfirmed`
+missing, then 1 red on the pre-claim 409). extension 36 → **51** (module-not-found
+red). web 87 → **91** (4 red). `architectureInvariants` still green: the native
+submit stays only in `submitApprovedApplication.ts`. Extension `tsc` + build, web
+`tsc` + `next build` clean.
+
+**Confirmation wording — what is verified.** Lever: fetched a live
+`jobs.lever.co/<co>/<id>/thanks` page, "Application submitted!". Greenhouse: the
+`/confirmation` route (LIVE-FORM-TEST.md page source; search-index titles "Thank you
+for applying…"; direct fetches 404'd). Ashby: "Your application was successfully
+submitted." (LIVE-FORM-TEST.md page source); companies can customise it.
+
+**Not verified.** No live submit (by design) and no loaded-extension run: the
+navigation handoff, the polling glue and the error/captcha DOM reads are verified by
+reading only. A service-worker restart mid-verify loses the driver loop (pre-existing,
+same as `attempts`); the row stays `submitting`.
+
+**Next.** Apply `0017` to Neon before deploying this API (a `submitted_unconfirmed`
+write fails on 0016). Ashby submit via its button once the React value fix lands. A
+web control to mark an unconfirmed application applied (the API PATCH exists).
+
+---
+
 ### 2026-09-27 (latest+34) — NVIDIA NIM is the production LLM provider (owner decision)
 
 **What changed.** New `LLM_PROVIDER=nvidia` (the old `nvidia_smoke` stays as the dev-only,

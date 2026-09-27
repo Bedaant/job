@@ -376,6 +376,10 @@ def extension_work_queue(
 _SUBMISSION_OUTCOMES = {
     # outcome -> (resulting status, stamps applied_at)
     "submitted": (models.ApplicationStatus.applied, True),
+    # Sent, but the employer's page neither confirmed nor rejected it. Its own
+    # status: not `applied` (unverified), never `approved` (a retry could apply
+    # twice). applied_at still stamps when the submit was sent.
+    "unconfirmed": (models.ApplicationStatus.submitted_unconfirmed, True),
     # The form never went through, so this is work again rather than a lie. The
     # reason is recorded because a silent failure is the whole thing being fixed.
     "failed": (models.ApplicationStatus.approved, False),
@@ -411,7 +415,14 @@ def report_submission_result(
     )
     if not application:
         raise HTTPException(404, "Application not found")
-    if application.status != models.ApplicationStatus.submitting:
+    # `failed`/`needs_human` also close from `approved`: the extension stops
+    # BEFORE claiming (blocking field, no form, captcha on load), so nothing was
+    # sent and there is no claim. Anything that says a send happened
+    # (submitted/unconfirmed) still requires the claim.
+    allowed = {models.ApplicationStatus.submitting}
+    if payload.outcome in ("failed", "needs_human"):
+        allowed.add(models.ApplicationStatus.approved)
+    if application.status not in allowed:
         raise HTTPException(
             409,
             f"Application is {application.status.value}, not submitting — there is no open "
@@ -1060,6 +1071,8 @@ _ACTIVITY = {
     "application.ready_for_review": ("Ready for your review", None),
     "application.approved": ("Approved to send", None),
     "application.submitted": ("Applied", None),
+    "application.unconfirmed": ("Sent — couldn't confirm it went through",
+                                "Check your email for a confirmation, or open the form."),
     "application.needs_human": ("Stopped on a question", "Needs an answer from you before it can be sent."),
     "application.failed": ("Couldn't send", "Maggie will try again."),
     "campaign.skipped": ("Skipped", None),
@@ -1109,10 +1122,14 @@ def list_activity(
             detail = p.get("reason") or fallback
         if e.type == "campaign.skipped" and not job:
             title = _RUN_SKIP_TITLES.get(p.get("reason_code"), "Maggie didn't apply")
+        unconfirmed = e.type == "application.unconfirmed"
+        if unconfirmed and job:
+            title = f"Sent to {job.company} — couldn't confirm it went through"
         items.append(schemas.ActivityItemOut(
             id=e.id, type=e.type, at=e.created_at.replace(tzinfo=timezone.utc), title=title, detail=detail,
             application_id=application.id if application else None,
             job=schemas.ActivityJob(title=job.title, company=job.company) if job else None,
+            apply_url=job.apply_url if unconfirmed and job else None,
         ))
     return items
 
@@ -1131,8 +1148,12 @@ def get_today(
     start = campaigns_service.local_day_start(tz)
     mine = db.query(models.Profile.id).filter(models.Profile.user_id == current_user.id)
     apps = db.query(models.Application).filter(models.Application.profile_id.in_(mine))
+    sent = apps.filter(models.Application.applied_at >= start)
     return schemas.TodayOut(
-        sent_today=apps.filter(models.Application.applied_at >= start).count(),
+        sent_today=sent.count(),
+        unconfirmed_today=sent.filter(
+            models.Application.status == models.ApplicationStatus.submitted_unconfirmed
+        ).count(),
         # Same set the review queue lists (needs_human lands back in ready_for_review).
         needs_you=apps.filter(models.Application.status == models.ApplicationStatus.ready_for_review).count(),
         new_matches_today=db.query(models.Match).filter(

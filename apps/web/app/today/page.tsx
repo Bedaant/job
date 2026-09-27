@@ -7,6 +7,7 @@ import {
   CircleCheckIcon,
   CircleHelpIcon,
   InboxIcon,
+  MailQuestionMarkIcon,
   PauseIcon,
   PlayIcon,
   SendIcon,
@@ -18,7 +19,7 @@ import {
 import { api, ApiError, type ActivityItem, type Campaign } from "@/lib/api";
 import { statusView } from "@/lib/campaign-form";
 import {
-  activityHref,
+  activityLink,
   dailyLimitCaption,
   formatWhen,
   greeting,
@@ -26,6 +27,7 @@ import {
   maggieLabel,
   splitToday,
   summaryLine,
+  unconfirmedAction,
 } from "@/lib/today";
 import { AppShell, useRequireAuth } from "@/components/AppShell";
 import { useCampaignStatus } from "@/components/useCampaignStatus";
@@ -37,6 +39,8 @@ const errorText = (err: unknown) => (err instanceof ApiError ? err.message : "We
 
 const ROW_ICON: Record<string, { Icon: LucideIcon; tone: string }> = {
   "application.submitted": { Icon: CircleCheckIcon, tone: "text-success" },
+  // Sent but not confirmed: never the success tick.
+  "application.unconfirmed": { Icon: MailQuestionMarkIcon, tone: "text-warning" },
   "application.needs_human": { Icon: CircleHelpIcon, tone: "text-warning" },
   "application.failed": { Icon: TriangleAlertIcon, tone: "text-destructive" },
   "application.ready_for_review": { Icon: InboxIcon, tone: "text-primary" },
@@ -109,9 +113,15 @@ function ActivityList({ items }: { items: ActivityItem[] }) {
     <ol className="divide-y rounded-2xl border bg-card shadow-sm">
       {items.map((item) => {
         const { Icon, tone } = ROW_ICON[item.type] ?? ROW_ICON["application.approved"];
+        const link = activityLink(item);
+        const unconfirmed = item.type === "application.unconfirmed";
         return (
           <li key={item.id}>
-            <Link href={activityHref(item.type)} className="flex items-start gap-3 px-4 py-3.5 transition-colors hover:bg-muted sm:px-5">
+            <Link
+              href={link.href}
+              {...(link.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+              className="flex items-start gap-3 px-4 py-3.5 transition-colors hover:bg-muted sm:px-5"
+            >
               <Icon aria-hidden="true" className={cn("mt-0.5 size-5 shrink-0", tone)} />
               <span className="min-w-0 flex-1">
                 <span className="block font-medium">
@@ -123,7 +133,14 @@ function ActivityList({ items }: { items: ActivityItem[] }) {
                     </span>
                   )}
                 </span>
-                {item.detail && <span className="mt-0.5 block text-sm text-muted-foreground">{item.detail}</span>}
+                {unconfirmed ? (
+                  <span className="mt-0.5 block text-sm text-warning">
+                    {unconfirmedAction(item.job?.company)}
+                    {link.external && <span className="sr-only"> (opens the form in a new tab)</span>}
+                  </span>
+                ) : (
+                  item.detail && <span className="mt-0.5 block text-sm text-muted-foreground">{item.detail}</span>
+                )}
               </span>
               <time dateTime={item.at} className="shrink-0 whitespace-nowrap text-sm tabular-nums text-muted-foreground">
                 {formatWhen(item.at)}
