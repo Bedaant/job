@@ -13,12 +13,12 @@ kind of invention the null-over-guess rule already forbids for identity
 data (schemas.ApplicantBasics's validators). Those fields fall through to
 the LLM path, same as any other field this module doesn't recognize.
 
-This is the "rules engine" half of the deterministic design; a per-ATS
-selector override layer was deliberately not built alongside it — SPEC.md
-§3.7 already commits to that needing real user-side HTML captures, which
-don't exist yet (ADR-002 forbids server-side scraping even for fixtures).
+When the caller passes an `ats_type`, formfill/ats_schemas.py's verified
+per-ATS system field names are consulted first (ADR-015 Phase 2).
 """
 import re
+
+from formfill.ats_schemas import ATS_FIELD_SCHEMAS
 
 # autocomplete token -> profile_summary key. WHATWG HTML living standard,
 # https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#autofill-field-name
@@ -69,7 +69,7 @@ def _mapping(field_id: str, maps_to: str, value: str) -> dict:
     return {"field_id": field_id, "maps_to": maps_to, "confidence": 1.0, "value": value}
 
 
-def match_field_deterministic(field: dict, profile_summary: dict) -> dict | None:
+def match_field_deterministic(field: dict, profile_summary: dict, ats_type: str | None = None) -> dict | None:
     """Returns a FieldMapping dict at confidence 1.0 if this field can be
     resolved without any model call, else None — the caller (map_fields.py)
     sends None results to the bounded LLM path unchanged.
@@ -79,19 +79,24 @@ def match_field_deterministic(field: dict, profile_summary: dict) -> dict | None
     dom_id = field.get("dom_id") or ""
     label = field.get("label_text") or ""
 
-    network_match = (
-        _NETWORK_PATTERN.search(name_attr)
-        or _NETWORK_PATTERN.search(dom_id)
-        or _NETWORK_PATTERN.search(label)
-    )
-    if network_match:
-        network_name = network_match.group(0)
-        url = _find_network_url(profile_summary, network_name)
-        if url:
-            return _mapping(field["field_id"], f"network_profile:{network_name.lower()}", url)
-        return None  # a real network field, but we don't have that one — flag, don't guess
+    # A verified system field on a known ATS wins over every generic rule.
+    schema = ATS_FIELD_SCHEMAS.get(ats_type, {})
+    key = schema.get(name_attr) or schema.get(dom_id)
 
-    key = _AUTOCOMPLETE_MAP.get(autocomplete)
+    if key is None:
+        network_match = (
+            _NETWORK_PATTERN.search(name_attr)
+            or _NETWORK_PATTERN.search(dom_id)
+            or _NETWORK_PATTERN.search(label)
+        )
+        if network_match:
+            network_name = network_match.group(0)
+            url = _find_network_url(profile_summary, network_name)
+            if url:
+                return _mapping(field["field_id"], f"network_profile:{network_name.lower()}", url)
+            return None  # a real network field, but we don't have that one — flag, don't guess
+
+        key = _AUTOCOMPLETE_MAP.get(autocomplete)
     if key is None:
         for pattern, candidate_key in _PATTERN_RULES:
             if pattern.search(name_attr) or pattern.search(dom_id) or pattern.search(label):

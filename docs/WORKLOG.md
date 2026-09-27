@@ -102,6 +102,60 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+21) — per-ATS field schemas: verified system fields fill with zero LLM calls
+
+**What changed.** `formfill/ats_schemas.py` (new) is one dict:
+`ats_type -> exact DOM name/id -> profile_summary key`, for Greenhouse
+(`email`, `phone`), Lever (`name`, `email`, `phone`, `urls[Portfolio]`) and Ashby
+(`_systemfield_name`, `_systemfield_email`). `match_field_deterministic` gained
+`ats_type=None` and consults the table before the network/autocomplete/regex
+rules, so a known system field fills however its label is worded.
+`MapFieldsRequest.ats_type` is optional and bounded (`max_length=32`, a string
+not a Literal — the resolver can return an LLM-classified type, and an unknown
+one must fall through, not 422 the fill). The extension forwards the work item's
+`ats_type` (already in `/extension/work-queue` since latest+18); the interactive
+popup path sends `null`. Unknown/`None` = exactly the old behaviour (tested).
+Demographic exclusion in `map_form_fields` still runs before any of it (tested).
+
+**Verified against (2026-09-27, live public pages — nothing invented).**
+Greenhouse: rendered ids on `job-boards.greenhouse.io/anthropic/jobs/4461450008`
++ `boards-api.greenhouse.io/v1/boards/airbnb/jobs/8232207?questions=true`.
+Lever: input `name`s on `jobs.lever.co/palantir/6ed76ce8-…/apply`. Ashby:
+rendered `name`/`id` on `jobs.ashbyhq.com/ashby/7458d4e9-…/application`
+(Playwright) + its public `non-user-graphql` `ApiJobPosting` form definition.
+
+**Deliberately left out.** Greenhouse `first_name`/`last_name` (verified, but
+Profile has only `full_name` — a split is a guess; they still fall through to
+the LLM path as before, and a test pins that the table never splits). Typeahead
+comboboxes: Greenhouse `country`, Lever `location`, Ashby `_systemfield_location`.
+Lever `org` (no current-company column). Lever `urls[LinkedIn]`/`urls[GitHub]`
+already resolve via the generic network rule. File inputs stay client-side.
+The other 14 ATS types: no verified field names gathered, so no entries.
+
+**Why.** `latest+18`/`+20` Next: known fields on known ATSes should not depend on
+label wording or a model call.
+
+**Files.** api: `formfill/ats_schemas.py` (new), `formfill/deterministic.py`,
+`formfill/map_fields.py`, `main.py`, `schemas.py`, `tests/test_ats_schemas.py`
+(new). extension: `background/driver.ts`, `content/autoApply.content.ts`,
+`content/formFill.content.ts` (type + one request field).
+
+**Dependencies added.** None. No migration.
+
+**Tests.** Red first (collection error: no `formfill.ats_schemas`), then green.
+api 400 → 412 passed. Extension 33/33, `tsc --noEmit` clean, build clean.
+
+**Problems hit.** The worktree has no `.venv`/`node_modules`: ran pytest with the
+main checkout's venv (after copying the gitignored `apps/api/.env`) and the
+extension checks through a temporary junction to the main `node_modules`,
+removed afterwards.
+
+**Next.** Workable/SmartRecruiters/Workday schemas once real forms are captured;
+a narrow, user-confirmed given/family name split (a profile column, not a guess)
+would unlock Greenhouse's two required name fields without the LLM.
+
+---
+
 ### 2026-09-27 (latest+20) — the answer bank fills itself at `needs_human`; the resume reaches file inputs
 
 **What changed.**

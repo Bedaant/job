@@ -27,6 +27,7 @@ type WorkItem = {
   apply_url: string;
   company: string;
   title: string;
+  ats_type?: string | null;
 };
 
 // Reasons map-fields uses for a field it will not answer. Any of them means a
@@ -74,7 +75,7 @@ async function run(): Promise<void> {
   if (!item) return; // the user is just browsing; do nothing
 
   try {
-    const { flagged, questions } = await fillForm(item.profile_id);
+    const { flagged, questions } = await fillForm(item.profile_id, item.ats_type);
 
     const blocking = flagged.filter((f) => NEEDS_USER_REASONS.has(f.reason));
     if (blocking.length > 0) {
