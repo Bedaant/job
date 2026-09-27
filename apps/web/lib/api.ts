@@ -121,6 +121,7 @@ export interface ReviewApplication {
 // ---------------------------------------------------------------------------
 
 export interface CampaignCreate {
+  profile_id: string;
   name: string;
   roles: string[];
   locations: string[];
@@ -240,7 +241,7 @@ export const api = {
   createCampaign: (body: CampaignCreate) =>
     request<Campaign>("/campaigns", { method: "POST", body: JSON.stringify(body) }),
   runCampaign: (campaignId: string) =>
-    request<{ job_id: string }>(`/campaigns/${campaignId}/run`, { method: "POST" }),
+    request<{ task_id: string; status: string }>(`/campaigns/${campaignId}/run`, { method: "POST" }),
   updateCampaign: (campaignId: string, body: CampaignUpdate) =>
     request<Campaign>(`/campaigns/${campaignId}`, { method: "PATCH", body: JSON.stringify(body) }),
   getCampaignStats: (campaignId: string) => request<CampaignStats>(`/campaigns/${campaignId}/stats`),

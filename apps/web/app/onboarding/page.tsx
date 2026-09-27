@@ -15,6 +15,7 @@ import {
   emptyPreferences,
   stepErrors,
 } from "@/lib/onboarding";
+import { launchCampaign } from "@/lib/onboarding";
 import type { CampaignDraft, Preferences, WizardStep } from "@/lib/onboarding";
 import { getToken } from "@/lib/auth";
 import { FailureNotice } from "@/components/onboarding/fields";
@@ -37,6 +38,7 @@ export default function OnboardingPage() {
   const [prefs, setPrefs] = useState<Preferences>(emptyPreferences);
   const [campaignDraft, setCampaignDraft] = useState<CampaignDraft>(emptyCampaignDraft);
   const [campaign, setCampaign] = useState<Campaign | null>(null);
+  const [started, setStarted] = useState(true);
 
   const panelRef = useRef<HTMLDivElement>(null);
   const firstRender = useRef(true);
@@ -99,16 +101,10 @@ export default function OnboardingPage() {
   });
 
   const launch = useMutation({
-    mutationFn: async () => {
-      const created = await api.createCampaign(buildCampaignBody(prefs, campaignDraft));
-      // A campaign that exists but was never run is a silent dead end, so kick
-      // off the first pass here. A failure to start is reported, not swallowed —
-      // but it does not discard the campaign that was just created.
-      await api.runCampaign(created.id).catch(() => null);
-      return created;
-    },
-    onSuccess: (created) => {
-      setCampaign(created);
+    mutationFn: () => launchCampaign(buildCampaignBody(prefs, campaignDraft, profile!.id)),
+    onSuccess: ({ campaign, started }) => {
+      setCampaign(campaign);
+      setStarted(started);
       goTo("done");
     },
   });
@@ -254,7 +250,7 @@ export default function OnboardingPage() {
             <StepCampaign campaign={campaignDraft} onChange={setCampaignDraft} prefs={prefs} errors={visibleErrors} />
           )}
 
-          {profile && step === "done" && campaign && <StepDone campaign={campaign} profileId={profile.id} />}
+          {profile && step === "done" && campaign && <StepDone campaign={campaign} profileId={profile.id} started={started} />}
 
           {saveFacts.isError && (
             <div className="mt-4">
@@ -269,13 +265,7 @@ export default function OnboardingPage() {
             <div className="mt-4">
               <FailureNotice
                 title="The campaign was not created"
-                detail={
-                  launch.error instanceof ApiError && launch.error.status === 404
-                    ? "POST /campaigns returned 404 — the campaigns backend is not deployed yet. Everything on this page is still here; press Launch again once it is."
-                    : launch.error instanceof ApiError
-                      ? launch.error.message
-                      : String(launch.error)
-                }
+                detail="Your answers are all still here. Check your connection and press Launch again." 
               />
             </div>
           )}

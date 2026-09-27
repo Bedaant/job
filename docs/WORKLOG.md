@@ -102,6 +102,51 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+27) — Launch actually launches; RQ job ids; Tailwind v3 colour tokens fixed at the root
+
+**What changed.**
+- *Onboarding launch* (found by the IA audit, verified live): `POST /campaigns` 422'd on
+  every launch (`buildCampaignBody` never sent `profile_id`; the contract test pinned the
+  wrong body). And a created campaign stays `draft`, which `run_campaign` skips.
+  New `launchCampaign()` (lib/onboarding.ts): create → PATCH `status: active` → run,
+  returning `{campaign, started}`; a failed first run is reported ("saved but didn't
+  start"), no longer `.catch(() => null)`. StepDone score `×100` bug ("8200%") fixed;
+  developer error copy on launch/stats removed; `runCampaign` return type corrected.
+- *RQ job ids* (found live): rq 2.x rejects `:` in job ids, so `POST /campaigns/{id}/run`
+  and `POST /discover/run` 500'd on every call; mocked-queue tests couldn't see it.
+  Ids now use `-`; new test runs rq's own `validate_job_id` on both.
+- *Tailwind v3 × shadcn v4 root cause* (a11y audit): tokens were hex, so every opacity
+  modifier (`bg-destructive/10`, `ring-ring/50`, `bg-background/80`…) silently never
+  generated — error boxes had no background, header was transparent, focus rings fell
+  back to Tailwind's default at 1.8:1. Tokens are now RGB channels +
+  `rgb(var(--x) / <alpha-value>)` in tailwind.config. `outline-none` removed from
+  button/input/textarea/checkbox so the global 3px `--ring` outline shows. `--input`
+  darkened to ≥3:1 (was 1.38:1). Button `transition-all` scoped; v4-only
+  `var(--radius-md)` radii replaced. Reduced-motion rule gains
+  `animation-iteration-count: 1` (spinners jittered instead of stopping).
+
+**Tests.** api 418/418 (new rq-id test red → green). web 54/54 (profile_id contract +
+launchCampaign create→activate→run and failed-run cases red → green). tsc clean.
+Verified in browser: font, radii, error background, focus ring, both themes.
+
+**Problems hit.** My token regex also rewrote `var(--font-sans)` and `var(--radius)` into
+`rgb(...)` (serif font, square corners) — caught in the browser screenshot, fixed.
+uvicorn `--reload` hung mid-reload and kept serving old code; restarted without reload.
+**Redis Cloud endpoint no longer resolves** (`expert-neosafe-bucket-71462.db.redis.io`:
+DNS name does not exist) — the free DB appears deleted. Every enqueue (campaign run,
+discovery) fails until `REDIS_URL` points at a live instance. Onboarding now says so
+honestly ("saved but didn't start").
+
+**Not merged.** Branch `worktree-agent-af607b1d421ec69ae` commit `adbf0c2` (the agent's
+late scope addition: profile_id, errorText helper, create-once retry) overlaps this
+entry's launch fix; kept unmerged for review — its `errorText` sweep of raw
+exception text is still worth taking.
+
+**Next.** New REDIS_URL; mobile nav (overflows at 390px); map raw parse/LLM errors to
+friendly copy server-side; focus management while onboarding is pending; Today home.
+
+---
+
 ### 2026-09-27 (latest+26) — P0: /campaign — see it, pause it, change it
 
 **What changed.** New `/campaign` screen (inside `AppShell`, `useRequireAuth`), and

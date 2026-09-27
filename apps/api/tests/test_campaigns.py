@@ -515,3 +515,29 @@ def test_application_campaign_fk_is_set_null_not_cascade():
     # campaigns themselves cascade from their profile, like every other tenant table
     profile_fk = next(iter(models.Campaign.__table__.c.profile_id.foreign_keys))
     assert profile_fk.ondelete == "CASCADE"
+
+
+def test_enqueued_job_ids_are_valid_rq_ids():
+    """Found live: rq 2.x rejects ':' in job ids, so POST /campaigns/{id}/run and
+    POST /discover/run 500'd on every call. The mocked-queue tests above can't
+    see it — this runs rq's own validator on the ids the endpoints build."""
+    from rq.job import validate_job_id
+
+    client, _ = _client()
+    headers = _auth(client, "rqid@example.com")
+    profile = client.post("/profiles", headers=headers, json={"persona": "developer"}).json()
+    campaign_id = client.post("/campaigns", headers=headers,
+                              json={"profile_id": profile["id"], "name": "Backend roles"}).json()["id"]
+
+    fake_job = MagicMock()
+    fake_job.id = "x"
+    fake_job.get_status.return_value = "queued"
+    with patch("main.get_queue") as mock_queue:
+        mock_queue.return_value.enqueue.return_value = fake_job
+        client.post(f"/campaigns/{campaign_id}/run", headers=headers)
+        client.post("/discover/run", headers=headers)
+
+    job_ids = [c.kwargs["job_id"] for c in mock_queue.return_value.enqueue.call_args_list]
+    assert len(job_ids) == 2
+    for job_id in job_ids:
+        validate_job_id(job_id)  # raises ValueError on an id rq would refuse

@@ -147,6 +147,7 @@ describe("buildCampaignBody", () => {
     const body = buildCampaignBody(
       { roles: ["Backend Engineer"], locations: ["Berlin"], remote_only: false, min_salary: null },
       emptyCampaignDraft(),
+      "p1",
     );
     expect(Object.keys(body).sort()).toEqual(
       [
@@ -155,6 +156,7 @@ describe("buildCampaignBody", () => {
         "locations",
         "min_match_score",
         "name",
+        "profile_id",
         "remote_only",
         "roles",
         "sources",
@@ -166,6 +168,7 @@ describe("buildCampaignBody", () => {
     const body = buildCampaignBody(
       { roles: ["SRE"], locations: [], remote_only: true, min_salary: 120000 },
       emptyCampaignDraft(),
+      "p1",
     );
     expect(body.tailoring_notes).toContain("120000");
   });
@@ -174,6 +177,7 @@ describe("buildCampaignBody", () => {
     const body = buildCampaignBody(
       { roles: ["  SRE  ", "", "  "], locations: ["  Berlin "], remote_only: false, min_salary: null },
       emptyCampaignDraft(),
+      "p1",
     );
     expect(body.roles).toEqual(["SRE"]);
     expect(body.locations).toEqual(["Berlin"]);

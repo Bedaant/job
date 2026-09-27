@@ -70,7 +70,7 @@ def run_discovery(_user: models.User = Depends(get_current_user)):
     same minute returns the existing task_id instead of double-enqueuing.
     Layer 2 (the execution claim) lives in discover_jobs_task itself.
     """
-    job_id = f"discover:{int(time.time() // 60)}"
+    job_id = f"discover-{int(time.time() // 60)}"  # rq: [A-Za-z0-9_-] only
     try:
         job = get_queue().enqueue(discover_jobs_task, job_id=job_id, unique=True, kwargs={"job_id": job_id})
     except DuplicateJobError:
@@ -543,7 +543,8 @@ def run_campaign_endpoint(
     Redis claim inside the task (layer 2).
     """
     campaign = campaigns_service.resolve_campaign_ownership(db, current_user, campaign_id)
-    run_id = f"campaign:{campaign.id}:{int(time.time() // 60)}"
+    # rq 2.x only accepts [A-Za-z0-9_-] in job ids (a ":" 500s the enqueue).
+    run_id = f"campaign-{campaign.id}-{int(time.time() // 60)}"
     try:
         job = get_queue().enqueue(
             run_campaign_task, job_id=run_id, unique=True,

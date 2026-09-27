@@ -4,6 +4,7 @@ import { buildCampaignPatch, formFromCampaign, statusView, validateCampaignForm 
 
 const campaign: Campaign = {
   id: "c1",
+  profile_id: "p1",
   name: "Autumn search",
   status: "active",
   roles: ["Backend Engineer"],

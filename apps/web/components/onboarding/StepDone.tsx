@@ -8,7 +8,7 @@ import { ApiError, api } from "@/lib/api";
 import type { Campaign } from "@/lib/api";
 import { FailureNotice } from "./fields";
 
-export function StepDone({ campaign, profileId }: { campaign: Campaign; profileId: string }) {
+export function StepDone({ campaign, profileId, started }: { campaign: Campaign; profileId: string; started: boolean }) {
   const statsQuery = useQuery({
     queryKey: ["campaign-stats", campaign.id],
     queryFn: () => api.getCampaignStats(campaign.id),
@@ -24,9 +24,16 @@ export function StepDone({ campaign, profileId }: { campaign: Campaign; profileI
   return (
     <div className="space-y-6">
       <div className="rounded-md border border-input bg-secondary/40 p-4">
-        <p className="text-sm font-medium">“{campaign.name}” is running.</p>
+        <p className="text-sm font-medium">
+          {started ? `“${campaign.name}” is on.` : `“${campaign.name}” is saved but didn't start.`}
+        </p>
+        {!started && (
+          <p role="alert" className="mt-1 text-sm text-destructive">
+            Maggie couldn&apos;t begin her first search. Open Campaign and press Start to try again.
+          </p>
+        )}
         <p className="mt-1 text-sm text-muted-foreground">
-          Maggie is searching {campaign.sources.length} {campaign.sources.length === 1 ? "source" : "sources"} for{" "}
+          Maggie checks {campaign.sources.length} {campaign.sources.length === 1 ? "source" : "sources"} for{" "}
           {campaign.roles.join(", ")}, keeping anything above {Math.round(campaign.min_match_score * 100)}%, up to{" "}
           {campaign.daily_cap} a day.{" "}
           {campaign.auto_submit
@@ -50,7 +57,7 @@ export function StepDone({ campaign, profileId }: { campaign: Campaign; profileI
             title="Campaign stats are not available"
             detail={
               statsQuery.error instanceof ApiError && statsQuery.error.status === 404
-                ? "GET /campaigns/{id}/stats returned 404 — the campaigns backend is not deployed yet. The campaign itself was created; only this counter is missing."
+                ? "Today's numbers aren't available right now. Your campaign is saved."
                 : String(statsQuery.error)
             }
           />
@@ -103,7 +110,7 @@ export function StepDone({ campaign, profileId }: { campaign: Campaign; profileI
                   </p>
                 </div>
                 <Badge variant="secondary" className="shrink-0 tabular-nums">
-                  {Math.round(match.score * 100)}%
+                  {Math.round(match.score)}%
                 </Badge>
               </li>
             ))}

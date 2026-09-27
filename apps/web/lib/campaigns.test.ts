@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { ApiError, api } from "./api";
-import { buildCampaignBody, emptyCampaignDraft } from "./onboarding";
+import { buildCampaignBody, emptyCampaignDraft, launchCampaign } from "./onboarding";
 
 const API_URL = "http://localhost:8000";
 const server = setupServer();
@@ -24,10 +24,12 @@ describe("POST /campaigns", () => {
     const body = buildCampaignBody(
       { roles: ["Backend Engineer", "Platform Engineer"], locations: ["Berlin"], remote_only: true, min_salary: null },
       { name: "Autumn search", sources: ["greenhouse", "lever"], min_match_score: 0.75, daily_cap: 5, auto_submit: true },
+      "p1",
     );
     await api.createCampaign(body);
 
     expect(received).toEqual({
+      profile_id: "p1",
       name: "Autumn search",
       roles: ["Backend Engineer", "Platform Engineer"],
       locations: ["Berlin"],
@@ -49,7 +51,7 @@ describe("POST /campaigns", () => {
     );
 
     await api.createCampaign(
-      buildCampaignBody({ roles: ["SRE"], locations: [], remote_only: true, min_salary: null }, emptyCampaignDraft()),
+      buildCampaignBody({ roles: ["SRE"], locations: [], remote_only: true, min_salary: null }, emptyCampaignDraft(), "p1"),
     );
 
     expect(received.min_match_score).toBe(0.7);
@@ -62,7 +64,7 @@ describe("POST /campaigns", () => {
 
     await expect(
       api.createCampaign(
-        buildCampaignBody({ roles: ["SRE"], locations: [], remote_only: true, min_salary: null }, emptyCampaignDraft()),
+        buildCampaignBody({ roles: ["SRE"], locations: [], remote_only: true, min_salary: null }, emptyCampaignDraft(), "p1"),
       ),
     ).rejects.toBeInstanceOf(ApiError);
   });
@@ -116,5 +118,47 @@ describe("PATCH /campaigns/{id}", () => {
     expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(422);
     expect(err.message).toBe("Cannot move a archived campaign to active");
+  });
+});
+
+describe("launchCampaign", () => {
+  it("creates, activates, then starts the campaign — launch is the user's approval", async () => {
+    const calls: string[] = [];
+    server.use(
+      http.post(`${API_URL}/campaigns`, () => {
+        calls.push("create");
+        return HttpResponse.json({ id: "c1", status: "draft" }, { status: 201 });
+      }),
+      http.patch(`${API_URL}/campaigns/c1`, async ({ request }) => {
+        calls.push(`patch:${JSON.stringify(await request.json())}`);
+        return HttpResponse.json({ id: "c1", status: "active" });
+      }),
+      http.post(`${API_URL}/campaigns/c1/run`, () => {
+        calls.push("run");
+        return HttpResponse.json({ task_id: "t1", status: "queued" });
+      }),
+    );
+
+    const result = await launchCampaign(
+      buildCampaignBody({ roles: ["SRE"], locations: [], remote_only: true, min_salary: null }, emptyCampaignDraft(), "p1"),
+    );
+
+    expect(calls).toEqual(["create", 'patch:{"status":"active"}', "run"]);
+    expect(result).toMatchObject({ campaign: { id: "c1", status: "active" }, started: true });
+  });
+
+  it("reports a failed first run instead of swallowing it", async () => {
+    server.use(
+      http.post(`${API_URL}/campaigns`, () => HttpResponse.json({ id: "c1", status: "draft" }, { status: 201 })),
+      http.patch(`${API_URL}/campaigns/c1`, () => HttpResponse.json({ id: "c1", status: "active" })),
+      http.post(`${API_URL}/campaigns/c1/run`, () => HttpResponse.json({ detail: "queue down" }, { status: 503 })),
+    );
+
+    const result = await launchCampaign(
+      buildCampaignBody({ roles: ["SRE"], locations: [], remote_only: true, min_salary: null }, emptyCampaignDraft(), "p1"),
+    );
+
+    expect(result.started).toBe(false);
+    expect(result.campaign.status).toBe("active");
   });
 });

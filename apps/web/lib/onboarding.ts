@@ -1,7 +1,7 @@
 // Onboarding wizard state, gating and payload shaping — kept out of the React
 // components on purpose so the rules that decide "can this user move on" and
 // "what exactly gets posted" are testable without a DOM (no jsdom installed).
-import type { ApplicantBasics, CampaignCreate, FactDraft } from "./api";
+import { api, type ApplicantBasics, type Campaign, type CampaignCreate, type FactDraft } from "./api";
 
 export type WizardStep = "resume" | "facts" | "preferences" | "campaign" | "done";
 
@@ -191,9 +191,10 @@ export function canAdvance(step: WizardStep, state: WizardState): boolean {
  * `min_salary` has no home in the contract, so it rides in `tailoring_notes` —
  * the UI says plainly that it is a note, not a hard filter.
  */
-export function buildCampaignBody(prefs: Preferences, campaign: CampaignDraft): CampaignCreate {
+export function buildCampaignBody(prefs: Preferences, campaign: CampaignDraft, profileId: string): CampaignCreate {
   const clean = (xs: string[]) => xs.map((x) => x.trim()).filter(Boolean);
   const body: CampaignCreate = {
+    profile_id: profileId,
     name: campaign.name.trim(),
     roles: clean(prefs.roles),
     locations: clean(prefs.locations),
@@ -207,4 +208,20 @@ export function buildCampaignBody(prefs: Preferences, campaign: CampaignDraft): 
     body.tailoring_notes = `Minimum acceptable base salary: ${prefs.min_salary}`;
   }
   return body;
+}
+
+/**
+ * Launch = the user's one approval (ADR-015). A campaign is created as `draft`
+ * and the runner skips anything not `active`, so activate it before the first
+ * run. A failed first run does not undo the (now active) campaign — it is
+ * reported so the UI can say "saved but didn't start" instead of "you're live".
+ */
+export async function launchCampaign(body: CampaignCreate): Promise<{ campaign: Campaign; started: boolean }> {
+  const created = await api.createCampaign(body);
+  const campaign = await api.updateCampaign(created.id, { status: "active" });
+  const started = await api.runCampaign(created.id).then(
+    () => true,
+    () => false,
+  );
+  return { campaign, started };
 }
