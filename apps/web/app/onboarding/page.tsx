@@ -148,7 +148,8 @@ export default function OnboardingPage() {
           <h1 className="mt-1 text-2xl font-semibold">Let&apos;s get you interview calls.</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Five steps. You tell Maggie what is true about you and what you want; she does the searching, the
-            rewriting and the applying. Nothing is sent that you did not authorise.
+            rewriting and the applying — from your own browser, through a small extension you add at the end. Nothing
+            is sent that you did not authorise.
           </p>
         </header>
 

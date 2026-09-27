@@ -22,7 +22,7 @@ import { API_BASE_URL } from "../apiConfig";
 export async function submitApprovedApplication(form: HTMLFormElement, applicationId: string): Promise<void> {
   const { jc_token: token } = await chrome.storage.local.get("jc_token");
   if (!token) {
-    throw new Error("Job Copilot: not logged in — cannot claim submission.");
+    throw new Error("ApplyScout: not logged in — cannot claim submission.");
   }
 
   const resp = await fetch(`${API_BASE_URL}/applications/${applicationId}/claim-submission`, {
@@ -32,7 +32,7 @@ export async function submitApprovedApplication(form: HTMLFormElement, applicati
 
   if (!resp.ok) {
     throw new Error(
-      `Job Copilot: backend refused the submission claim (${resp.status}) — the human-approval gate was not satisfied, so the form was not submitted.`,
+      `ApplyScout: backend refused the submission claim (${resp.status}) — the human-approval gate was not satisfied, so the form was not submitted.`,
     );
   }
 

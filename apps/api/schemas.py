@@ -469,6 +469,12 @@ class BatchApproveResponse(BaseModel):
     approved: List[str]
 
 
+class ExtensionStatusOut(BaseModel):
+    connected: bool
+    last_seen_at: datetime | None
+    approved_waiting: int
+
+
 class WorkQueueItemOut(BaseModel):
     """One unit of work for the extension driver (ADR-015 Phase 1). Deliberately
     minimal: the field mappings the driver needs come from

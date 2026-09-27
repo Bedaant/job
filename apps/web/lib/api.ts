@@ -164,6 +164,12 @@ export interface CampaignStats {
   last_run_at: string | null;
 }
 
+export interface ExtensionStatus {
+  connected: boolean;
+  last_seen_at: string | null;
+  approved_waiting: number;
+}
+
 class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -259,6 +265,7 @@ export const api = {
   updateCampaign: (campaignId: string, body: CampaignUpdate) =>
     request<Campaign>(`/campaigns/${campaignId}`, { method: "PATCH", body: JSON.stringify(body) }),
   getCampaignStats: (campaignId: string) => request<CampaignStats>(`/campaigns/${campaignId}/stats`),
+  getExtensionStatus: () => request<ExtensionStatus>("/extension/status"),
   getBasics: (profileId: string) => request<ApplicantBasics>(`/profiles/${profileId}/basics`),
   putBasics: (profileId: string, basics: ApplicantBasics) =>
     request<ApplicantBasics>(`/profiles/${profileId}/basics`, {
