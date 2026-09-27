@@ -102,6 +102,82 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+40) — Comboboxes: read options, pick the exact one, verify
+
+**What changed.** The extension now fills custom "combobox" dropdowns (react-select on Greenhouse, ARIA
+listbox typeaheads elsewhere). Before, it sent them with no options and could never fill them.
+1. *Detection.* `comboboxKind()` works from an attribute snapshot: `<input role=combobox>`, visible, and
+   either inside a react-select control or with popup semantics (`aria-autocomplete=list|both`,
+   `aria-haspopup=listbox|true`, `aria-controls`/`aria-owns`). intl-tel-input's hidden "Search" combobox
+   is not a widget.
+2. *Options at extraction.* Each widget's menu is opened, its option labels are read from ITS OWN listbox
+   (`aria-controls` / `react-select-<id>-listbox` / the container's `[role=listbox]`), and it is closed
+   again. It goes to map-fields as `input_type: "select"` with the options (capped at 50), so
+   `bind_to_options` applies. Budget: 300 ms per menu, at most 40 widgets, 8 s in all; anything unread is
+   sent with no options, so it gets flagged rather than guessed. A question whose label is demographic is
+   never opened at all.
+3. *Filling.* Open the menu, find the option whose text equals the mapped value exactly, and click it (the
+   widget's own handler, not a value write). If it isn't rendered and the input is searchable, type the
+   text and wait up to 1 s. Then close and check that the control now SHOWS the option. Anything else is
+   `low_confidence`, and search text we typed is cleared. The fill glue is also a demographic
+   belt-and-braces: the glue refuses to open a combobox that `isDemographicField` matches.
+
+**Found live, on Greenhouse (guarded probes, nothing submitted).**
+- A dispatched `keydown` alone does NOT open the menu: Greenhouse opens it on key/mouse UP. `keydown`+`keyup`
+  ArrowDown does.
+- **Escape on a closed Greenhouse select CLEARS its value**, and on an open one it doesn't even close the
+  menu. The first harness run clicked "Yes" correctly, then the closing Escape wiped it. Menus now close
+  by blur only.
+- A `mousedown`/`mouseup` on an option makes Greenhouse's wrapper toggle the menu shut, which detaches the
+  option before its click lands. Options get `.click()` only.
+- The page keeps intl-tel-input's 244 phone-country `[role=option]`s in the DOM at all times, so options
+  are never read page-wide.
+- `inReactSelect` (from latest+37) marks the react-select siblings AROUND a control, not the combobox input
+  inside it. Kind detection uses the enclosing control instead.
+
+**Harness.** Two changes:
+- `check_form.py --ext-dist <dir>` loads a worktree's build. The default is unchanged.
+- **Harness snapshot bug fixed.** It read a combobox's display via `el.closest('[class*="select"]')`,
+  which matched Greenhouse's own `select__input`. Every react-select therefore looked empty, even after it
+  was filled. It now reads the single-value inside the enclosing control. `guard.py` is untouched.
+
+**Real run, Greenhouse (anthropic/4461450008), guards on, same fixed snapshot both runs.** PASS both.
+- Before (main's dist): filled 4, **11 required empty**. latest+39 reported 17 with the buggy snapshot.
+- After (this build): filled 7, **8 required empty**.
+- Filled through the widget and verified: relocation = "Yes"; "Please read the arbitration agreement" =
+  "I will read the arbitration agreement below."; "Agreement to Arbitrate" = "I understand and agree to
+  the terms…".
+- Gender, Hispanic/Latino and Veteran: left blank, never opened.
+- Guard: 0 submit attempts, canary 2/2, 2 non-GET requests blocked (Snowplow, S3 resume).
+- Fill 16.8 s. Reports: `docs/harness-reports/20260927T162724Z-greenhouse-baseline.md` (before) and
+  `20260927T162830Z-greenhouse.md` (after).
+
+**Tests.** `combobox.test.mjs` (14, red first) covers kind, option cleanup, exact match, read sequencing
+(always closed, even on a throw), budget/cap, fill sequencing (typed text cleared, a typeahead showing our
+own text is not a selection, closed on a throw). `fieldDecision.test.mjs` +2 (a read combobox goes out as a
+select; planFill picks the exact label). Extension tests 70 → 86. tsc and build clean.
+
+**Files.** `apps/extension/src/content/{combobox.mjs,combobox.d.mts,combobox.test.mjs,formFill.content.ts,
+fieldDecision.mjs,fieldDecision.d.mts,fieldDecision.test.mjs}`, `apps/extension/package.json` (test list),
+`tools/browser-use-harness/check_form.py`.
+
+**Still failing / next.**
+- **The LLM agreed to the Agreement to Arbitrate for the user.** It was a required single-option consent
+  and the backend mapped it confidently. Whether ApplyScout may ever accept legal terms on a user's behalf
+  is an owner decision for the backend (`map_fields` prompt/rules). The extension just fills what it's told.
+- **Country**: options are "United States +1"… and the profile has "US", so `bind_to_options` flags it
+  (backend: needs a code→name binding). The page defaults it to "+1" when the phone is filled anyway.
+- Office-4-days, AI Policy, interviewed-before and visa come back unknown/low-confidence. That is correct:
+  there is no profile data for them, and the user answers them once into the bank.
+- First/Last Name: flagged by the backend (latest+38; no given/family name on the harness profile).
+- Ashby could not be probed under the guard: it loads the form itself through a GraphQL **POST**, which
+  the no-submit route aborts, so the page never renders. Its location typeahead (async, "Start typing…")
+  goes through the typing path, unverified live. Lever's saved form has no comboboxes.
+- A widget whose shown text differs from its option label (Greenhouse shows "+1" for "United States +1")
+  is flagged `low_confidence` after a successful pick. This is the safe direction.
+
+---
+
 ### 2026-09-27 (latest+39) — browser-use harness: automated fill-never-submit checks on real forms
 
 **What changed.** New `tools/browser-use-harness/` automates `docs/LIVE-FORM-TEST.md` against the REAL

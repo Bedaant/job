@@ -432,8 +432,28 @@ test("planFill: a lone checkbox is checked only for an explicit yes/true", () =>
   assert.equal(planFill(group, "+1 415 867 2931"), null);
 });
 
-test("planFill: a react-select combobox is never typed into (its options aren't in the DOM)", () => {
+test("planFill: a combobox with no options read is never typed into", () => {
   assert.equal(planFill({ input_type: "combobox", keys: [1], choices: [] }, "US"), null);
+});
+
+test("a combobox whose menu was read goes out as a select with its option labels", () => {
+  const options = Array.from({ length: 244 }, (_, i) => ({ label: `Country ${i}`, value: `Country ${i}` }));
+  const { descriptors, targets } = buildDescriptors([
+    raw(0, { label: "Relocate?", role: "combobox", inReactSelect: true, options: [{ label: "Yes", value: "Yes" }, { label: "No", value: "No" }] }),
+    raw(1, { label: "Country", role: "combobox", inReactSelect: true, options }),
+  ]);
+  assert.deepEqual(descriptors.map((d) => [d.input_type, d.options.length]), [["select", 2], ["select", MAX_OPTIONS]]);
+  assert.deepEqual(descriptors[0].options, ["Yes", "No"]);
+  // filled through the widget, matched against every option read
+  assert.equal(targets.get("jc-field-1").input_type, "combobox");
+  assert.equal(targets.get("jc-field-1").choices.length, 244);
+});
+
+test("planFill: a combobox with read options picks the exact option label, never a guess", () => {
+  const combo = { input_type: "combobox", keys: [9], choices: [{ label: "Yes", value: "Yes" }, { label: "No", value: "No" }] };
+  assert.deepEqual(planFill(combo, " yes "), { kind: "combobox", key: 9, label: "Yes" });
+  assert.equal(planFill(combo, "San Francisco"), null);
+  assert.equal(planFill(combo, "Y"), null);
 });
 
 // --- React-safe value setter ---------------------------------------------------

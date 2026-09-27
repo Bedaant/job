@@ -117,7 +117,8 @@ SNAPSHOT_JS = r"""() => {
     else value = el.value || '';
     let display = '';
     if (el.getAttribute('role') === 'combobox') {
-      const c = el.closest('[class*="container"], [class*="select__control"], [class*="select"]');
+      // the control, not el itself: Greenhouse's input is class "select__input", which [class*="select"] matched
+      const c = el.closest('[class*="control"]');
       const sv = c && c.querySelectorAll('[class*="single-value"], [class*="singleValue"], [class*="multi-value__label"]');
       display = sv ? Array.from(sv).map(txt).join(', ') : '';
     }
@@ -412,12 +413,16 @@ def detect_ats(url: str) -> str:
 
 
 def main() -> int:
+    global EXT_DIST
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--url", required=True)
     ap.add_argument("--ats", choices=["greenhouse", "lever", "ashby", "other"])
     ap.add_argument("--headed", action="store_true")
     ap.add_argument("--no-audit", action="store_true", help="skip the browser-use LLM auditor")
+    ap.add_argument("--ext-dist", type=Path, help=f"built extension to load (default {EXT_DIST}), e.g. a worktree's")
     a = ap.parse_args()
+    if a.ext_dist:
+        EXT_DIST = a.ext_dist.resolve()
     r = asyncio.run(check(a.url, a.ats or detect_ats(a.url), a.headed, not a.no_audit))
     print("PASS" if r["passed"] else "FAIL: " + "; ".join(r["failures"]))
     return 0 if r["passed"] else 1

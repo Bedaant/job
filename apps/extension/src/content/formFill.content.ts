@@ -8,6 +8,8 @@ import {
   buildDescriptors,
   classifyFileInput,
   decideFieldActions,
+  isDemographicField,
+  isDemographicLabel,
   pickQuestionText,
   planFill,
   setNativeValue,
@@ -15,6 +17,14 @@ import {
   type FieldMapping,
   type RawControl,
 } from "./fieldDecision.mjs";
+import {
+  COMBOBOX_TYPE_WAIT_MS,
+  COMBOBOX_WAIT_MS,
+  comboboxKind,
+  fillCombobox,
+  matchOption,
+  readAllOptions,
+} from "./combobox.mjs";
 import { base64ToBytes } from "../background/apiProxyCore.mjs";
 import type { ApiProxyResponse } from "../background/apiProxy";
 
@@ -157,6 +167,134 @@ function readControls(controls: HTMLElement[]): RawControl[] {
   });
 }
 
+// --- custom comboboxes (combobox.mjs has the sequencing; this is the DOM) ------
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function waitFor<T>(probe: () => T, ms: number): Promise<T> {
+  const end = Date.now() + ms;
+  let hit = probe();
+  while (!hit && Date.now() < end) {
+    await sleep(25);
+    hit = probe();
+  }
+  return hit;
+}
+
+// Greenhouse opens its react-select on key/mouse UP: a lone keydown does nothing.
+function pressKey(el: HTMLElement, key: string) {
+  for (const type of ["keydown", "keyup"]) el.dispatchEvent(new KeyboardEvent(type, { key, bubbles: true, cancelable: true }));
+}
+
+function pressMouse(el: Element) {
+  for (const type of ["mousedown", "mouseup"]) {
+    el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0 }));
+  }
+}
+
+const controlOf = (el: HTMLElement) => el.closest<HTMLElement>('[class*="control"]');
+
+// The widget's OWN listbox — never a page-wide [role=option]: Greenhouse keeps
+// intl-tel-input's 244 phone-country options in the DOM at all times.
+function optionsOf(el: HTMLElement): HTMLElement[] {
+  const ids = [el.getAttribute("aria-controls"), el.getAttribute("aria-owns"), el.id && `react-select-${el.id}-listbox`];
+  const listbox =
+    ids.map((id) => id && document.getElementById(id)).find(Boolean) ||
+    el.closest('[class*="container"]')?.querySelector('[role="listbox"]');
+  return listbox ? Array.from(listbox.querySelectorAll<HTMLElement>('[role="option"]')) : [];
+}
+
+const isOpen = (el: HTMLElement) => el.getAttribute("aria-expanded") === "true" || optionsOf(el).length > 0;
+
+async function openMenu(el: HTMLElement) {
+  el.focus({ preventScroll: true });
+  pressKey(el, "ArrowDown");
+  if (await waitFor(() => isOpen(el), 150)) return;
+  pressMouse(controlOf(el) ?? el);
+  await waitFor(() => isOpen(el), 150);
+}
+
+async function closeMenu(el: HTMLElement) {
+  // Blur, never Escape: on a closed Greenhouse select Escape CLEARS the chosen value
+  // (seen live), and on an open one it doesn't even close the menu.
+  el.blur();
+  await waitFor(() => !isOpen(el), 150);
+}
+
+type ComboKind = "react-select" | "listbox";
+
+function comboKindOf(el: HTMLElement, raw: RawControl): ComboKind | null {
+  return comboboxKind({
+    tag: el.tagName,
+    role: raw.role,
+    visible: raw.visible,
+    // raw.inReactSelect marks the siblings AROUND a control; the combobox input sits INSIDE it
+    inReactSelect: controlOf(el) !== null,
+    ariaAutocomplete: el.getAttribute("aria-autocomplete"),
+    ariaHaspopup: el.getAttribute("aria-haspopup"),
+    ariaControls: el.getAttribute("aria-controls") ?? el.getAttribute("aria-owns"),
+  });
+}
+
+// Opens each combobox's menu once, reads its option labels, closes it: sent as the
+// field's options so the backend binds its answer to one of them. Nothing is
+// selected or typed. A demographic question is not opened at all (its label
+// already rules it out); one with an innocent label is read, so its options can
+// rule it out.
+async function readComboboxOptions(controls: HTMLElement[], raws: RawControl[]): Promise<Map<number, ComboKind>> {
+  const kinds = new Map<number, ComboKind>();
+  for (const raw of raws) {
+    const kind = comboKindOf(controls[raw.key], raw);
+    if (kind) kinds.set(raw.key, kind);
+  }
+  const toRead = raws.filter((r) => kinds.has(r.key) && !isDemographicLabel(r.label ?? r.question));
+  const read = await readAllOptions(
+    toRead.map((r) => {
+      const el = controls[r.key];
+      return {
+        open: () => openMenu(el),
+        waitForOptions: async () => {
+          await waitFor(() => optionsOf(el).length > 0, COMBOBOX_WAIT_MS);
+          return optionsOf(el).map((o) => o.textContent ?? "");
+        },
+        close: () => closeMenu(el),
+      };
+    }),
+  );
+  toRead.forEach((r, i) => {
+    r.options = (read[i] ?? []).map((label) => ({ label, value: label }));
+  });
+  return kinds;
+}
+
+// Picks `label` through the widget's own option click, then checks what it shows.
+function selectComboboxOption(el: HTMLInputElement, kind: ComboKind, label: string): Promise<boolean> {
+  let wait = COMBOBOX_WAIT_MS;
+  return fillCombobox<HTMLElement>(
+    {
+      // react-select shows the choice as text in its control; a typeahead in its input
+      displayed: () => (kind === "react-select" ? textOf(controlOf(el)) ?? "" : el.value),
+      open: () => openMenu(el),
+      findOption: (want) =>
+        waitFor(() => optionsOf(el).find((o) => matchOption([o.textContent ?? ""], want) === 0) ?? null, wait),
+      canType: !el.readOnly && !el.disabled,
+      type: async (text) => {
+        wait = COMBOBOX_TYPE_WAIT_MS; // an async search has to come back
+        setNativeValue(el, text);
+      },
+      click: async (option) => {
+        // click only: a mouseup first makes Greenhouse's wrapper toggle the menu shut,
+        // detaching the option before its click lands
+        option.click();
+        await sleep(50);
+      },
+      clear: async () => setNativeValue(el, ""),
+      close: () => closeMenu(el),
+    },
+    label,
+  );
+}
+
 // Content scripts can't fetch the API themselves (the employer page's origin is
 // CORS-refused): the background worker does it, token and all (apiProxy.ts).
 async function callApi(method: string, path: string, body?: unknown) {
@@ -169,7 +307,9 @@ async function callApi(method: string, path: string, body?: unknown) {
 const OUTLINES = { filled: "2px solid #2e7d32", flagged: "2px solid #c62828", left_blank: "2px dashed #9e9e9e" };
 
 function markField(el: HTMLElement, kind: keyof typeof OUTLINES, title: string) {
-  el.style.outline = OUTLINES[kind];
+  // a combobox's input is a sliver inside its control: outline the control
+  const box = el.getAttribute("role") === "combobox" ? controlOf(el) ?? el : el;
+  box.style.outline = OUTLINES[kind];
   el.title = title;
 }
 
@@ -227,7 +367,10 @@ function attachFile(el: HTMLInputElement, file: File): void {
 export async function fillForm(profileId: string, atsType?: string | null): Promise<FillOutcome> {
   const controls = Array.from(document.querySelectorAll<HTMLElement>("input, select, textarea"));
   // File inputs never go to map-fields: no text value can fill one.
-  const { descriptors, files, targets } = buildDescriptors(readControls(controls));
+  const raws = readControls(controls);
+  const comboKinds = await readComboboxOptions(controls, raws);
+  const { descriptors, files, targets } = buildDescriptors(raws);
+  const descriptorById = new Map(descriptors.map((d) => [d.field_id, d]));
   if (descriptors.length === 0 && files.length === 0) {
     throw new Error("no form found on page");
   }
@@ -276,7 +419,14 @@ export async function fillForm(profileId: string, atsType?: string | null): Prom
     }
     if (plan.kind === "none") continue; // a lone checkbox answered "no" stays unchecked
     const el = controls[plan.key] as HTMLInputElement;
-    if (plan.kind === "check") {
+    if (plan.kind === "combobox") {
+      // decideFieldActions never fills a demographic field; this is the belt to that brace
+      const kind = comboKinds.get(plan.key);
+      if (!kind || isDemographicField(descriptorById.get(field_id)!) || !(await selectComboboxOption(el, kind, plan.label))) {
+        flag.push({ field_id, reason: "low_confidence" });
+        continue;
+      }
+    } else if (plan.kind === "check") {
       if (!el.checked) el.click(); // React listens for the click, not .checked
     } else {
       setNativeValue(el, plan.value);

@@ -257,7 +257,11 @@ export function buildDescriptors(raws) {
     const isSelect = first.tag === "SELECT";
     const isChoice = first.type === "radio" || first.type === "checkbox";
     const isGroup = first.type === "radio" || (first.type === "checkbox" && members.length > 1);
-    const choices = isSelect
+    // A combobox whose menu was opened and read (combobox.mjs) is a select to the
+    // backend, so its answer is bound to one of these labels; it is still filled
+    // through the widget (target input_type "combobox").
+    const isReadCombobox = first.role === "combobox" && first.options.length > 0;
+    const choices = isSelect || isReadCombobox
       ? first.options
       : isChoice
         ? members.map((m) => ({ label: m.label ?? m.value, value: m.value }))
@@ -272,8 +276,8 @@ export function buildDescriptors(raws) {
     const descriptor = {
       field_id,
       label_text: (isGroup ? first.question : first.label ?? first.question) ?? null,
-      input_type,
-      options: isSelect || isGroup ? choices.slice(0, MAX_OPTIONS).map((c) => c.label) : [],
+      input_type: isReadCombobox ? "select" : input_type,
+      options: isSelect || isGroup || isReadCombobox ? choices.slice(0, MAX_OPTIONS).map((c) => c.label) : [],
       required: members.some((m) => m.required),
       autocomplete: first.autocomplete,
       name: first.name,
@@ -313,9 +317,12 @@ const NEGATIVE = /^(no|false|n|off|unchecked)$/i;
 export function planFill(target, value) {
   const { input_type, keys, choices } = target;
   const want = String(value).trim().toLowerCase();
-  // ponytail: react-select keeps its options out of the DOM until opened, so
-  // there is nothing to match against; opening the menu is the upgrade path.
-  if (input_type === "combobox") return null;
+  // Options come from opening the menu at extraction; none read = nothing to
+  // match against, so never typed into.
+  if (input_type === "combobox") {
+    const i = choices.findIndex((c) => String(c.label).trim().toLowerCase() === want);
+    return i < 0 ? null : { kind: "combobox", key: keys[0], label: choices[i].label };
+  }
   if (input_type === "checkbox" && keys.length === 1) {
     if (AFFIRMATIVE.test(want)) return { kind: "check", key: keys[0] };
     if (NEGATIVE.test(want)) return { kind: "none" };
