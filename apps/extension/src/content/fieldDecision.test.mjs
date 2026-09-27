@@ -462,3 +462,15 @@ test("setNativeValue uses the prototype setter past an instance override, then b
   assert.equal(trackerSaw, null, "went through the instance setter; React would swallow the event");
   assert.deepEqual(events, [["input", true], ["change", true]]);
 });
+
+test("EEO keywords match whole words (plural allowed), same as the server", () => {
+  // Substring matching treated "embrace" as "race": a required "How do you
+  // embrace diversity?" would stop every run as a demographic question.
+  assert.equal(isDemographicLabel("How do you embrace diversity in your team?"), false);
+  assert.equal(isDemographicLabel("Tell us about a traced bug you fixed"), false);
+  assert.equal(isDemographicLabel("Pronouns"), true);
+  assert.equal(isDemographicLabel("Races (select all that apply)"), true);
+  assert.equal(isDemographicLabel("Are you Hispanic/Latino?"), true);
+  assert.equal(isDemographicLabel("Veteran status"), true);
+  assert.equal(isDemographicLabel("Sexual orientation"), true);
+});

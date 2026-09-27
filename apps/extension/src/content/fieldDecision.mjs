@@ -73,8 +73,15 @@ function matchesAny(labelText, keywords) {
 
 // The unconditional rail. A true here is not "flag for review" — it is "no
 // value may ever be written into this field".
+// Whole words with an optional plural "s", mirroring answer_bank.is_demographic_field:
+// a substring match treated "embrace" as "race" and stopped runs on it.
+const DEMOGRAPHIC_KEYWORD_RE = new RegExp(
+  `(?<![a-z])(?:${DEMOGRAPHIC_LABEL_KEYWORDS.map((k) => k.replace(/ /g, "\\s+")).join("|")})s?(?![a-z])`,
+  "i",
+);
+
 export function isDemographicLabel(labelText) {
-  return matchesAny(labelText, DEMOGRAPHIC_LABEL_KEYWORDS) || (!!labelText && SEX_WORD.test(labelText));
+  return !!labelText && (DEMOGRAPHIC_KEYWORD_RE.test(labelText) || SEX_WORD.test(labelText));
 }
 
 // The question text OR the options: Ashby's EEO radios carry no question text the
