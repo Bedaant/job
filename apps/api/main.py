@@ -1,7 +1,7 @@
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
-from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, Query, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
@@ -999,6 +999,85 @@ async def stream_events(
 ):
     last_event_id = request.headers.get("Last-Event-ID")
     return EventSourceResponse(event_stream(db, current_user.id, last_event_id))
+
+
+# Event type -> (title, detail when the payload gives none). Only types something
+# actually writes; `application.status_changed` is left out on purpose — it is
+# the claim/PATCH plumbing, not something Maggie did that the user needs to see.
+_ACTIVITY = {
+    "match.new": ("New match", None),
+    "application.ready_for_review": ("Ready for your review", None),
+    "application.approved": ("Approved to send", None),
+    "application.submitted": ("Applied", None),
+    "application.needs_human": ("Stopped on a question", "Needs an answer from you before it can be sent."),
+    "application.failed": ("Couldn't send", "Maggie will try again."),
+}
+
+
+@app.get("/activity", response_model=list[schemas.ActivityItemOut])
+def list_activity(
+    since: datetime | None = None,
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """What Maggie did, newest first, from the events outbox. Plain JSON, not
+    SSE: a native EventSource can't send the bearer header."""
+    query = db.query(models.Event).filter(
+        models.Event.user_id == current_user.id, models.Event.type.in_(_ACTIVITY)
+    )
+    if since is not None:
+        if since.tzinfo:
+            since = since.astimezone(timezone.utc).replace(tzinfo=None)
+        query = query.filter(models.Event.created_at >= since)
+    events = query.order_by(models.Event.created_at.desc(), models.Event.id.desc()).limit(limit).all()
+
+    # Two batched lookups, not one per row. Applications are reached only
+    # through the caller's own profiles.
+    app_ids = {e.payload.get("application_id") for e in events} - {None}
+    apps = {
+        a.id: a for a in db.query(models.Application).join(models.Profile)
+        .filter(models.Application.id.in_(app_ids), models.Profile.user_id == current_user.id)
+    } if app_ids else {}
+    job_ids = {e.payload.get("job_id") for e in events} | {a.job_id for a in apps.values()}
+    job_ids.discard(None)
+    jobs = {j.id: j for j in db.query(models.Job).filter(models.Job.id.in_(job_ids))} if job_ids else {}
+
+    items = []
+    for e in events:
+        p = e.payload or {}
+        title, fallback = _ACTIVITY[e.type]
+        application = apps.get(p.get("application_id"))
+        job = jobs.get(application.job_id if application else p.get("job_id"))
+        if e.type == "match.new" and p.get("score") is not None:
+            detail = f"{round(float(p['score']))}% match"  # Match.score is 0..100
+        else:
+            detail = p.get("reason") or fallback
+        items.append(schemas.ActivityItemOut(
+            id=e.id, type=e.type, at=e.created_at.replace(tzinfo=timezone.utc), title=title, detail=detail,
+            application_id=application.id if application else None,
+            job=schemas.ActivityJob(title=job.title, company=job.company) if job else None,
+        ))
+    return items
+
+
+@app.get("/today", response_model=schemas.TodayOut)
+def get_today(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    """Home-screen counters across all the caller's profiles. Campaign status and
+    the daily cap come from /campaigns and /campaigns/{id}/stats, not here.
+    """
+    # ponytail: UTC day, same boundary as the daily cap; per-user timezone if users ask.
+    start = campaigns_service.utc_day_start()
+    mine = db.query(models.Profile.id).filter(models.Profile.user_id == current_user.id)
+    apps = db.query(models.Application).filter(models.Application.profile_id.in_(mine))
+    return schemas.TodayOut(
+        sent_today=apps.filter(models.Application.applied_at >= start).count(),
+        # Same set the review queue lists (needs_human lands back in ready_for_review).
+        needs_you=apps.filter(models.Application.status == models.ApplicationStatus.ready_for_review).count(),
+        new_matches_today=db.query(models.Match).filter(
+            models.Match.profile_id.in_(mine), models.Match.created_at >= start
+        ).count(),
+    )
 
 
 @app.get("/notifications", response_model=list[schemas.NotificationOut])

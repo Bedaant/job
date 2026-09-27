@@ -4,10 +4,11 @@ import { useId, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MinusIcon, PlusIcon } from "lucide-react";
-import { api, ApiError, type Campaign, type CampaignStatus } from "@/lib/api";
+import { api, ApiError, type Campaign } from "@/lib/api";
 import { buildCampaignPatch, formFromCampaign, statusView, validateCampaignForm, type CampaignForm } from "@/lib/campaign-form";
 import { DAILY_CAP_MAX, type Errors } from "@/lib/onboarding";
 import { AppShell, useRequireAuth } from "@/components/AppShell";
+import { useCampaignStatus } from "@/components/useCampaignStatus";
 import { Chips, Field } from "@/components/onboarding/fields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -119,30 +120,8 @@ function DailyCapStepper({ value, onChange, error }: { value: number; onChange: 
 }
 
 function StatusCard({ campaign }: { campaign: Campaign }) {
-  const queryClient = useQueryClient();
-  const [error, setError] = useState<string | null>(null);
+  const { setStatus, error } = useCampaignStatus(campaign);
   const view = statusView(campaign.status);
-
-  // Optimistic: the status flips the moment it is pressed; a failed PATCH puts
-  // the old status back and says so. No confirm — pausing is safe and reversible.
-  const mutation = useMutation({
-    mutationFn: (next: CampaignStatus) => api.updateCampaign(campaign.id, { status: next }),
-    onMutate: (next) => {
-      setError(null);
-      const previous = queryClient.getQueryData<Campaign[]>(["campaigns"]);
-      queryClient.setQueryData<Campaign[]>(["campaigns"], (old) =>
-        old?.map((c) => (c.id === campaign.id ? { ...c, status: next } : c))
-      );
-      return { previous };
-    },
-    onError: (err, _next, ctx) => {
-      queryClient.setQueryData(["campaigns"], ctx?.previous);
-      setError(`Couldn't change the campaign: ${errorText(err)} Its status has not changed.`);
-    },
-    onSuccess: (saved) => {
-      queryClient.setQueryData<Campaign[]>(["campaigns"], (old) => old?.map((c) => (c.id === saved.id ? saved : c)));
-    },
-  });
 
   const statsQuery = useQuery({
     queryKey: ["campaign-stats", campaign.id],
@@ -169,7 +148,7 @@ function StatusCard({ campaign }: { campaign: Campaign }) {
           )}
         </div>
         {view.action && (
-          <Button size="lg" className="min-w-32" onClick={() => mutation.mutate(view.action!.next)}>
+          <Button size="lg" className="min-w-32" onClick={() => setStatus(view.action!.next)}>
             {view.action.label}
           </Button>
         )}

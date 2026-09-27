@@ -451,6 +451,28 @@ class CampaignStatsOut(BaseModel):
     last_run_at: Optional[datetime] = None
 
 
+class ActivityJob(BaseModel):
+    title: str
+    company: str
+
+
+class ActivityItemOut(BaseModel):
+    """One row of "What Maggie did" — a stable UI shape over the events outbox."""
+    id: int
+    type: str
+    at: datetime  # tz-aware UTC
+    title: str
+    detail: Optional[str] = None
+    application_id: Optional[str] = None
+    job: Optional[ActivityJob] = None
+
+
+class TodayOut(BaseModel):
+    sent_today: int
+    needs_you: int
+    new_matches_today: int
+
+
 class BatchApproveResponse(BaseModel):
     approved: List[str]
 

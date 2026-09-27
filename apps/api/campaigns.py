@@ -48,12 +48,17 @@ def resolve_campaign_ownership(db: Session, current_user: models.User, campaign_
     return campaign
 
 
+def utc_day_start() -> datetime:
+    """Midnight of the current UTC day, naive (every timestamp column is naive UTC)."""
+    return datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 def applied_today(db: Session, campaign: models.Campaign) -> int:
     """Count of this campaign's applications created in the current UTC day.
     `Application.created_at` is naive UTC (models.py uses datetime.utcnow),
     so the day boundary is computed the same way — no tz conversion.
     """
-    day_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    day_start = utc_day_start()
     return (
         db.query(models.Application)
         .filter(

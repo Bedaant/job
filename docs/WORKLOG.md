@@ -102,6 +102,66 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+30) — Today home, phone tab bar, per-page titles
+
+**What changed.**
+- *API.* `GET /activity?since=&limit=` (JSON, not SSE — a native EventSource can't send
+  the bearer header): the caller's `events` rows, newest first, `limit` 1..200 (default
+  50, 422 outside), mapped to `{id, type, at, title, detail, application_id, job{title,
+  company}}`. Only types something actually writes (read in code): `match.new`,
+  `application.ready_for_review|approved|submitted|failed|needs_human`.
+  `application.status_changed` is left out (claim/PATCH plumbing). `at` is tz-aware UTC so
+  browsers don't read it as local time. Job/application lookups are two batched queries;
+  applications only through the caller's own profiles. `GET /today` →
+  `{sent_today (applied_at today), needs_you (ready_for_review — same set as Review),
+  new_matches_today}`; campaign status + cap stay on `/campaigns` + stats (not
+  duplicated). `campaigns.utc_day_start()` extracted so both use the cap's UTC day.
+- *Web `/today`.* Greeting + one-line summary; Maggie status (Applying / Paused / Not
+  started) with Pause/Resume/Start — optimistic with rollback + `role="alert"`, via a new
+  shared `useCampaignStatus` hook that `/campaign` now uses too (logic moved, not copied).
+  Tiles: sent today (with daily limit), needs you → /review, new matches → /matches;
+  counters are plain text, no animation. "What Maggie did today": icon + title + job +
+  reason + "2:14 PM"; each row links (/review for ready/needs-you, /matches for matches,
+  /campaign otherwise). Honest empty states: no campaign → onboarding CTA; paused; not
+  started; active with no activity ever → "waiting on her first search… needs the
+  browser extension connected"; nothing today but earlier rows → "Nothing yet today" +
+  Earlier. Skeletons while loading; one error alert with Retry.
+- *Routing.* `/` and non-signup login → `/today` (safe `next` still honoured). NAV:
+  Today, Review, Campaign, Matches, Your facts. Logo links to /today.
+- *Phone nav.* Below `sm` the primary nav is a fixed bottom tab bar (5 × icon + label,
+  56px tall, `aria-current`, safe-area padding); top bar keeps brand + Log out; main
+  gets bottom padding so nothing hides behind it. Desktop links `whitespace-nowrap`.
+- *Titles.* `AppShell` sets `document.title = "<title> · ApplyScout"` (`pageTitle` prop
+  when the heading is a greeting); login sets "Sign in"/"Create account".
+
+**Files.** API: `main.py`, `schemas.py`, `campaigns.py`, `tests/test_activity.py` (new).
+Web: `app/today/page.tsx` (new), `lib/today.ts` + `lib/today.test.ts` (new),
+`components/useCampaignStatus.ts` (new), `components/AppShell.tsx`, `lib/api.ts`,
+`app/page.tsx`, `app/login/page.tsx`, `app/campaign/page.tsx`.
+
+**Dependencies added.** None (lucide-react was already installed).
+
+**Tests.** API 418 → 423 (5 new red first: 404s/IntegrityError, then green). Web 54 → 68
+(red: missing module, then `splitToday is not a function`; green): UTC parsing of
+offset-less timestamps, clock/date formatting incl. a +5:30 zone crossing midnight,
+today/earlier split, row links, home states, plural-correct summary, msw contract for
+both endpoints. `tsc` clean, `next build` clean (`/today` 6.28 kB, 137 kB first load).
+Browser (next start, no API): at 390px no horizontal scroll, tab items 78×56 with
+`aria-current`, top nav hidden; at 1280 top nav 471/471 no overflow; titles update on
+client navigation (Today → Campaign → Today); error + Retry shows with the API down.
+
+**Problems hit.** Worktree was cut at `fa419cd`; fast-forwarded to `b8cb281`. Test
+fixture first reused one job for several applications (unique `profile_id,job_id`).
+
+**Not done / notes.** No "skipped with reason" row: nothing writes a skip event yet (run-level
+skips — cap reached, campaign not active — are only the task's return value) — add `application.skipped`/`match.skipped` with a reason
+when the runner records one. Day boundary for `/today` counters is UTC (same as the
+cap); the activity list's "today" is the viewer's local day. /onboarding still has no
+per-page title (owned by another agent — a one-line `document.title` effect there).
+StepDone still links to /review. Not verified against a live API.
+
+---
+
 ### 2026-09-27 (latest+27) — Launch actually launches; RQ job ids; Tailwind v3 colour tokens fixed at the root
 
 **What changed.**
