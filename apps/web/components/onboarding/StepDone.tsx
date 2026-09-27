@@ -6,6 +6,7 @@ import { Loader2Icon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ApiError, api } from "@/lib/api";
 import type { Campaign } from "@/lib/api";
+import { ExtensionStatus } from "@/components/ExtensionStatus";
 import { FailureNotice } from "./fields";
 
 export function StepDone({ campaign, profileId, started }: { campaign: Campaign; profileId: string; started: boolean }) {
@@ -41,6 +42,30 @@ export function StepDone({ campaign, profileId, started }: { campaign: Campaign;
             : "Everything waits in your review queue until you approve it."}
         </p>
       </div>
+
+      <section aria-labelledby="extension-heading" className="space-y-3 rounded-md border border-input p-4">
+        <h3 id="extension-heading" className="text-base font-medium">
+          Let Maggie apply from your browser
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          Maggie finds and tailors from here, but she sends applications from <em>your</em> browser, signed in as
+          you — never from a shared bot. Until the ApplyScout extension is running, nothing is sent.
+        </p>
+        <ol className="list-decimal space-y-2 pl-5 text-sm">
+          <li>
+            Install the extension. It isn&apos;t in the Chrome Web Store yet: open{" "}
+            <code className="rounded bg-secondary px-1">chrome://extensions</code>, turn on Developer mode, choose{" "}
+            <strong>Load unpacked</strong> and pick the <code className="rounded bg-secondary px-1">apps/extension/dist</code>{" "}
+            folder.
+          </li>
+          <li>Click the ApplyScout icon in the toolbar and sign in with this account.</li>
+          <li>
+            Press <strong>Run apply queue</strong>. Keep the browser open while it works; it applies up to your daily
+            cap.
+          </li>
+        </ol>
+        <ExtensionStatus />
+      </section>
 
       <section aria-labelledby="stats-heading" className="space-y-2">
         <h3 id="stats-heading" className="text-base font-medium">

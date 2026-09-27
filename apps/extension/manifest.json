@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Job Copilot",
-  "description": "Review and capture job listings while browsing — companion to the Job Copilot dashboard.",
+  "name": "ApplyScout",
+  "description": "Lets Maggie apply to jobs from your own browser session. Companion to the ApplyScout web app.",
   "version": "0.1.0",
   "action": {
     "default_popup": "index.html"

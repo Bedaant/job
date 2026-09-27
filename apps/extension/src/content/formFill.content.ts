@@ -29,7 +29,7 @@ export const _adr001OriginalRequestSubmit = HTMLFormElement.prototype.requestSub
 for (const method of ["submit", "requestSubmit"] as const) {
   HTMLFormElement.prototype[method] = function () {
     throw new Error(
-      `Job Copilot: form.${method}() is forbidden by ADR-001 — this extension never submits a form.`,
+      `ApplyScout: form.${method}() is forbidden by ADR-001 — this extension never submits a form.`,
     );
   };
 }
@@ -121,11 +121,11 @@ export type FillOutcome = {
 // only one the user can clear for good — saving the answer once means every
 // later form that asks it is filled from the answer bank.
 const FLAG_MESSAGES: Record<string, string> = {
-  demographic: "Job Copilot: needs your input (never auto-answered).",
+  demographic: "ApplyScout: needs your input (never auto-answered).",
   essay_no_stored_answer:
-    "Job Copilot: needs your input — save the answer and we'll reuse it next time.",
-  low_confidence: "Job Copilot: needs your input (low confidence).",
-  file_upload: "Job Copilot: needs a file we don't have — please upload it.",
+    "ApplyScout: needs your input — save the answer and we'll reuse it next time.",
+  low_confidence: "ApplyScout: needs your input (low confidence).",
+  file_upload: "ApplyScout: needs a file we don't have — please upload it.",
 };
 
 async function fetchResumeFile(profileId: string, token: string): Promise<File> {
@@ -189,7 +189,7 @@ export async function fillForm(profileId: string, atsType?: string | null): Prom
     el.value = value;
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
-    markField(el, "filled", "Auto-filled by Job Copilot — verify before submitting.");
+    markField(el, "filled", "Auto-filled by ApplyScout — verify before submitting.");
   }
 
   let resume: File | null = null;
@@ -199,7 +199,7 @@ export async function fillForm(profileId: string, atsType?: string | null): Prom
     if (kind === "resume") {
       resume ??= await fetchResumeFile(profileId, token);
       attachFile(el, resume);
-      markField(el, "filled", "Resume attached by Job Copilot — verify before submitting.");
+      markField(el, "filled", "Resume attached by ApplyScout — verify before submitting.");
       filesAttached++;
     } else if (kind === "flag") {
       flag.push({ field_id: descriptor.field_id, reason: "file_upload" });
@@ -226,7 +226,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     fillForm(message.profileId)
       .then((outcome) => sendResponse({ ok: true, ...outcome }))
       .catch((error) => {
-        alert(`Job Copilot: ${error instanceof Error ? error.message : String(error)}`);
+        alert(`ApplyScout: ${error instanceof Error ? error.message : String(error)}`);
         sendResponse({ ok: false });
       });
     return true; // keep the message channel open for the async response

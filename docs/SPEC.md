@@ -28,6 +28,7 @@ users:
   password_hash  VARCHAR  NULL
   created_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
   deleted_at  TIMESTAMP WITHOUT TIME ZONE  NULL
+  extension_last_seen_at  TIMESTAMP WITHOUT TIME ZONE  NULL
 
 profiles:
   id  UUID  NOT NULL  PRIMARY KEY  -- default: app-level callable gen_uuid() — not a DB DEFAULT, set by the ORM on insert

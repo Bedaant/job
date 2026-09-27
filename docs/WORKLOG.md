@@ -102,6 +102,45 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+29) — Extension connection: Maggie can only apply from your browser, and now the app says so
+
+**What changed.**
+- *Backend.* New nullable `users.extension_last_seen_at` (migration **`0016_user_extension_last_seen.py`**,
+  **not applied to Neon** — lead applies it). Stamped by `GET /extension/work-queue` and
+  `POST /extension/map-fields` (the extension's own calls). New `GET /extension/status` →
+  `{connected, last_seen_at, approved_waiting}`; `connected` = seen within
+  `EXTENSION_CONNECTED_WINDOW` (10 min, `main.extension_connected`). `approved_waiting` uses the
+  same query the work queue uses (`_work_queue_query`, extracted), so it counts exactly what the
+  driver would pick up. Reading status never stamps last-seen. SPEC.md schema regenerated.
+- *Web.* Onboarding's final step gains "Let Maggie apply from your browser": why (your browser
+  session, never a shared bot — ADR-015 §3), three steps (Load unpacked `apps/extension/dist` via
+  `chrome://extensions`; sign in in the extension; press Run apply queue), and a live status line.
+  Reusable `components/ExtensionStatus.tsx` (`role="status"`, `aria-live="polite"`, polls every 4s,
+  react-query pauses in background tabs) — exported, NOT wired into AppShell. Pure copy in
+  `lib/extension.ts` (`extensionStatusView`); `api.getExtensionStatus`. Onboarding intro now says
+  applying happens from your browser via an extension.
+- *Extension.* All user-visible "Job Copilot" → "ApplyScout" (popup, manifest name/description,
+  index.html title, formFill flags/markField titles/alert prefix, submitApprovedApplication errors).
+  Popup copy plain and recovery-oriented ("Sign in", 401 → signs out and asks to sign in again,
+  server error → "nothing was sent, try again", network → "check your connection"). The popup
+  checks in with `GET /extension/work-queue?limit=0` on open and after sign-in, so step 2 already
+  flips the web app to Connected; `limit=0` takes no work.
+
+**Why.** Under ADR-015 nothing is submitted unless the extension is installed, signed in and run.
+The web app never mentioned it, so a user finished onboarding believing Maggie applies while
+nothing happened.
+
+**Tests.** api 418 → 426 (8 new in `tests/test_extension_status.py`, 7 red first: missing
+`extension_connected`, 404 on `/extension/status`). web 54 → 61 (`lib/extension.test.ts`, red on
+missing module first). Extension 33/33, `tsc` clean, `vite build` clean. Web `tsc` + `next build` clean.
+
+**Not verified.** No live browser run (no loaded-extension access); migration not run against Neon.
+
+**Next.** Apply 0016; lead/agent C to drop `<ExtensionStatus />` into the header; Chrome Web Store
+listing so step 1 stops being "Load unpacked".
+
+---
+
 ### 2026-09-27 (latest+27) — Launch actually launches; RQ job ids; Tailwind v3 colour tokens fixed at the root
 
 **What changed.**

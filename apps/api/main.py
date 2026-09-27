@@ -1,5 +1,5 @@
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -277,6 +277,51 @@ def claim_submission(
     return {"claimed": True, "application_id": application.id}
 
 
+# "Connected" = the extension called in this recently. The driver only calls in
+# when the popup opens or a queue run happens, so this is "recently used", not a
+# live socket; 10 minutes covers a user moving between the web app and the popup.
+EXTENSION_CONNECTED_WINDOW = timedelta(minutes=10)
+
+
+def extension_connected(last_seen_at: datetime | None, now: datetime) -> bool:
+    return last_seen_at is not None and now - last_seen_at <= EXTENSION_CONNECTED_WINDOW
+
+
+def _mark_extension_seen(db: Session, user: models.User) -> None:
+    user.extension_last_seen_at = datetime.utcnow()
+    db.commit()
+
+
+def _work_queue_query(db: Session, user: models.User):
+    """What the extension driver would pick up: `approved`, owned, actionable."""
+    return (
+        db.query(models.Application)
+        .join(models.Profile, models.Application.profile_id == models.Profile.id)
+        .join(models.Job, models.Application.job_id == models.Job.id)
+        .filter(
+            models.Profile.user_id == user.id,
+            models.Application.status == models.ApplicationStatus.approved,
+            # An empty apply_url is unactionable: handing it to the driver buys a
+            # guaranteed failure report and burns a retry for nothing.
+            models.Job.apply_url != "",
+            models.Job.apply_url.isnot(None),
+        )
+    )
+
+
+@app.get("/extension/status", response_model=schemas.ExtensionStatusOut)
+def extension_status(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Read by the web app, so it never stamps last-seen itself."""
+    return schemas.ExtensionStatusOut(
+        connected=extension_connected(current_user.extension_last_seen_at, datetime.utcnow()),
+        last_seen_at=current_user.extension_last_seen_at,
+        approved_waiting=_work_queue_query(db, current_user).count(),
+    )
+
+
 @app.get("/extension/work-queue", response_model=list[schemas.WorkQueueItemOut])
 def extension_work_queue(
     limit: int = 20,
@@ -293,18 +338,9 @@ def extension_work_queue(
     twice — the claim moving the row out of `approved` is what makes this queue
     self-draining.
     """
+    _mark_extension_seen(db, current_user)
     rows = (
-        db.query(models.Application)
-        .join(models.Profile, models.Application.profile_id == models.Profile.id)
-        .join(models.Job, models.Application.job_id == models.Job.id)
-        .filter(
-            models.Profile.user_id == current_user.id,
-            models.Application.status == models.ApplicationStatus.approved,
-            # An empty apply_url is unactionable: handing it to the driver buys a
-            # guaranteed failure report and burns a retry for nothing.
-            models.Job.apply_url != "",
-            models.Job.apply_url.isnot(None),
-        )
+        _work_queue_query(db, current_user)
         .order_by(models.Application.created_at.asc())
         .limit(limit)
         .all()
@@ -920,6 +956,7 @@ def extension_map_fields(
     extension code, so no Anthropic/NVIDIA key ever ships client-side.
     """
     profile = resolve_profile_ownership(db, current_user, payload.profile_id)
+    _mark_extension_seen(db, current_user)
 
     profile_summary = build_profile_summary(profile, current_user.email)
     fields = [f.model_dump() for f in payload.fields]
