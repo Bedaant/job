@@ -195,3 +195,83 @@ describe("errorText", () => {
     expect(errorText(undefined)).not.toMatch(/undefined|Error/);
   });
 });
+
+describe("facts are never re-posted (Back then Continue duplicated them)", () => {
+  it("posts only facts not already saved, ignoring case and spacing", async () => {
+    const { factsToPost } = await import("./onboarding");
+    const saved = [fact("Cut p99 latency 40%")];
+    const drafts = [fact("  cut p99  LATENCY 40% "), fact("Shipped billing")];
+    expect(factsToPost(drafts, saved).map((f) => f.achievement)).toEqual(["Shipped billing"]);
+    expect(factsToPost(saved, saved)).toEqual([]);
+  });
+
+  it("treats a changed metric as a new fact", async () => {
+    const { factsToPost } = await import("./onboarding");
+    expect(factsToPost([{ ...fact("x"), metric: "5%" }], [fact("x")])).toHaveLength(1);
+  });
+});
+
+describe("wizard draft survives a refresh (sessionStorage, per profile)", () => {
+  function memoryStorage() {
+    const m = new Map<string, string>();
+    return {
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => void m.set(k, v),
+      removeItem: (k: string) => void m.delete(k),
+      dump: m,
+    };
+  }
+
+  it("round-trips the draft under a per-profile key and never stores a token", async () => {
+    const { saveDraft, loadDraft } = await import("./onboarding");
+    const s = memoryStorage();
+    const draft = { step: "preferences" as const, facts: [fact("a")], basics: {}, prefs: emptyPreferences(), campaign: emptyCampaignDraft() };
+    saveDraft("p1", draft, s);
+    expect(loadDraft("p1", s)).toEqual(draft);
+    expect(loadDraft("p2", s)).toBeNull();
+    expect([...s.dump.values()].join()).not.toMatch(/token|Bearer/i);
+  });
+
+  it("returns null on corrupt data or a throwing storage, and saving never throws", async () => {
+    const { saveDraft, loadDraft, clearDraft } = await import("./onboarding");
+    const s = memoryStorage();
+    s.setItem("applyscout.onboarding.p1", "{not json");
+    expect(loadDraft("p1", s)).toBeNull();
+    const boom = () => {
+      throw new Error("denied");
+    };
+    const broken = { getItem: boom, setItem: boom, removeItem: boom };
+    expect(loadDraft("p1", broken)).toBeNull();
+    expect(() =>
+      saveDraft("p1", { step: "resume", facts: [], basics: {}, prefs: emptyPreferences(), campaign: emptyCampaignDraft() }, broken),
+    ).not.toThrow();
+    expect(() => clearDraft("p1", broken)).not.toThrow();
+  });
+});
+
+describe("starting step comes from the server", () => {
+  it("a campaign already exists → set up, never a second campaign", async () => {
+    const { startingStep } = await import("./onboarding");
+    expect(startingStep({ draftStep: "campaign", factCount: 3, campaignCount: 1 })).toBe("already-set-up");
+  });
+
+  it("saved facts skip to preferences; a later draft step wins; done is never restored", async () => {
+    const { startingStep } = await import("./onboarding");
+    expect(startingStep({ draftStep: null, factCount: 0, campaignCount: 0 })).toBe("resume");
+    expect(startingStep({ draftStep: null, factCount: 2, campaignCount: 0 })).toBe("preferences");
+    expect(startingStep({ draftStep: "facts", factCount: 0, campaignCount: 0 })).toBe("facts");
+    expect(startingStep({ draftStep: "campaign", factCount: 2, campaignCount: 0 })).toBe("campaign");
+    expect(startingStep({ draftStep: "done", factCount: 2, campaignCount: 0 })).toBe("preferences");
+  });
+});
+
+describe("sources come from GET /sources", () => {
+  it("defaults to every enabled source and keeps disabled ones out", async () => {
+    const { defaultSources } = await import("./onboarding");
+    const list = [
+      { id: "remoteok", label: "Remote OK", note: "", enabled: true, reason: null, job_count: 3 },
+      { id: "jobspy_google", label: "Google Jobs", note: "", enabled: false, reason: "Currently returns no results.", job_count: 0 },
+    ];
+    expect(defaultSources(list)).toEqual(["remoteok"]);
+  });
+});

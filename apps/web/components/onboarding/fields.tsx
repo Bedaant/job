@@ -1,10 +1,13 @@
 "use client";
 
-import { useId, useState } from "react";
+import { createContext, useContext, useId, useState } from "react";
 import { XIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+
+/** false = field errors are not each a role="alert"; the page announces one summary instead (onboarding). */
+export const ErrorsAnnounced = createContext(true);
 
 /**
  * One labelled input with its error wired up. Exists so the a11y plumbing
@@ -32,6 +35,7 @@ export function Field({
   inputMode?: "text" | "numeric" | "tel" | "url";
 }) {
   const id = useId();
+  const announce = useContext(ErrorsAnnounced);
   const errorId = `${id}-error`;
   const hintId = `${id}-hint`;
   const describedBy = [error ? errorId : null, hint ? hintId : null].filter(Boolean).join(" ");
@@ -56,7 +60,7 @@ export function Field({
         </p>
       )}
       {error && (
-        <p id={errorId} role="alert" className="text-xs font-medium text-destructive">
+        <p id={errorId} role={announce ? "alert" : undefined} className="text-xs font-medium text-destructive">
           {error}
         </p>
       )}
@@ -86,6 +90,7 @@ export function Chips({
   placeholder?: string;
 }) {
   const id = useId();
+  const announce = useContext(ErrorsAnnounced);
   const errorId = `${id}-error`;
   const hintId = `${id}-hint`;
   const [draft, setDraft] = useState("");
@@ -134,16 +139,18 @@ export function Chips({
       </p>
 
       {values.length > 0 && (
-        <ul className="flex flex-wrap gap-1.5 pt-1">
+        // gap-y-5 keeps neighbouring rows' 44px remove targets from overlapping.
+        <ul className="flex flex-wrap gap-x-1.5 gap-y-5 pt-1">
           {values.map((v) => (
             <li key={v}>
               <span className="inline-flex items-center gap-1 rounded-full border border-input bg-secondary px-2.5 py-1 text-xs text-secondary-foreground">
                 {v}
+                {/* 44px hit area (WCAG 2.5.5) around a small ×; negative margins keep the chip small. */}
                 <button
                   type="button"
                   onClick={() => onChange(values.filter((x) => x !== v))}
                   aria-label={`Remove ${v}`}
-                  className="rounded-full hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="-my-3 -mr-3 inline-flex h-11 w-11 items-center justify-center rounded-full hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <XIcon className="h-3 w-3" aria-hidden="true" />
                 </button>
@@ -154,7 +161,7 @@ export function Chips({
       )}
 
       {error && (
-        <p id={errorId} role="alert" className="text-xs font-medium text-destructive">
+        <p id={errorId} role={announce ? "alert" : undefined} className="text-xs font-medium text-destructive">
           {error}
         </p>
       )}

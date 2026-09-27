@@ -3,7 +3,8 @@
 import { AlertTriangleIcon } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { AVAILABLE_SOURCES, DAILY_CAP_MAX } from "@/lib/onboarding";
+import { DAILY_CAP_MAX } from "@/lib/onboarding";
+import type { Source } from "@/lib/api";
 import type { CampaignDraft, Errors, Preferences } from "@/lib/onboarding";
 import { Field } from "./fields";
 import { SubmitModeChoice } from "@/components/SubmitModeChoice";
@@ -20,11 +21,16 @@ export function StepCampaign({
   onChange,
   prefs,
   errors,
+  sources,
+  sourcesFailed,
 }: {
   campaign: CampaignDraft;
   onChange: (campaign: CampaignDraft) => void;
   prefs: Preferences;
   errors: Errors;
+  // GET /sources; undefined while loading.
+  sources: Source[] | undefined;
+  sourcesFailed: boolean;
 }) {
   const set = (patch: Partial<CampaignDraft>) => onChange({ ...campaign, ...patch });
 
@@ -46,21 +52,39 @@ export function StepCampaign({
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">Where to look</legend>
         {errors.sources && (
-          <p role="alert" className="text-xs font-medium text-destructive">
+          <p className="text-xs font-medium text-destructive">
             {errors.sources}
           </p>
         )}
+        {sources === undefined && !sourcesFailed && <p className="text-sm text-muted-foreground">Loading sources…</p>}
+        {sourcesFailed && (
+          <p className="text-sm text-muted-foreground">
+            We couldn&apos;t load the list of sources. Your campaign will search the usual remote job boards.
+          </p>
+        )}
         <div className="grid gap-2 sm:grid-cols-2">
-          {AVAILABLE_SOURCES.map((source) => (
-            <div key={source.id} className="flex items-start gap-3 rounded-md border border-input p-3">
+          {(sources ?? []).map((source) => (
+            <div
+              key={source.id}
+              className={
+                source.enabled
+                  ? "flex items-start gap-3 rounded-md border border-input p-3"
+                  : "flex items-start gap-3 rounded-md border border-dashed border-input p-3 opacity-70"
+              }
+            >
+              {/* Disabled sources stay listed with the reason, so nothing silently vanishes. */}
               <Checkbox
                 id={`source-${source.id}`}
-                checked={campaign.sources.includes(source.id)}
+                checked={source.enabled && campaign.sources.includes(source.id)}
+                disabled={!source.enabled}
+                aria-describedby={`source-${source.id}-note`}
                 onCheckedChange={(checked) => toggleSource(source.id, checked === true)}
               />
               <div>
                 <Label htmlFor={`source-${source.id}`}>{source.label}</Label>
-                <p className="text-xs text-muted-foreground">{source.note}</p>
+                <p id={`source-${source.id}-note`} className="text-xs text-muted-foreground">
+                  {source.enabled ? source.note : `Unavailable: ${source.reason}`}
+                </p>
               </div>
             </div>
           ))}

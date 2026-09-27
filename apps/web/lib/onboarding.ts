@@ -1,7 +1,7 @@
 // Onboarding wizard state, gating and payload shaping — kept out of the React
 // components on purpose so the rules that decide "can this user move on" and
 // "what exactly gets posted" are testable without a DOM (no jsdom installed).
-import { api, ApiError, type ApplicantBasics, type Campaign, type CampaignCreate, type FactDraft } from "./api";
+import { api, ApiError, type ApplicantBasics, type Campaign, type CampaignCreate, type FactDraft, type Source } from "./api";
 
 export type WizardStep = "resume" | "facts" | "preferences" | "campaign" | "done";
 
@@ -37,17 +37,84 @@ export interface WizardState {
   campaign: CampaignDraft;
 }
 
-// The authoritative source list lives in apps/api/connectors/. Mirrored here
-// because there is no endpoint that enumerates it; if a connector is added there
-// this list needs updating (the server re-validates either way).
-export const AVAILABLE_SOURCES = [
-  { id: "remotive", label: "Remotive", note: "Remote-first job board" },
-  { id: "greenhouse", label: "Greenhouse", note: "Company ATS boards" },
-  { id: "lever", label: "Lever", note: "Company ATS boards" },
-  { id: "ashby", label: "Ashby", note: "Company ATS boards" },
-  { id: "reed", label: "Reed", note: "UK listings" },
-  { id: "jobspy_google", label: "Google Jobs", note: "Currently returning no results" },
-];
+/** Every source GET /sources says is live — the default a new campaign searches. */
+export const defaultSources = (sources: Source[]): string[] => sources.filter((s) => s.enabled).map((s) => s.id);
+
+// Same rule as the server's facts:bulk dedupe: same fact = same words, ignoring case and spacing.
+const norm = (v: string | null | undefined) => (v ?? "").split(/\s+/).filter(Boolean).join(" ").toLowerCase();
+const factKey = (f: FactDraft) => [f.category, f.achievement, f.metric, f.proof].map(norm).join("\u0000");
+
+/** The drafts not already saved on the server — so Back → Continue never re-posts them. */
+export function factsToPost(drafts: FactDraft[], saved: FactDraft[]): FactDraft[] {
+  const seen = new Set(saved.map(factKey));
+  return drafts.filter((f) => {
+    const k = factKey(f);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Draft persistence: the in-progress wizard survives a refresh. sessionStorage
+// (per tab, gone when it closes), keyed per profile. Only what the user typed —
+// never the auth token. Every access is guarded: storage can be absent or throw.
+// ---------------------------------------------------------------------------
+
+export interface WizardDraft extends WizardState {
+  step: WizardStep;
+}
+type DraftStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+const draftKey = (profileId: string) => `applyscout.onboarding.${profileId}`;
+const session = (): DraftStorage | null => (typeof window === "undefined" ? null : window.sessionStorage);
+
+export function saveDraft(profileId: string, draft: WizardDraft, storage: DraftStorage | null = session()) {
+  try {
+    storage?.setItem(draftKey(profileId), JSON.stringify(draft));
+  } catch {
+    // Full or blocked storage: the wizard still works, it just won't survive a refresh.
+  }
+}
+
+export function loadDraft(profileId: string, storage: DraftStorage | null = session()): WizardDraft | null {
+  try {
+    const raw = storage?.getItem(draftKey(profileId));
+    const draft = raw ? (JSON.parse(raw) as WizardDraft) : null;
+    return draft && STEPS.includes(draft.step) ? draft : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearDraft(profileId: string, storage: DraftStorage | null = session()) {
+  try {
+    storage?.removeItem(draftKey(profileId));
+  } catch {
+    // nothing to do
+  }
+}
+
+/**
+ * Where the wizard opens, from what the server already has. A campaign exists →
+ * the user is set up (re-running onboarding used to create a second one). Saved
+ * facts → skip to preferences. A saved draft step further along wins; "done" is
+ * never restored (it needs the campaign just launched).
+ */
+export function startingStep({
+  draftStep,
+  factCount,
+  campaignCount,
+}: {
+  draftStep: WizardStep | null;
+  factCount: number;
+  campaignCount: number;
+}): WizardStep | "already-set-up" {
+  if (campaignCount > 0) return "already-set-up";
+  const fromServer: WizardStep = factCount > 0 ? "preferences" : "resume";
+  const fromDraft = draftStep && draftStep !== "done" ? draftStep : null;
+  return fromDraft && STEPS.indexOf(fromDraft) > STEPS.indexOf(fromServer) ? fromDraft : fromServer;
+}
 
 export const emptyPreferences = (): Preferences => ({
   roles: [],
@@ -58,7 +125,8 @@ export const emptyPreferences = (): Preferences => ({
 
 export const emptyCampaignDraft = (): CampaignDraft => ({
   name: "My job search",
-  sources: ["remotive", "greenhouse", "lever", "ashby"],
+  // The always-on sources; replaced by GET /sources' enabled list once it loads.
+  sources: ["remotive", "remoteok", "himalayas", "workingnomads", "jobicy", "arbeitnow", "weworkremotely"],
   min_match_score: 0.7,
   daily_cap: 10,
   auto_submit: false,

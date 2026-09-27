@@ -134,8 +134,8 @@ export function StepFacts({
               Your facts ({facts.length})
             </h3>
             <p className="text-sm text-muted-foreground">
-              One thing you did per fact, in your own words. Correct anything wrong, delete anything untrue — once
-              saved, facts can&apos;t be edited yet.
+              One thing you did per fact, in your own words. Correct anything wrong, delete anything untrue. You can
+              edit or remove facts later on your Profile page.
             </p>
           </div>
           <button
@@ -149,7 +149,7 @@ export function StepFacts({
         </div>
 
         {errors._ && (
-          <p role="alert" className="text-sm font-medium text-destructive">
+          <p className="text-sm font-medium text-destructive">
             {errors._}
           </p>
         )}
@@ -176,7 +176,7 @@ export function StepFacts({
                 ))}
               </select>
               {errors[`${i}.category`] && (
-                <p id={`fact-${i}-category-error`} role="alert" className="mb-2 text-xs font-medium text-destructive">
+                <p id={`fact-${i}-category-error`} className="mb-2 text-xs font-medium text-destructive">
                   {errors[`${i}.category`]}
                 </p>
               )}
@@ -195,14 +195,14 @@ export function StepFacts({
                 className="mt-1"
               />
               {errors[i] && (
-                <p id={`fact-${i}-error`} role="alert" className="mt-1 text-xs font-medium text-destructive">
+                <p id={`fact-${i}-error`} className="mt-1 text-xs font-medium text-destructive">
                   {errors[i]}
                 </p>
               )}
 
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 <Field
-                  label="Metric"
+                  label={`Metric (fact ${i + 1})`}
                   value={fact.metric ?? ""}
                   onChange={(v) =>
                     onFacts(facts.map((f, j) => (j === i ? { ...f, metric: v.trim() === "" ? null : v } : f)))
@@ -210,7 +210,7 @@ export function StepFacts({
                   hint="A number makes this fact land. Blank is fine if there genuinely isn't one."
                 />
                 <Field
-                  label="Proof"
+                  label={`Proof (fact ${i + 1})`}
                   value={fact.proof ?? ""}
                   onChange={(v) =>
                     onFacts(facts.map((f, j) => (j === i ? { ...f, proof: v.trim() === "" ? null : v } : f)))
@@ -222,7 +222,7 @@ export function StepFacts({
               <button
                 type="button"
                 onClick={() => onFacts(facts.filter((_, j) => j !== i))}
-                className="mt-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Trash2Icon className="h-3.5 w-3.5" aria-hidden="true" />
                 Remove fact {i + 1}

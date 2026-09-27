@@ -914,21 +914,45 @@ def get_resume_upload(
     )
 
 
+def _fact_key(category, achievement, metric, proof) -> tuple:
+    """Two facts are the same fact when they read the same, ignoring case and spacing."""
+    norm = lambda v: " ".join((v or "").split()).casefold()
+    return norm(category), norm(achievement), norm(metric), norm(proof)
+
+
 @app.post("/profiles/{profile_id}/facts:bulk", response_model=list[schemas.ResumeFactOut])
 def confirm_facts_bulk(
     payload: schemas.FactsBulkIn,
+    response: Response,
     profile: models.Profile = Depends(get_owned_profile),
     db: Session = Depends(get_db),
 ):
     """Facts are NOT persisted from parsing alone — only here, once the user has
     reviewed and confirmed them (SPEC.md §2.1). Parsed output is never silently
     trusted.
+
+    Idempotent: a fact identical (after normalisation) to one the profile already
+    has — or to an earlier one in the same payload — is skipped, so onboarding's
+    Back → Continue can't duplicate facts. Returns only the newly created facts;
+    `X-Skipped-Facts` lists the payload indices that were skipped.
     """
-    created = []
-    for fact_in in payload.facts:
+    seen = {
+        _fact_key(f.category, f.achievement, f.metric, f.proof)
+        for f in db.query(models.ResumeFact).filter(models.ResumeFact.profile_id == profile.id).all()
+    }
+    created, skipped = [], []
+    for i, fact_in in enumerate(payload.facts):
+        key = _fact_key(fact_in.category, fact_in.achievement, fact_in.metric, fact_in.proof)
+        if key in seen:
+            skipped.append(str(i))
+            continue
+        seen.add(key)
         fact = models.ResumeFact(profile_id=profile.id, **fact_in.model_dump())
         db.add(fact)
         created.append(fact)
+    response.headers["X-Skipped-Facts"] = ",".join(skipped)
+    if not created:
+        return []
     db.commit()
 
     embeddings = embed_texts([f.achievement for f in created], input_type="document")
@@ -946,6 +970,49 @@ def confirm_facts_bulk(
     for fact in created:
         db.refresh(fact)
     return created
+
+
+# Job sources the discovery worker actually searches (workers/jobs.py), with a
+# cheap health signal: how many jobs each has put in the shared pool.
+# (connector_runs has no rows for these — only F5's classifier writes it.)
+_SOURCE_LABELS = {
+    "remotive": ("Remotive", "Remote-first job board"),
+    "remoteok": ("Remote OK", "Remote jobs board"),
+    "himalayas": ("Himalayas", "Remote jobs board"),
+    "workingnomads": ("Working Nomads", "Remote jobs board"),
+    "jobicy": ("Jobicy", "Remote jobs board"),
+    "arbeitnow": ("Arbeitnow", "Europe-focused listings"),
+    "weworkremotely": ("We Work Remotely", "Remote jobs board"),
+    "reed": ("Reed", "UK listings"),
+    "greenhouse": ("Greenhouse", "Company career pages"),
+    "lever": ("Lever", "Company career pages"),
+    "ashby": ("Ashby", "Company career pages"),
+    "jobspy_google": ("Google Jobs", "Aggregated listings"),
+}
+
+
+@app.get("/sources", response_model=list[schemas.SourceOut])
+def list_sources(db: Session = Depends(get_db), _user: models.User = Depends(get_current_user)):
+    from sqlalchemy import func
+    from connectors import config as conn_config
+
+    reasons = {
+        "remotive": None if conn_config.REMOTIVE_KEYWORDS else "Not searched right now.",
+        "reed": None if conn_config.REED_KEYWORDS and settings.reed_api_key else "Not connected yet.",
+        "greenhouse": None if conn_config.GREENHOUSE_BOARD_TOKENS else "No company boards added yet.",
+        "lever": None if conn_config.LEVER_COMPANY_TOKENS else "No company boards added yet.",
+        "ashby": None if conn_config.ASHBY_ORG_TOKENS else "No company boards added yet.",
+        # JobSpy isn't part of discovery, and its Google scrape returns nothing (latest+6).
+        "jobspy_google": "Currently returns no results.",
+    }
+    for feed in _SOURCE_LABELS:
+        reasons.setdefault(feed, None if feed in conn_config.ENABLED_FEEDS else "Not searched right now.")
+    counts = dict(db.query(models.Job.source, func.count(models.Job.id)).group_by(models.Job.source).all())
+    return [
+        schemas.SourceOut(id=sid, label=label, note=note, enabled=reasons[sid] is None,
+                          reason=reasons[sid], job_count=counts.get(sid, 0))
+        for sid, (label, note) in _SOURCE_LABELS.items()
+    ]
 
 
 # ---------- Applicant identity (JSON Resume `basics`) ----------
