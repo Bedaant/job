@@ -117,6 +117,24 @@ def bind_to_options(value: str | None, options: list[str] | None) -> str | None:
     return None
 
 
+def _country_option(code: str | None, options: list[str] | None) -> str | None:
+    """ISO code -> the option naming that country ("US" -> "United States +1").
+    phonenumbers is already installed; _region_display_name is private, so any
+    failure just means "not filled", never a wrong value."""
+    if not code or not options:
+        return None
+    try:
+        from phonenumbers.geocoder import _region_display_name
+        name = _region_display_name(code.upper(), "en")
+    except Exception:
+        return None
+    if not name:
+        return None
+    wanted = name.lower()
+    hits = [o for o in options if o.strip().lower() == wanted or o.strip().lower().startswith(wanted + " ")]
+    return hits[0] if len(hits) == 1 else None
+
+
 def _find_network_url(profile_summary: dict, network_name: str) -> str | None:
     for entry in profile_summary.get("network_profiles", []):
         if entry.get("network", "").lower() == network_name.lower():
@@ -183,6 +201,8 @@ def match_field_deterministic(field: dict, profile_summary: dict, ats_type: str 
     # Rule matched structurally, but the data isn't there (or isn't one of the
     # field's options) — flag, don't guess.
     value = bind_to_options(profile_summary.get(key) or None, field.get("options"))
+    if not value and key == "country_code":
+        value = _country_option(profile_summary.get(key), field.get("options"))
     if not value:
         return None
 

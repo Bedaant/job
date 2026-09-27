@@ -359,3 +359,66 @@ def test_a_recognised_first_name_field_never_falls_through_to_the_llm():
 
     llm.assert_not_called()
     assert result["f"]["value"] is None and result["l"]["value"] is None
+
+
+# ---------- legal consent is the user's own act (found by the combobox harness run) ----------
+
+from answer_bank import is_consent_field  # noqa: E402
+
+
+@pytest.mark.parametrize("label,options", [
+    ("Agreement to Arbitrate", ["I understand and agree to the terms of the arbitration agreement"]),
+    ("Please read the arbitration agreement below", ["Yes"]),
+    ("I certify that the information I have provided is true and complete", []),
+    ("Do you consent to our privacy policy?", ["Yes", "No"]),
+    ("Electronic signature", []),
+    ("Acknowledgement", ["I have read and accept the Terms and Conditions"]),
+])
+def test_legal_consent_questions_are_recognised(label, options):
+    assert is_consent_field(label, options)
+
+
+@pytest.mark.parametrize("label,options", [
+    ("Are you legally authorized to work in the United States?", ["Yes", "No"]),
+    ("Will you require visa sponsorship?", ["Yes", "No"]),
+    ("Are you willing to relocate?", ["Yes", "No"]),
+    ("How did you hear about us?", []),
+])
+def test_ordinary_questions_are_not_consent(label, options):
+    assert not is_consent_field(label, options)
+
+
+def test_the_llm_never_accepts_legal_terms_for_the_user():
+    """Live: the model returned the arbitration agreement's single option with
+    high confidence and the extension clicked it. Agreeing to legal terms is the
+    user's act — never automated, never from the answer bank."""
+    fields = [{"field_id": "arb", "label_text": "Agreement to Arbitrate", "input_type": "select",
+               "options": ["I understand and agree to the terms of the arbitration agreement"],
+               "required": True, "autocomplete": None, "name": None, "dom_id": "question_arb"}]
+    with patch("formfill.map_fields.call_llm") as llm:
+        llm.return_value = json.dumps([{"field_id": "arb", "maps_to": "profile.consent", "confidence": 0.95,
+                                        "value": "I understand and agree to the terms of the arbitration agreement"}])
+        result = map_form_fields(fields, {"full_name": "Morgan Ellery"},
+                                 answer_lookup=lambda q: "I understand and agree to the terms of the arbitration agreement")
+    llm.assert_not_called()
+    assert result[0]["value"] is None
+
+
+def test_a_consent_answer_is_never_saved_to_the_bank(db_session):
+    profile = _profile(db_session, "live-consent-save@example.com")
+    with pytest.raises(HTTPException):
+        save_answer(db_session, profile.id, "Agreement to Arbitrate", "I agree")
+    assert db_session.query(models.AnswerBank).count() == 0
+
+
+def test_country_code_binds_to_a_country_name_option():
+    """Live (combobox harness run): Greenhouse's Country options read
+    "United States +1"; the profile holds the ISO code "US", so it stayed empty."""
+    field = {"field_id": "c", "label_text": "Country", "input_type": "select", "required": True,
+             "options": ["Afghanistan +93", "India +91", "United Kingdom +44", "United States +1"],
+             "autocomplete": None, "name": None, "dom_id": "country"}
+    mapping = match_field_deterministic(field, {"country_code": "US"})
+    assert mapping["value"] == "United States +1"
+    assert match_field_deterministic(field, {"country_code": "IN"})["value"] == "India +91"
+    # No guessing: a code with no matching option stays unfilled.
+    assert match_field_deterministic(field, {"country_code": "DE"}) is None

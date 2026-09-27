@@ -102,6 +102,32 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+42) — Legal consent is never automated; country codes bind to option names
+
+**What changed.** `answer_bank.is_consent_field(label, options)` — arbitration
+agreements, terms/privacy consent, "I agree/accept/certify/attest/acknowledge",
+signatures — joins the demographic rail: never mapped (map_fields' never-fillable set,
+checked on the question AND its options), never saved to or served from the answer bank
+(agreeing once is not agreeing for every employer). Also `deterministic._country_option`:
+an ISO `country_code` binds to an option naming that country ("US" → "United States +1")
+via the already-installed phonenumbers (private `_region_display_name`, wrapped so any
+failure means "not filled", never a wrong value); ambiguous/no match stays unfilled.
+
+**Why.** The combobox harness run (latest+40) showed the model accepting Greenhouse's
+"Agreement to Arbitrate" (single option "I understand and agree…") at high confidence and
+the extension clicking it — legal consent must be the user's own act. Country stayed empty
+because the options are names, the profile a code.
+
+**Tests.** Consent recognised on 6 real phrasings incl. option-only; NOT on work
+authorization / visa / relocation / "how did you hear"; LLM never called and value None
+for the arbitration field even when the bank would answer; consent refused on save.
+Country: US/IN bind, DE (no option) stays None. Red before green; api 578/578.
+
+**Next.** Re-run the harness on Greenhouse to confirm the arbitration fields now stay
+blank for the user and Country fills.
+
+---
+
 ### 2026-09-27 (latest+41) — Assisted apply: Maggie prepares, you send
 
 **What changed.** Owner decision: the proven pattern (the agent finds, ranks and tailors;

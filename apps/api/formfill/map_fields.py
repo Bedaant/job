@@ -6,7 +6,7 @@ regardless of what the model says.
 import json
 import re
 
-from answer_bank import DEMOGRAPHIC_LABEL_KEYWORDS, is_demographic_field, is_demographic_label  # noqa: F401
+from answer_bank import DEMOGRAPHIC_LABEL_KEYWORDS, is_consent_field, is_demographic_field, is_demographic_label  # noqa: F401
 from core.grounding import validate_ids_against_known_set
 from formfill.deterministic import bind_to_options, match_field_deterministic, recognised_profile_key
 from tailoring.engine import call_llm
@@ -189,6 +189,7 @@ def map_form_fields(
     demographic_ids = {
         f["field_id"] for f in fields
         if is_demographic_field(f.get("label_text"), (f.get("options") or []) + group_labels.get(f.get("name") or "", []))
+        or is_consent_field(f.get("label_text"), (f.get("options") or []) + group_labels.get(f.get("name") or "", []))
         or _unanswerable(f)
     }
 

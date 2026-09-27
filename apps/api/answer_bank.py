@@ -149,6 +149,23 @@ def is_demographic_field(label_text: str | None, options: list[str] | None = Non
     return len(terms) >= 2 or (declines and bool(terms))
 
 
+# Legal consent is the user's own act — the same "never automated" class as the
+# demographic rail. Found live: the model accepted Greenhouse's "Agreement to
+# Arbitrate" (its only option: "I understand and agree to the terms…") and the
+# extension clicked it. Also never stored: agreeing once is not agreeing for
+# every later employer. Matched on the question AND its options.
+_CONSENT = re.compile(
+    r"\barbitrat\w*|\bterms (?:and|&) conditions\b|\bterms of (?:service|use)\b|\bprivacy (?:policy|notice)\b"
+    r"|\bi (?:understand and )?agree\b|\bi accept\b|\bconsent\w*|\bcertif(?:y|ies|ication)\b|\battest\w*"
+    r"|\backnowledg\w*|\b(?:electronic |e )?signature\b"
+)
+
+
+def is_consent_field(label_text: str | None, options: list[str] | None = None) -> bool:
+    texts = [label_text or "", *(options or [])]
+    return any(_CONSENT.search(_normalize_eeo(t)) for t in texts)
+
+
 def is_demographic_label(label_text: str | None) -> bool:
     """The label half of is_demographic_field — for callers holding only a question."""
     return is_demographic_field(label_text)
@@ -205,7 +222,7 @@ def find_answer(db: Session, profile_id: str, question: str) -> models.AnswerBan
     it never increments the usage counters, because a lookup is not a use.
     Returns None for a demographic question regardless of what is stored.
     """
-    if is_demographic_field(question):
+    if is_demographic_field(question) or is_consent_field(question):
         return None
 
     normalized = normalize_question(question)
@@ -220,7 +237,8 @@ def find_answer(db: Session, profile_id: str, question: str) -> models.AnswerBan
     rows = db.query(models.AnswerBank).filter(models.AnswerBank.profile_id == profile_id).all()
     # Also the cleanup for rows saved before the rule grew (the live
     # "Are you Hispanic/Latino?" row): they stay in the table, never served.
-    rows = [row for row in rows if not is_demographic_field(row.question_text)]
+    rows = [row for row in rows
+            if not is_demographic_field(row.question_text) and not is_consent_field(row.question_text)]
 
     for row in rows:
         if row.question_normalized == normalized:
@@ -246,6 +264,11 @@ def save_answer(db: Session, profile_id: str, question: str, answer: str) -> mod
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             "Demographic/EEO questions are never stored or auto-filled.",
+        )
+    if is_consent_field(question):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Legal agreements and consents are never stored or auto-filled — each employer's is yours to accept.",
         )
 
     normalized = normalize_question(question)
