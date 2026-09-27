@@ -102,6 +102,65 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+28) — Why Maggie stopped: needs_input on review cards; base resume download works
+
+**What changed.**
+- *API.* `GET /applications/review-queue` rows gain `needs_input: {kind, message,
+  demographic_left_blank} | null` and `last_attempt: {outcome, message} | null`, derived
+  from the **last** `[outcome] reason` line `submission-result` appends to `notes`
+  (new pure `apps/api/needs_input.py`). `needs_input` is set only when that last stamp is
+  `needs_human`. Kind, first match wins: `captcha` → `account` (sign in / log in / create
+  an account / register to apply) → `upload` (`file_upload`, file input) → `question`
+  (`low_confidence`/essay/unanswered, or any pending question left) → `other`. Patterns
+  mirror `driverCore.mjs` NEEDS_HUMAN_PATTERNS and `autoApply.content.ts`'s flag reasons.
+- *Web.* `lib/needs-input.ts` maps it to plain copy with Maggie as the actor; the review
+  card shows it first as a `role="note"` callout (warning tokens for "finish it by hand",
+  muted for questions), with "Open the form" (new tab, sr-only hint) when the user has to
+  finish the form. "Approve to retry" only appears where a retry can work: `question`
+  kind with no demographic field. The demographic line reads "Questions about gender,
+  ethnicity, veteran or disability status were left blank for you to decide."
+- *Download.* "Download resume" was a bare `<a href>` to an endpoint that needs the Bearer
+  header, so it always 401'd. `api.downloadResumeDocx` fetches it through the shared
+  plumbing (`request()` split into `send()` + `.json()`, so 401/error handling is the same
+  code) and the card saves the blob via an object URL as `base-resume.docx`. Relabelled
+  "Download base resume" (facts-only, not tailored); a failure shows an inline
+  `role="alert"`. `api.resumeDocxUrl` removed (its only caller).
+
+**Why.** A form stopped by a captcha, an account wall or an extra upload looked like any
+other card; the user approved it and it looped. The reason was already stored, just not
+shown.
+
+**Files.** api: `needs_input.py` (new), `main.py`, `schemas.py`,
+`tests/test_needs_input.py` (new). web: `lib/needs-input.ts` + `.test.ts` (new),
+`lib/api.ts`, `components/review/ApplicationCard.tsx`, `app/review/page.tsx`.
+
+**Dependencies added.** None. No migration (derived from `notes`).
+
+**Tests.** Red first on both layers. api: collection error (no `needs_input`) → 13 new
+green; then a second red (answering every question emptied `pending_questions` and the
+kind fell to `other`, dropping the retry framing) → question-type reasons added → green.
+418 → **433**. web: `Cannot find module './needs-input'` → green, 54 → **64** (copy per
+kind, retry only where it helps, demographic note, msw: Bearer header sent and blob
+returned, a 404 rejects as `ApiError`). `tsc --noEmit` clean, `next build` clean.
+
+**Problems hit.**
+- **Demographic fields block every pass.** `autoApply.content.ts` treats `demographic`
+  as a blocking reason, and `fieldDecision.mjs` flags every demographic field, so any form
+  with an EEO section (most Greenhouse forms) stops at `needs_human` every time; approving
+  again can never send it. The card now says "open the form and submit it yourself" in that
+  case instead of offering a retry. The real fix is an extension decision (leave optional
+  EEO fields blank and continue; only stop on a *required* one), not made here.
+- PowerShell 5.1 `Get-Content -Raw` + `WriteAllText` re-encoded `schemas.py` (mojibake
+  in every em dash); reverted with git and redid it with plain edits.
+- Not verified in a browser (no backend started). `last_attempt` is typed on the web but
+  not rendered: review-queue rows are `ready_for_review`, so it is always the needs_human
+  stamp there.
+
+**Next.** Extension: don't stop on optional demographic fields; show `last_attempt`
+wherever approved/failed rows get a screen; a tailored per-application docx.
+
+---
+
 ### 2026-09-27 (latest+27) — Launch actually launches; RQ job ids; Tailwind v3 colour tokens fixed at the root
 
 **What changed.**

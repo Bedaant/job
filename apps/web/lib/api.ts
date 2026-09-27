@@ -110,7 +110,16 @@ export interface ReviewApplication {
   flagged_unsupported_claims: string[];
   // Questions an auto-apply run stopped on that the answer bank can't answer yet.
   pending_questions: string[];
+  // Why the last auto-apply run stopped (apps/api/needs_input.py); null if it didn't.
+  needs_input: NeedsInput | null;
+  last_attempt: { outcome: "submitted" | "failed" | "needs_human"; message: string } | null;
   created_at: string;
+}
+
+export interface NeedsInput {
+  kind: "question" | "upload" | "captcha" | "account" | "other";
+  message: string;
+  demographic_left_blank: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -175,6 +184,11 @@ function formatErrorDetail(detail: unknown): string {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  return (await send(path, options)).json();
+}
+
+/** Authenticated fetch with the shared error/401 handling; the caller reads the body. */
+async function send(path: string, options: RequestInit = {}): Promise<Response> {
   const token = getToken();
   // Caller-specified headers (e.g. login's x-www-form-urlencoded) must win over
   // this default — build the default first, then let options.headers override it.
@@ -191,7 +205,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const body = await res.json().catch(() => ({ detail: res.statusText }));
     throw new ApiError(res.status, formatErrorDetail(body.detail) || `API error ${res.status}`);
   }
-  return res.json();
+  return res;
 }
 
 export const api = {
@@ -256,7 +270,8 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ question_text: questionText, answer_text: answerText }),
     }),
-  resumeDocxUrl: (profileId: string) => `${API_URL}/profiles/${profileId}/resume.docx`,
+  // A plain <a href> can't carry the Bearer header, so fetch it and let the caller save the blob.
+  downloadResumeDocx: async (profileId: string) => (await send(`/profiles/${profileId}/resume.docx`)).blob(),
 };
 
 export { ApiError };

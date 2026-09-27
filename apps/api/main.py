@@ -11,6 +11,7 @@ from rq.exceptions import DuplicateJobError
 from rq.job import Job as RQJob
 
 import answer_bank as answer_bank_service
+from needs_input import last_attempt, needs_input
 from core.config import get_settings
 from core.deps import get_current_user, get_owned_profile, resolve_profile_ownership
 from database import get_db
@@ -146,6 +147,12 @@ def list_review_queue(profile: models.Profile = Depends(get_owned_profile), db: 
     for row in rows:
         match = matches_by_job_id.get(row.job_id)
         tailored = row.tailored_resume_json or {}
+        # Derived, not stored twice: a question drops off the moment the bank
+        # can answer it, however the answer got there.
+        pending = [
+            q for q in (row.pending_questions or [])
+            if answer_bank_service.find_answer(db, profile.id, q) is None
+        ]
         result.append(schemas.ApplicationReviewOut(
             id=row.id,
             job=row.job,
@@ -156,12 +163,9 @@ def list_review_queue(profile: models.Profile = Depends(get_owned_profile), db: 
             tailored_bullets=tailored.get("bullets", []),
             tailored_cover_letter=row.tailored_cover_letter,
             flagged_unsupported_claims=row.flagged_unsupported_claims or [],
-            # Derived, not stored twice: a question drops off the moment the bank
-            # can answer it, however the answer got there.
-            pending_questions=[
-                q for q in (row.pending_questions or [])
-                if answer_bank_service.find_answer(db, profile.id, q) is None
-            ],
+            pending_questions=pending,
+            needs_input=needs_input(row.notes, pending),
+            last_attempt=last_attempt(row.notes),
             created_at=row.created_at,
         ))
     return result

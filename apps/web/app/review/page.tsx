@@ -161,7 +161,7 @@ export default function ReviewPage() {
                 onToggleSelected={(checked) => toggleOne(application.id, checked)}
                 onDismiss={() => dismissMutation.mutate(application.id)}
                 isDismissing={dismissMutation.isPending && dismissMutation.variables === application.id}
-                resumeUrl={api.resumeDocxUrl(profile!.id)}
+                onDownloadResume={() => api.downloadResumeDocx(profile!.id)}
                 onSaveAnswer={async (question, answer) => {
                   await api.saveAnswer(profile!.id, question, answer);
                   // The backend derives pending_questions from the bank, so a

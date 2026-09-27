@@ -2,13 +2,24 @@
 
 import { useState } from "react";
 import { diffWords } from "diff";
-import { AlertTriangleIcon, FileTextIcon, MessageSquareIcon } from "lucide-react";
+import { AlertTriangleIcon, FileTextIcon, InfoIcon, MessageSquareIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import type { ResumeFact, ReviewApplication, TailoredBullet } from "@/lib/api";
+import { needsInputView } from "@/lib/needs-input";
+
+/** Save a fetched file: the endpoint needs the Bearer header, so a plain link would 401. */
+function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
 
 function scoreVariant(score: number | null): "default" | "secondary" | "outline" {
   if (score === null) return "outline";
@@ -122,7 +133,7 @@ export function ApplicationCard({
   onToggleSelected,
   onDismiss,
   isDismissing,
-  resumeUrl,
+  onDownloadResume,
   onSaveAnswer,
 }: {
   application: ReviewApplication;
@@ -131,12 +142,27 @@ export function ApplicationCard({
   onToggleSelected: (checked: boolean) => void;
   onDismiss: () => void;
   isDismissing: boolean;
-  resumeUrl: string;
+  onDownloadResume: () => Promise<Blob>;
   onSaveAnswer: (question: string, answer: string) => Promise<void>;
 }) {
   const { job, match_score, tailored_summary, tailored_bullets, flagged_unsupported_claims, pending_questions } =
     application;
   const factsById = new Map(facts.map((f) => [f.id, f]));
+  const stopped = needsInputView(application.needs_input, job.company, pending_questions?.length ?? 0);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  async function downloadResume() {
+    setDownloading(true);
+    setDownloadError(null);
+    try {
+      saveBlob(await onDownloadResume(), "base-resume.docx");
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : "Could not download the resume.");
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   return (
     <Card>
@@ -163,7 +189,40 @@ export function ApplicationCard({
       </CardHeader>
 
       <CardContent className="space-y-3">
-        {tailored_summary && <p className="text-sm">{tailored_summary}</p>}
+        {stopped && (
+          <div
+            role="note"
+            aria-label="Why Maggie stopped"
+            className={
+              stopped.tone === "warning"
+                ? "flex items-start gap-2 rounded-md border border-warning/40 bg-warning-soft p-3 text-sm text-foreground"
+                : "flex items-start gap-2 rounded-md border bg-muted p-3 text-sm text-foreground"
+            }
+          >
+            {stopped.tone === "warning" ? (
+              <AlertTriangleIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning" />
+            ) : (
+              <InfoIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+            )}
+            <div className="space-y-1">
+              <p className="font-medium">{stopped.title}</p>
+              <p>{stopped.body}</p>
+              {stopped.demographicNote && <p className="text-muted-foreground">{stopped.demographicNote}</p>}
+              {stopped.openForm && (
+                <a
+                  href={job.apply_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-block font-medium text-primary underline underline-offset-4"
+                >
+                  Open the form<span className="sr-only"> (opens in a new tab)</span>
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+
+        {tailored_summary &&<p className="text-sm">{tailored_summary}</p>}
 
         {tailored_bullets.length > 0 && (
           <ul className="list-disc space-y-1.5 pl-5">
@@ -192,9 +251,11 @@ export function ApplicationCard({
             <MessageSquareIcon className="mt-0.5 size-4 shrink-0" />
             <div className="w-full">
               <p className="font-medium">The form asked something only you can answer</p>
-              <p className="text-xs text-muted-foreground">
-                Answer once — it&apos;s saved and reused on every later form that asks. Then approve to retry.
-              </p>
+              {!stopped && (
+                <p className="text-xs text-muted-foreground">
+                  Answer once. It&apos;s saved and reused on every later form that asks.
+                </p>
+              )}
               <ul className="mt-2 space-y-3">
                 {pending_questions.map((q) => (
                   <PendingQuestion key={q} question={q} onSave={(answer) => onSaveAnswer(q, answer)} />
@@ -204,21 +265,24 @@ export function ApplicationCard({
           </div>
         )}
 
-        <div className="flex items-center gap-2 pt-1">
-          <Button asChild size="sm" variant="outline">
-            <a href={resumeUrl} target="_blank" rel="noreferrer">
-              Download resume
-            </a>
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <Button size="sm" variant="outline" onClick={downloadResume} disabled={downloading}>
+            {downloading ? "Downloading…" : "Download base resume"}
           </Button>
           <Button asChild size="sm" variant="outline">
             <a href={job.apply_url} target="_blank" rel="noreferrer">
-              View listing
+              View listing<span className="sr-only"> (opens in a new tab)</span>
             </a>
           </Button>
           <Button size="sm" variant="ghost" onClick={onDismiss} disabled={isDismissing}>
             {isDismissing ? "Dismissing…" : "Not interested"}
           </Button>
         </div>
+        {downloadError && (
+          <p role="alert" className="text-xs text-destructive">
+            Couldn&apos;t download your resume: {downloadError}
+          </p>
+        )}
       </CardContent>
     </Card>
   );
