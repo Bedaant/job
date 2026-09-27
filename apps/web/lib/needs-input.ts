@@ -1,7 +1,7 @@
 import type { NeedsInput } from "./api";
 
 export const DEMOGRAPHIC_NOTE =
-  "Questions about gender, ethnicity, veteran or disability status were left blank for you to decide.";
+  "This form requires a self-identification question (gender, ethnicity, veteran or disability status). ApplyScout never answers these, so open the form and answer it yourself. Optional ones are left blank automatically.";
 
 export interface NeedsInputView {
   tone: "warning" | "info";

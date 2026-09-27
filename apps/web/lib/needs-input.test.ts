@@ -53,7 +53,7 @@ describe("needsInputView", () => {
     expect(v.openForm).toBe(true);
     expect(v.demographicNote).toBe(DEMOGRAPHIC_NOTE);
     expect(DEMOGRAPHIC_NOTE).toBe(
-      "Questions about gender, ethnicity, veteran or disability status were left blank for you to decide."
+      "This form requires a self-identification question (gender, ethnicity, veteran or disability status). ApplyScout never answers these, so open the form and answer it yourself. Optional ones are left blank automatically."
     );
   });
 
