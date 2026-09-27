@@ -181,7 +181,7 @@ export interface ActivityItem {
   job?: { title: string; company: string } | null;
 }
 
-/** GET /today — counters across all the user's profiles (UTC day). */
+/** GET /today — counters across all the user's profiles (the viewer's local day). */
 export interface TodayCounts {
   sent_today: number;
   needs_you: number;
@@ -285,7 +285,9 @@ export const api = {
   getCampaignStats: (campaignId: string) => request<CampaignStats>(`/campaigns/${campaignId}/stats`),
   getExtensionStatus: () => request<ExtensionStatus>("/extension/status"),
   getActivity: (limit = 50) => request<ActivityItem[]>(`/activity?limit=${limit}`),
-  getToday: () => request<TodayCounts>("/today"),
+  /** `tz` makes the counters use the viewer's local day, same as the activity list. */
+  getToday: (tz = Intl.DateTimeFormat().resolvedOptions().timeZone) =>
+    request<TodayCounts>(`/today?tz=${encodeURIComponent(tz)}`),
   getBasics: (profileId: string) => request<ApplicantBasics>(`/profiles/${profileId}/basics`),
   putBasics: (profileId: string, basics: ApplicantBasics) =>
     request<ApplicantBasics>(`/profiles/${profileId}/basics`, {

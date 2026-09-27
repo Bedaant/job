@@ -102,6 +102,57 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+32) — Skipped jobs show in Today; one meaning of "today"
+
+**What changed.**
+- *Skip events (API).* `run_campaign` now writes `campaign.skipped` events (existing
+  outbox `write_event`, same commit as the applications) with payload
+  `{campaign_id, job_id?, reason_code, reason}`. Only matches **new since
+  `last_run_at`** are "looked at", so a job is reported once, not every run. Per-job rows
+  only for jobs inside the campaign's filters (role/location/source/remote) that were
+  passed on: `already_applied`, `below_score` ("Score 61%, below your 70% minimum"),
+  `daily_cap`. At most `SKIP_EVENT_LIMIT` (20) per run. Everything else is one summary
+  row per run: `checked` — "Checked 214 new jobs; 12 fit your campaign." (+ "N more
+  skipped, not listed." past the limit). Run-level rows: `not_active` (paused/draft run)
+  and `daily_cap` when the cap was already used and nothing new arrived. The campaign
+  filters were pulled out of `select_candidates` into `_in_bounds` so the skip report and
+  the picker use the same bounds. `last_run_at` is now stamped on every active run
+  (cap-reached too, with the run's start time) so the "new since" window is right.
+- *`GET /activity`.* Maps `campaign.skipped`: with a job → title "Skipped" + job + reason
+  (row reads "Skipped · Staff Engineer at Acme / Score 61%…"); without one → "Checked new
+  jobs" / "Daily limit reached" / "Didn't run" by `reason_code`.
+- *One "today".* `GET /today?tz=<IANA>`: `campaigns.local_day_start(tz)` (zoneinfo;
+  unknown/invalid → UTC; `max_length=64`) is the day start for `sent_today` and
+  `new_matches_today`, so the counters match the activity list's local day. The daily
+  cap stays on `utc_day_start` (server-side rail). Web `api.getToday()` sends
+  `Intl.DateTimeFormat().resolvedOptions().timeZone`; the "Sent today" tile caption is
+  now `dailyLimitCaption` — "Daily limit 10 · resets 5:30 AM your time" (next UTC
+  midnight in the viewer's clock). Activity rows for skips: skip-forward icon, muted,
+  link to /campaign (where score/limit/roles are changed).
+
+**Files.** API: `campaigns.py`, `main.py`, `tests/test_campaigns.py`,
+`tests/test_activity.py`. Web: `lib/today.ts`, `lib/today.test.ts`, `lib/api.ts`,
+`app/today/page.tsx`.
+
+**Dependencies added.** None. No migration.
+
+**Tests.** Red first on both layers. API 446 → **452** (6 new, all red: no skip events,
+unmapped type, no `local_day_start`): per-job reasons + summary + off-role jobs only
+counted; second run doesn't re-report (one run-level cap row); 25 low-score → 20 rows +
+"5 more"; paused run → one `not_active`; activity mapping; `/today` Kolkata vs
+UTC/invalid tz. Web 85 → **86** (red: `dailyLimitCaption` missing, `tz` not sent; the
+`/today` contract test now checks the `tz` param; `activityHref("campaign.skipped")`).
+`tsc` caught `queryFn: api.getToday` passing react-query's context as `tz` → wrapped.
+`tsc` clean, `next build` clean (`/today` 6.46 kB).
+
+**Not done / notes.** Not verified against a live API/browser. Discovery (`match.new`)
+itself doesn't write skip rows — jobs the matcher's hard filters drop never become
+matches, so "Checked N" counts matches, not raw scraped jobs. `tzdata` isn't in
+requirements; zoneinfo works here (Windows) and on Linux via system tz — pin `tzdata` if
+a slim image lacks `/usr/share/zoneinfo` (it would silently fall back to UTC).
+
+---
+
 ### 2026-09-27 (latest+31) — EEO fields: optional ones are left blank and no longer stall auto-apply; required ones still stop
 
 **What changed.**
