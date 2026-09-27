@@ -595,3 +595,75 @@ class TailorResponse(BaseModel):
     flagged_unsupported_claims: List[str] = []
     # {coverage_before, coverage_after, missing} — missing is a gap to show, never resume text.
     keyword_gap: Optional[dict] = None
+
+
+# ---------- Applications tracker / detail, match actions (WORKLOG latest+46) ----------
+
+class JobBriefOut(BaseModel):
+    id: str
+    title: str
+    company: str
+    location: Optional[str] = None
+    apply_url: str
+
+    class Config:
+        from_attributes = True
+
+
+class ApplicationListOut(ApplicationOut):
+    job: JobBriefOut
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class FactSourceOut(BaseModel):
+    id: str
+    achievement: str
+
+
+class DetailBulletOut(BulletOut):
+    # The user's own fact text each bullet was tailored from; ids that don't resolve are left out.
+    sources: List[FactSourceOut] = []
+
+
+class KeywordsOut(BaseModel):
+    matched: List[str] = []
+    reworded: List[str] = []
+    missing: List[str] = []  # not in your facts: left out of the resume, never written in
+
+
+class ApplicationDetailOut(BaseModel):
+    id: str
+    status: str
+    job: JobOut
+    portal: Optional[str] = None
+    match_score: Optional[float] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    applied_at: Optional[datetime] = None
+    next_follow_up_at: Optional[datetime] = None
+    tailored_summary: Optional[str] = None
+    tailored_bullets: List[DetailBulletOut] = []
+    tailored_cover_letter: Optional[str] = None
+    flagged_unsupported_claims: List[str] = []
+    pending_questions: List[str] = []
+    keyword_gap: Optional[dict] = None
+    keywords: KeywordsOut
+    needs_input: Optional[NeedsInputOut] = None
+    last_attempt: Optional[LastAttemptOut] = None
+    history: List[LastAttemptOut] = []
+
+
+class MatchListOut(MatchOut):
+    application_id: Optional[str] = None
+    application_status: Optional[str] = None
+
+
+class MatchUpdate(BaseModel):
+    state: Literal["new", "saved", "dismissed"]
+
+
+class PrepareOut(BaseModel):
+    application_id: str
+    status: str
+    queued: bool

@@ -41,6 +41,9 @@ class ApplicationStatus(str, enum.Enum):
     interview = "interview"
     offer = "offer"
     rejected = "rejected"
+    # The user pulled out after sending (the tracker's Closed column). Unlike
+    # `dismissed` (declined before sending) it keeps applied_at.
+    withdrawn = "withdrawn"
 
 
 class CampaignStatus(str, enum.Enum):

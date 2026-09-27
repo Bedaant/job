@@ -95,6 +95,40 @@ export interface Match {
   score: number;
   breakdown: MatchBreakdown;
   state: "new" | "dismissed" | "saved";
+  // Set once the match has an application (prepared, in Review, or sent).
+  application_id?: string | null;
+  application_status?: string | null;
+}
+
+/** GET /applications row — the tracker card. */
+export interface ApplicationRow {
+  id: string;
+  status: string;
+  job: { id: string; title: string; company: string; location: string | null; apply_url: string };
+  applied_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+/** GET /applications/{id}. */
+export interface ApplicationDetail {
+  id: string;
+  status: string;
+  job: Job;
+  match_score: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+  applied_at: string | null;
+  tailored_summary: string | null;
+  tailored_bullets: (TailoredBullet & { sources: { id: string; achievement: string }[] })[];
+  tailored_cover_letter: string | null;
+  flagged_unsupported_claims: string[];
+  pending_questions: string[];
+  keyword_gap: Record<string, unknown> | null;
+  keywords: { matched: string[]; reworded: string[]; missing: string[] };
+  needs_input: NeedsInput | null;
+  last_attempt: { outcome: string; message: string } | null;
+  history: { outcome: string; message: string }[];
 }
 
 export interface TailoredBullet {
@@ -305,6 +339,20 @@ export const api = {
     await send(`/profiles/${profileId}/answers/${answerId}`, { method: "DELETE" });
   },
   listMatches: (profileId: string) => request<Match[]>(`/matches?profile_id=${profileId}`),
+  setMatchState: (matchId: string, state: Match["state"]) =>
+    request<Match>(`/matches/${matchId}`, { method: "PATCH", body: JSON.stringify({ state }) }),
+  /** "Prepare this one": creates the application and queues Maggie's tailoring. */
+  prepareMatch: (matchId: string) =>
+    request<{ application_id: string; status: string; queued: boolean }>(`/matches/${matchId}/prepare`, {
+      method: "POST",
+    }),
+  listApplications: (profileId: string) => request<ApplicationRow[]>(`/applications?profile_id=${profileId}`),
+  getApplication: (applicationId: string) => request<ApplicationDetail>(`/applications/${applicationId}`),
+  setApplicationStatus: (applicationId: string, status: string) =>
+    request<{ id: string; status: string }>(`/applications/${applicationId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
   listReviewQueue: (profileId: string) =>
     request<ReviewApplication[]>(`/applications/review-queue?profile_id=${profileId}`),
   /** Assisted apply: prepared applications the user can send themselves now. */

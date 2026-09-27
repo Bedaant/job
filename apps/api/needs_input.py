@@ -28,6 +28,12 @@ def _last_stamp(notes: str | None) -> tuple[str, str] | None:
     return None
 
 
+def attempt_history(notes: str | None) -> list[dict]:
+    """Every `[outcome] reason` stamp, oldest first."""
+    stamps = (_STAMP.match(line.strip()) for line in (notes or "").splitlines())
+    return [{"outcome": m.group(1), "message": m.group(2)} for m in stamps if m]
+
+
 def last_attempt(notes: str | None) -> dict | None:
     stamp = _last_stamp(notes)
     return {"outcome": stamp[0], "message": stamp[1]} if stamp else None
