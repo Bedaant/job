@@ -128,11 +128,10 @@ def _mapping(field_id: str, maps_to: str, value: str) -> dict:
     return {"field_id": field_id, "maps_to": maps_to, "confidence": 1.0, "value": value}
 
 
-def match_field_deterministic(field: dict, profile_summary: dict, ats_type: str | None = None) -> dict | None:
-    """Returns a FieldMapping dict at confidence 1.0 if this field can be
-    resolved without any model call, else None — the caller (map_fields.py)
-    sends None results to the bounded LLM path unchanged.
-    """
+def recognised_profile_key(field: dict, ats_type: str | None = None) -> str | None:
+    """Which profile value this field structurally asks for (a profile_summary
+    key, or "network:<name>"), independent of whether the profile has it. None =
+    not a field these rules recognise."""
     if (field.get("input_type") or "").lower() in _NO_PROFILE_VALUE_TYPES:
         return None  # a profile string never belongs here (live: phone -> "Telugu" checkbox)
 
@@ -153,11 +152,7 @@ def match_field_deterministic(field: dict, profile_summary: dict, ats_type: str 
             or _NETWORK_PATTERN.search(label)
         )
         if network_match:
-            network_name = network_match.group(0).lower()
-            url = _find_network_url(profile_summary, network_name)
-            if url:
-                return _mapping(field["field_id"], f"network_profile:{network_name}", url)
-            return None  # a real network field, but we don't have that one — flag, don't guess
+            return f"network:{network_match.group(0).lower()}"
 
         # The last token names the field; earlier ones are section/hint tokens.
         tokens = (field.get("autocomplete") or "").lower().split()
@@ -167,8 +162,23 @@ def match_field_deterministic(field: dict, profile_summary: dict, ats_type: str 
     if key is None and label_usable:
         key = next((k for pattern, k in _LABEL_RULES if pattern.search(label)), None)
 
+    return key
+
+
+def match_field_deterministic(field: dict, profile_summary: dict, ats_type: str | None = None) -> dict | None:
+    """Returns a FieldMapping dict at confidence 1.0 if this field can be
+    resolved without any model call, else None — the caller (map_fields.py)
+    sends None results on, EXCEPT when recognised_profile_key() says the field
+    is a known profile field whose data is simply missing: that is flagged, never
+    handed to the model to guess.
+    """
+    key = recognised_profile_key(field, ats_type)
     if key is None:
         return None
+    if key.startswith("network:"):
+        network_name = key.split(":", 1)[1]
+        url = _find_network_url(profile_summary, network_name)
+        return _mapping(field["field_id"], f"network_profile:{network_name}", url) if url else None
 
     # Rule matched structurally, but the data isn't there (or isn't one of the
     # field's options) — flag, don't guess.

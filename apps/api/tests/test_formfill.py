@@ -57,7 +57,8 @@ def test_map_form_fields_passes_through_high_confidence_mapping(mock_call_llm):
 @patch("formfill.map_fields.call_llm")
 def test_map_form_fields_handles_malformed_json_with_one_retry_then_gives_up_safely(mock_call_llm):
     mock_call_llm.side_effect = ["not json", "still not json"]
-    fields = [{"field_id": "f1", "label_text": "Full name", "input_type": "text"}]
+    # A label no deterministic rule recognises, so the LLM retry path is what runs.
+    fields = [{"field_id": "f1", "label_text": "Preferred name on badge", "input_type": "text"}]
 
     result = map_form_fields(fields, {"name": "Jane Doe"})
 
@@ -72,7 +73,8 @@ def test_map_form_fields_recovers_on_second_attempt(mock_call_llm):
         "not json",
         '[{"field_id": "f1", "maps_to": "profile.name", "confidence": 0.9, "value": "Jane Doe"}]',
     ]
-    fields = [{"field_id": "f1", "label_text": "Full name", "input_type": "text"}]
+    # A label no deterministic rule recognises, so the LLM retry path is what runs.
+    fields = [{"field_id": "f1", "label_text": "Preferred name on badge", "input_type": "text"}]
 
     result = map_form_fields(fields, {"name": "Jane Doe"})
 

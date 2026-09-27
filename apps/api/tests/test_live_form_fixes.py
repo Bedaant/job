@@ -335,3 +335,27 @@ def test_profile_summary_carries_given_and_family_name():
         full_name, given_name, family_name = "Priya Raman", "Priya", "Raman"
     summary = build_profile_summary(P(), "p@example.com")
     assert summary["given_name"] == "Priya" and summary["family_name"] == "Raman"
+
+
+def test_a_recognised_first_name_field_never_falls_through_to_the_llm():
+    """Found by the browser-use harness on the real Greenhouse form: First Name
+    and Last Name (autocomplete given-name/family-name) both got the FULL name.
+    The rule recognised them, the profile had no given/family name, so they fell
+    through to the model, which guessed full_name. Recognised-but-missing must be
+    flagged, not guessed."""
+    fields = [
+        {"field_id": "f", "label_text": "First Name", "input_type": "text", "options": [], "required": True,
+         "autocomplete": "given-name", "name": None, "dom_id": "first_name"},
+        {"field_id": "l", "label_text": "Last Name", "input_type": "text", "options": [], "required": True,
+         "autocomplete": "family-name", "name": None, "dom_id": "last_name"},
+    ]
+    summary = {"full_name": "Morgan Ellery", "email": "morgan@example.com"}
+    with patch("formfill.map_fields.call_llm") as llm:
+        llm.return_value = json.dumps([
+            {"field_id": "f", "maps_to": "profile.full_name", "confidence": 0.9, "value": "Morgan Ellery"},
+            {"field_id": "l", "maps_to": "profile.full_name", "confidence": 0.9, "value": "Morgan Ellery"},
+        ])
+        result = {m["field_id"]: m for m in map_form_fields(fields, summary)}
+
+    llm.assert_not_called()
+    assert result["f"]["value"] is None and result["l"]["value"] is None

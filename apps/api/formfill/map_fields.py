@@ -8,7 +8,7 @@ import re
 
 from answer_bank import DEMOGRAPHIC_LABEL_KEYWORDS, is_demographic_field, is_demographic_label  # noqa: F401
 from core.grounding import validate_ids_against_known_set
-from formfill.deterministic import bind_to_options, match_field_deterministic
+from formfill.deterministic import bind_to_options, match_field_deterministic, recognised_profile_key
 from tailoring.engine import call_llm
 
 CONFIDENCE_THRESHOLD = 0.75
@@ -216,6 +216,12 @@ def map_form_fields(
         match = match_field_deterministic(field, profile_summary, ats_type)
         if match is not None:
             deterministic_results[field_id] = match
+            continue
+        if recognised_profile_key(field, ats_type) is not None:
+            # A known profile field whose data the profile lacks (e.g. First Name
+            # with no given_name): flag it. Found live — the model filled the FULL
+            # name into both First and Last Name when this fell through.
+            deterministic_results[field_id] = _flagged(field_id)
             continue
 
         answer = answer_lookup(field.get("label_text")) if answer_lookup else None
