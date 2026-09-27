@@ -1,0 +1,4 @@
+# Isolated venv only: D:\job-copilot\tools\.venv-browser-use (Python 3.11). Never install into apps/api/.venv.
+# browser-use owner-approved 2026-09-27. playwright drives the guarded browser (browser-use 0.13 is CDP-only).
+browser-use==0.13.10
+playwright==1.63.0

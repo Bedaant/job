@@ -102,6 +102,72 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+39) — browser-use harness: automated fill-never-submit checks on real forms
+
+**What changed.** New `tools/browser-use-harness/` automates `docs/LIVE-FORM-TEST.md` against the REAL
+built extension. `check_form.py --url <form>` runs this sequence:
+1. Guards the browser context.
+2. Creates a throwaway account over the API: signup, profile, basics ("Morgan Ellery", example.com), 3 facts.
+3. Launches Playwright Chromium with `apps/extension/dist` loaded and puts `jc_token`/`jc_profile_id` into
+   `chrome.storage.local` through the extension's service worker.
+4. Opens the form and proves the guard is live.
+5. Sends the popup's `jc:fill-form` (the interactive path; never `jc:run-queue`).
+6. Takes a deterministic DOM snapshot before and after the fill.
+7. Runs a browser-use auditor (NIM) that can only call `done`.
+8. Writes `reports/<stamp>-<ats>.{json,md,png}` (gitignored).
+9. Deletes the account (`cleanup_accounts.py` under `apps/api/.venv`, owner role, cascade from `users`).
+
+`run_suite.py` runs the three LIVE-FORM-TEST URLs (all still open 2026-09-27) and prints a table.
+
+**Safety (the point of this).** Four layers, all always on:
+- a context-wide route aborts every non-GET/HEAD/OPTIONS request to a non-localhost host, closes remote
+  WebSockets and blocks page service workers;
+- an init script makes `form.submit`/`requestSubmit` throw and cancels `submit` events in the capture phase;
+- the auditor's browser-use tools are an allowlist of `{done}`, and it refuses to start otherwise;
+- canary proof on the live page before the fill and after the audit; exit 1 on a missing guard, any submit
+  attempt, or a demographic value.
+
+`test_guard.py`: 7 offline tests (localhost only), red first.
+
+**Real bug found by the harness in itself.** The first real run failed loud: the canary POST to a foreign
+`.invalid` host never reached the route, because Greenhouse's CSP `connect-src` killed it first. The canary
+on remote pages is now a same-origin path; a strict-CSP test was added red first.
+
+**Real run, Greenhouse (anthropic/4461450008), guards on.** PASS.
+- Extension `ok:true`, filled 6. The `jc:api` proxy (d53ba5c) works: no CORS failure.
+- 5 text values survived the React re-render (1 of 6 in LIVE-FORM-TEST).
+- **Bug: First Name AND Last Name both = "Morgan Ellery".**
+- Gender, Hispanic/Latino and Veteran all left empty.
+- 17 required fields still empty (Country combobox, Yes/No comboboxes, "Why Anthropic?", arbitration).
+- Guard: 2 non-GET blocked (a Snowplow beacon, and the **Greenhouse S3 resume upload**, as intended),
+  0 submit attempts, canary 2/2.
+- Timings: fill 37 s, audit 158 s (one 150 s LLM timeout, then success), total 226 s.
+
+**LLM.** Model is `nvidia/nemotron-3-super-120b-a12b`, the default. browser-use's `ChatOpenAI` has no
+`extra_body`, so a subclass wraps the client's `create` with `chat_template_kwargs.enable_thinking=false`.
+Tried on a local form:
+- kimi-k3: every call 400 (`frequency_penalty` is immutable for this model).
+- nemotron-3.5-lightning-30b: works, but 213 s.
+- nemotron-3-super: 10 s on the local form.
+
+With extract/scroll/read_file available, both nemotrons looped for all 10 steps (scroll `index` = garbage
+digits), hence `{done}` only plus a 4000 px viewport.
+
+**Dependencies added.** `browser-use==0.13.10` (owner-approved) + `playwright==1.63.0` (drives the guarded
+browser; browser-use 0.13 is CDP-only), in the ISOLATED venv `tools/.venv-browser-use` (391 MB; Chromium
+1243 432 MB + headless shell 270 MB in ms-playwright). Nothing added to apps/**.
+
+**Files.** `tools/browser-use-harness/{check_form,run_suite,guard,test_guard,cleanup_accounts}.py`,
+`requirements.txt`, `README.md`; `.gitignore` (reports/).
+
+**Not done / limits.**
+- Lever and Ashby were not run (the brief asked for one real form); `run_suite.py` covers them.
+- The auditor is slow and shallow (it read 10 of 31 fields and missed the first/last-name bug); the DOM
+  snapshot is the ground truth.
+- The resume never reaches the ATS (the upload is blocked by design).
+
+---
+
 ### 2026-09-27 (latest+36) — Scheduled runs: Maggie works without anyone pressing a button
 
 **What changed.** The IA audit's gap: nothing ran by itself. The scheduler only ran
