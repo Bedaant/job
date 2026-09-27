@@ -131,3 +131,28 @@ def test_upsert_extracts_skills_from_title_and_description(_mock_embed):
     job["description"] = "Must know Python and PostgreSQL. Docker a plus."
     upsert_jobs(db, [job])
     assert db.query(models.Job).first().skills == ["Docker", "PostgreSQL", "Python"]
+
+
+@patch("connectors.pipeline.embed_texts", side_effect=RuntimeError("Voyage 429: reduced rate limits"))
+def test_an_embedding_outage_never_loses_discovered_jobs(_mock_embed):
+    """Found live: Voyage's free-tier rate limit raised inside upsert_jobs before
+    the insert, so the whole discovery run was lost. Jobs are saved without an
+    embedding instead (matching skips un-embedded jobs until they're backfilled)."""
+    db = _db()
+    inserted, _ = upsert_jobs(db, [_job("remotive", "1"), _job("remotive", "2", title="Frontend Engineer")])
+    assert inserted == 2
+    assert db.query(models.Job).count() == 2
+    assert all(j.embedding is None for j in db.query(models.Job).all())
+
+
+def test_backfill_embeds_jobs_saved_during_an_outage_and_tolerates_another():
+    from connectors.pipeline import backfill_job_embeddings
+
+    db = _db()
+    with patch("connectors.pipeline.embed_texts", side_effect=RuntimeError("429")):
+        upsert_jobs(db, [_job("remotive", "1"), _job("remotive", "2", title="Frontend Engineer")])
+        assert backfill_job_embeddings(db) == 0  # still down: no crash, nothing lost
+
+    with patch("connectors.pipeline.embed_texts", return_value=[[0.1] * 512, [0.2] * 512]):
+        assert backfill_job_embeddings(db) == 2
+    assert all(j.embedding is not None for j in db.query(models.Job).all())

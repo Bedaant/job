@@ -15,7 +15,7 @@ from connectors.feeds import fetch_enabled_feeds
 from connectors.greenhouse import fetch_greenhouse_jobs
 from connectors.lever import fetch_lever_jobs
 from connectors.normalize import canonical_hash
-from connectors.pipeline import upsert_jobs
+from connectors.pipeline import backfill_job_embeddings, upsert_jobs
 from connectors.reed import fetch_reed_jobs
 from connectors.remotive import fetch_remotive_jobs
 from core.config import get_settings
@@ -88,6 +88,7 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
 
     with session_scope() as db:
         inserted, skipped = upsert_jobs(db, all_jobs)
+        backfill_job_embeddings(db)
 
     return {
         "fetched": len(all_jobs),

@@ -1,3 +1,4 @@
+import logging
 """fetch -> normalize -> dedupe -> upsert (ARCHITECTURE.md §3, §4.1).
 
 Fixes CODE-REVIEW.md H1 (was 1 SELECT + 1 INSERT per job, N+1) and H3 (dedupe
@@ -67,10 +68,16 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int]:
         })
 
     if to_insert:
-        embeddings = embed_texts(
-            [f"{j['title']} at {j['company']}. {j.get('description') or ''}" for j in to_insert],
-            input_type="document",
-        )
+        try:
+            embeddings = embed_texts(
+                [f"{j['title']} at {j['company']}. {j.get('description') or ''}" for j in to_insert],
+                input_type="document",
+            )
+        except Exception:
+            # An embeddings outage/rate limit must not throw away what discovery
+            # found: save the jobs un-embedded (matching skips them until backfilled).
+            logging.getLogger(__name__).exception("embedding %d new jobs failed; saving without", len(to_insert))
+            embeddings = None
         if embeddings:
             for job, embedding in zip(to_insert, embeddings):
                 job["embedding"] = embedding
@@ -78,3 +85,26 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int]:
         db.commit()
 
     return len(to_insert), skipped
+
+
+def backfill_job_embeddings(db, limit: int = 50) -> int:
+    """Embed jobs saved without a vector (an embeddings outage during discovery).
+    Bounded per run and failure-tolerant, like the insert path. Returns how many
+    were embedded."""
+    pending = db.query(models.Job).filter(models.Job.embedding.is_(None)).limit(limit).all()
+    if not pending:
+        return 0
+    try:
+        embeddings = embed_texts(
+            [f"{j.title} at {j.company}. {j.description or ''}" for j in pending],
+            input_type="document",
+        )
+    except Exception:
+        logging.getLogger(__name__).exception("embedding backfill of %d jobs failed", len(pending))
+        return 0
+    if not embeddings:
+        return 0
+    for job, embedding in zip(pending, embeddings):
+        job.embedding = embedding
+    db.commit()
+    return len(pending)
