@@ -255,3 +255,19 @@ def test_scheduler_restart_cancels_both_recurring_jobs(mock_scheduler_cls, _redi
     run_scheduler.start_scheduler()
 
     assert [c.args[0] for c in scheduler.cancel.call_args_list] == old[:2]
+
+
+@patch("campaigns.prepare_application_for_review")
+@patch("workers.jobs.get_redis_connection")
+@patch("workers.jobs.session_scope")
+def test_a_scheduled_run_with_nothing_new_stays_out_of_the_activity_list(mock_scope, mock_redis, _prep):
+    """Hourly sweeps would otherwise add up to 24 "Nothing new" rows a day per
+    campaign and bury what Maggie actually did."""
+    db = _session()
+    profile = _profile(db)
+    campaign = _campaign(db, profile, daily_cap=5)
+    _wire(db, mock_scope, MagicMock(), mock_redis)
+
+    jobs.run_campaign_task(campaign.id, run_id="r1", scheduled=True)
+
+    assert db.query(models.Event).filter(models.Event.type == "campaign.scheduled_run").count() == 0

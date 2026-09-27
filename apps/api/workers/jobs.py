@@ -143,11 +143,11 @@ def run_campaign_task(campaign_id: str, run_id: str | None = None, scheduled: bo
         if campaign is None:
             return {"skipped": True, "reason": "campaign not found", "created": 0, "prepared": 0}
         result = run_campaign(db, campaign)
-        if scheduled:
-            # One row per scheduled run, so the user can see Maggie ran unasked.
+        if scheduled and result["created"]:
+            # One row per scheduled run that did something, so the user can see
+            # Maggie ran unasked — but idle hourly sweeps stay out of the list.
             created = result["created"]
-            reason = (f"Started {created} application{'s' if created != 1 else ''}." if created
-                      else "Nothing new to apply to.")
+            reason = f"Started {created} application{'s' if created != 1 else ''}."
             write_event(db, campaign.profile.user_id, "campaign.scheduled_run",
                         {"campaign_id": campaign.id, "created": created, "reason": reason})
             db.commit()
