@@ -102,6 +102,54 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+25) — P0: session expiry, honest facts copy, onboarding by-hand facts
+
+**What changed.**
+- **Session expiry.** `lib/api.ts` `request()` now handles 401: anywhere except
+  `/auth/login`/`/auth/signup` (where 401 = wrong password and stays an `ApiError` the
+  form shows) it clears the token and `location.replace`s to
+  `/login?expired=1&next=<path>`. `/login` shows "Your session ended. Sign in again to
+  pick up where you left off." and after sign-in goes to `safeNext(next)` (else
+  /review). Pure helpers `isSessionExpiry`, `safeNext`, `expireSession` in `lib/auth.ts`.
+- **Honest facts copy.** The backend has no edit/delete for resume facts (only
+  `GET/POST /resume-facts`, `POST /profiles/{id}/facts:bulk` — checked `main.py`).
+  /facts no longer says "you can edit any time"; onboarding's "Edit your facts" link is
+  now "Add more facts"; the confirm step says saved facts can't be edited yet.
+- **Onboarding dead end.** Step 1 offers "Add your facts by hand" — a secondary link from
+  the start and a primary button in the parse-failure state. It jumps to the facts step
+  with one blank row (never discarding parsed facts); each row now has a category
+  `<select>` (the five backend categories) plus the existing achievement/metric/proof
+  fields, saved through the same `facts:bulk` path.
+
+**Why.** An expired token left every page showing raw "Could not validate
+credentials"; /facts promised an edit that doesn't exist; and while the parser's LLM
+call fails (placeholder `ANTHROPIC_API_KEY`, or any model outage) a new user could not
+get past step 1. Hand-written facts are the user's own words, so the no-fabrication
+rule holds.
+
+**Files.** `apps/web/lib/{api.ts,auth.ts,onboarding.ts,onboarding.test.ts,session.test.ts (new)}`,
+`apps/web/app/{login,facts,onboarding}/page.tsx`,
+`apps/web/components/onboarding/{StepResume,StepFacts,StepDone}.tsx`.
+
+**Dependencies added:** none.
+
+**Tests.** Red first: 10 failing (7 in new `session.test.ts` — `isSessionExpiry`,
+`safeNext` incl. `//evil.com`, `/\evil.com`, `/\t/evil.com`, `javascript:`, a /login
+loop, and msw-backed `request()` 401 behaviour with a stubbed `window`; 3 in
+`onboarding.test.ts` — unknown category, `blankFact` gating). Green: web 27 → 38/38,
+`tsc` clean, `next build` clean.
+
+**Problems hit.** The worktree was cut at `fa419cd`, not `ee7a853`; fast-forwarded
+before starting. `onboarding.test.ts`'s fixture used category `"impact"`, which the
+backend never produces — changed to `"experience"` once categories are validated.
+`useSearchParams` would force a Suspense boundary on /login, so the query string is
+read from `window.location` after mount instead.
+
+**Next.** Edit/delete endpoints for confirmed facts (then restore the copy);
+`useRequireAuth` could pass `next` too; /facts has no by-hand path yet (onboarding only).
+
+---
+
 ### 2026-09-27 (latest+24) — apps/web UX pass: one theme, one shell, accessible controls
 
 **What changed.** Audit (redesign-skill + ui-ux-pro-max checklist) found the web app

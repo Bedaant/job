@@ -1,6 +1,6 @@
 "use client";
 
-import { FileTextIcon, Loader2Icon } from "lucide-react";
+import { FileTextIcon, Loader2Icon, PencilLineIcon } from "lucide-react";
 import { Dropzone, DropzoneContent, DropzoneEmptyState } from "@/components/kibo-ui/dropzone";
 import type { FactDraft } from "@/lib/api";
 import { FailureNotice } from "./fields";
@@ -13,12 +13,15 @@ export function StepResume({
   facts,
   isUploading,
   error,
+  onByHand,
 }: {
   file: File | null;
   onFile: (file: File) => void;
   facts: FactDraft[];
   isUploading: boolean;
   error: string | null;
+  /** The way forward when the parser can't help: the user writes the facts. */
+  onByHand: () => void;
 }) {
   return (
     <div className="space-y-5">
@@ -51,11 +54,34 @@ export function StepResume({
         </p>
       )}
 
-      {error && (
-        <FailureNotice
-          title="We could not read that file"
-          detail={`${error} Try the other format (.pdf or .docx), or a version exported straight from your editor rather than a scan.`}
-        />
+      {error ? (
+        <div className="space-y-3">
+          <FailureNotice
+            title="We could not read that file"
+            detail={`${error} You can try the other format (.pdf or .docx) — or skip the upload and write your facts yourself.`}
+          />
+          <button
+            type="button"
+            onClick={onByHand}
+            className="inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <PencilLineIcon className="h-4 w-4" aria-hidden="true" />
+            Add your facts by hand
+          </button>
+        </div>
+      ) : (
+        !isUploading && (
+          <p className="text-sm text-muted-foreground">
+            No resume to hand?{" "}
+            <button
+              type="button"
+              onClick={onByHand}
+              className="inline-flex min-h-11 items-center rounded-md font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Add your facts by hand
+            </button>
+          </p>
+        )
       )}
 
       {facts.length > 0 && !isUploading && (

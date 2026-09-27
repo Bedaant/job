@@ -4,6 +4,7 @@ import { PlusIcon, ShieldCheckIcon, Trash2Icon } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { ApplicantBasics, FactDraft } from "@/lib/api";
+import { FACT_CATEGORIES, blankFact } from "@/lib/onboarding";
 import type { Errors } from "@/lib/onboarding";
 import { Chips, Field } from "./fields";
 
@@ -121,14 +122,15 @@ export function StepFacts({
             <h3 id="facts-heading" className="text-base font-medium">
               Your facts ({facts.length})
             </h3>
-            <p className="text-sm text-muted-foreground">Correct anything the parser mangled. Delete anything untrue.</p>
+            <p className="text-sm text-muted-foreground">
+              One thing you did per fact, in your own words. Correct anything wrong, delete anything untrue — once
+              saved, facts can&apos;t be edited yet.
+            </p>
           </div>
           <button
             type="button"
-            onClick={() =>
-              onFacts([...facts, { category: "experience", achievement: "", proof: null, metric: null, tags: [] }])
-            }
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-input px-3 py-1.5 text-sm font-medium hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => onFacts([...facts, blankFact()])}
+            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-md border border-input px-3 text-sm font-medium hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <PlusIcon className="h-4 w-4" aria-hidden="true" />
             Add a fact
@@ -144,8 +146,31 @@ export function StepFacts({
         <ul className="space-y-3">
           {facts.map((fact, i) => (
             <li key={i} className="rounded-md border border-input p-3">
+              <Label htmlFor={`fact-${i}-category`} className="text-xs text-muted-foreground">
+                Fact {i + 1} · kind
+              </Label>
+              <select
+                id={`fact-${i}-category`}
+                value={fact.category}
+                onChange={(e) => onFacts(facts.map((f, j) => (j === i ? { ...f, category: e.target.value } : f)))}
+                aria-invalid={errors[`${i}.category`] ? true : undefined}
+                aria-describedby={errors[`${i}.category`] ? `fact-${i}-category-error` : undefined}
+                className="mt-1 mb-2 block h-11 w-full rounded-md border border-input bg-background px-3 text-sm capitalize focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-56"
+              >
+                {!FACT_CATEGORIES.includes(fact.category) && <option value={fact.category}>Choose…</option>}
+                {FACT_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              {errors[`${i}.category`] && (
+                <p id={`fact-${i}-category-error`} role="alert" className="mb-2 text-xs font-medium text-destructive">
+                  {errors[`${i}.category`]}
+                </p>
+              )}
               <Label htmlFor={`fact-${i}`} className="text-xs text-muted-foreground">
-                Fact {i + 1} · {fact.category}
+                Fact {i + 1} · what you did
               </Label>
               <Textarea
                 id={`fact-${i}`}

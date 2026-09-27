@@ -71,13 +71,20 @@ export function editFact(facts: FactDraft[], index: number, patch: Partial<FactD
   return facts.map((f, i) => (i === index ? { ...f, ...patch } : f));
 }
 
+// Mirrors the categories apps/api/models.py ResumeFact and the parser use.
+export const FACT_CATEGORIES = ["experience", "project", "skill", "certification", "education"];
+
+/** A row the user fills in themselves — their own words, so nothing is fabricated. */
+export const blankFact = (): FactDraft => ({ category: "experience", achievement: "", proof: null, metric: null, tags: [] });
+
 export function validateFacts(facts: FactDraft[]): Errors {
   if (facts.length === 0) {
-    return { _: "Your Facts KB is empty. Upload a resume, or add a fact by hand — nothing can be written without it." };
+    return { _: "You have no facts yet. Upload a resume, or add a fact by hand — nothing can be written without it." };
   }
   const errors: Errors = {};
   facts.forEach((f, i) => {
     if (!f.achievement.trim()) errors[i] = "A fact cannot be empty — correct it or remove it.";
+    if (!FACT_CATEGORIES.includes(f.category)) errors[`${i}.category`] = "Pick what kind of fact this is.";
   });
   return errors;
 }
@@ -160,7 +167,7 @@ export function validateCampaign(campaign: CampaignDraft): Errors {
 export function stepErrors(step: WizardStep, state: WizardState): Errors {
   switch (step) {
     case "resume":
-      return state.facts.length === 0 ? { _: "Upload a resume to continue." } : {};
+      return state.facts.length === 0 ? { _: "Upload a resume, or add your facts by hand, to continue." } : {};
     case "facts":
       return { ...validateFacts(state.facts), ...validateBasics(state.basics) };
     case "preferences":

@@ -9,6 +9,7 @@ import type { ApplicantBasics, Campaign, FactDraft } from "@/lib/api";
 import {
   STEPS,
   STEP_TITLES,
+  blankFact,
   buildCampaignBody,
   emptyCampaignDraft,
   emptyPreferences,
@@ -234,6 +235,10 @@ export default function OnboardingPage() {
                     ? upload.data.error || "The parser could not read it."
                     : null
               }
+              onByHand={() => {
+                if (facts.length === 0) setFacts([blankFact()]); // never discard parsed facts
+                goTo("facts");
+              }}
             />
           )}
 

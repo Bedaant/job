@@ -1,4 +1,4 @@
-import { getToken } from "./auth";
+import { expireSession, getToken, isSessionExpiry } from "./auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -182,6 +182,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   const res = await fetch(`${API_URL}${path}`, { ...options, headers });
   if (!res.ok) {
+    if (isSessionExpiry(res.status, path)) expireSession();
     const body = await res.json().catch(() => ({ detail: res.statusText }));
     throw new ApiError(res.status, formatErrorDetail(body.detail) || `API error ${res.status}`);
   }
