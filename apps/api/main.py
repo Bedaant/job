@@ -17,6 +17,7 @@ import models
 import schemas
 from tailoring.engine import tailor_application
 from auth.router import router as auth_router
+from connectors.apply_target import resolve_apply_target
 from documents.ats_safety import lint_docx
 from documents.generate_docx import generate_resume_docx
 from documents.parse_back import parse_back_check
@@ -301,16 +302,27 @@ def extension_work_queue(
         .limit(limit)
         .all()
     )
-    return [
-        schemas.WorkQueueItemOut(
+    items = []
+    for row in rows:
+        original = row.job.apply_url
+        # ADR-015 Phase 2: a feed's apply_url is usually an aggregator redirector,
+        # not the form. Resolving it is an optimisation, so a resolver failure
+        # degrades to the original URL rather than emptying the queue.
+        try:
+            target = resolve_apply_target(original)
+        except Exception:
+            target = {"final_url": original, "ats_type": None, "board_token": None, "resolved": False}
+        items.append(schemas.WorkQueueItemOut(
             application_id=row.id,
             profile_id=row.profile_id,
-            apply_url=row.job.apply_url,
+            apply_url=target["final_url"] if target["resolved"] else original,
             company=row.job.company,
             title=row.job.title,
-        )
-        for row in rows
-    ]
+            original_apply_url=original,
+            ats_type=target["ats_type"],
+            board_token=target["board_token"],
+        ))
+    return items
 
 
 _SUBMISSION_OUTCOMES = {
