@@ -176,6 +176,12 @@ export default function ReviewPage() {
                 onDismiss={() => dismissMutation.mutate(application.id)}
                 isDismissing={dismissMutation.isPending && dismissMutation.variables === application.id}
                 resumeUrl={api.resumeDocxUrl(profile!.id)}
+                onSaveAnswer={async (question, answer) => {
+                  await api.saveAnswer(profile!.id, question, answer);
+                  // The backend derives pending_questions from the bank, so a
+                  // refetch is what removes the answered one.
+                  await queryClient.invalidateQueries({ queryKey: ["review-queue", profile?.id] });
+                }}
               />
             ))}
           </div>

@@ -108,6 +108,8 @@ export interface ReviewApplication {
   tailored_bullets: TailoredBullet[];
   tailored_cover_letter: string | null;
   flagged_unsupported_claims: string[];
+  // Questions an auto-apply run stopped on that the answer bank can't answer yet.
+  pending_questions: string[];
   created_at: string;
 }
 
@@ -240,6 +242,11 @@ export const api = {
     request<ApplicantBasics>(`/profiles/${profileId}/basics`, {
       method: "PUT",
       body: JSON.stringify(basics),
+    }),
+  saveAnswer: (profileId: string, questionText: string, answerText: string) =>
+    request<{ id: string }>(`/profiles/${profileId}/answers`, {
+      method: "PUT",
+      body: JSON.stringify({ question_text: questionText, answer_text: answerText }),
     }),
   resumeDocxUrl: (profileId: string) => `${API_URL}/profiles/${profileId}/resume.docx`,
 };

@@ -81,3 +81,39 @@ export function decideFieldActions(fields, mappings) {
 
   return { fill, flag };
 }
+
+// --- file inputs --------------------------------------------------------------
+
+// Letter-bounded (not \b, which treats "_" as a word char and misses
+// "cv_upload") so "cv" inside "cvs" or "cvv" is not a CV. Checked against the
+// label, name and id together, because ATS upload widgets often hide the real
+// <input type=file> and only its name/id says what it is for.
+const RESUME_UPLOAD = /(?<![a-z])(resume|résumé|cv|curriculum vitae)(?![a-z])/i;
+const COVER_LETTER_UPLOAD = /cover.?letter/i;
+
+// "resume" -> attach the generated resume docx
+// "flag"   -> a required upload we cannot satisfy: the user has to finish it
+// "skip"   -> optional and not ours to fill; leaving it empty is fine
+export function classifyFileInput(field) {
+  const text = [field.label_text, field.name, field.dom_id].filter(Boolean).join(" ");
+  // Cover letter wins: "attach with your resume" on a cover-letter field must not
+  // put the resume in the wrong slot.
+  if (!COVER_LETTER_UPLOAD.test(text) && RESUME_UPLOAD.test(text)) return "resume";
+  return field.required ? "flag" : "skip";
+}
+
+// --- questions for the answer bank -------------------------------------------
+
+// Flags the user can clear by writing an answer once. Demographic never (it is
+// never answerable); file_upload is not a text question.
+const ANSWERABLE_REASONS = new Set(["essay_no_stored_answer", "low_confidence"]);
+
+// The labels of flagged fields, verbatim, for the backend to hold as the
+// questions this run stopped on (POST /submission-result unanswered_questions).
+export function unansweredQuestions(fields, flag) {
+  const labelById = new Map(fields.map((f) => [f.field_id, f.label_text]));
+  return flag
+    .filter((f) => ANSWERABLE_REASONS.has(f.reason))
+    .map((f) => labelById.get(f.field_id)?.trim())
+    .filter((label) => label && !isDemographicLabel(label));
+}

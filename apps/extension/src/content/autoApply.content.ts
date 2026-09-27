@@ -38,12 +38,17 @@ const NEEDS_USER_REASONS = new Set([
   "demographic",
   "essay_no_stored_answer",
   "low_confidence",
+  "file_upload", // a required upload that isn't the resume
 ]);
 
-function report(outcome: "submitted" | "failed" | "needs_human", reason?: string): void {
+function report(
+  outcome: "submitted" | "failed" | "needs_human",
+  reason?: string,
+  questions: string[] = [],
+): void {
   // Fire-and-forget: the driver is waiting on this message and has its own
   // timeout, so a failed send degrades to a timeout rather than a hang.
-  chrome.runtime.sendMessage({ type: "jc:apply-result", outcome, reason });
+  chrome.runtime.sendMessage({ type: "jc:apply-result", outcome, reason, questions });
 }
 
 function findForm(): HTMLFormElement | null {
@@ -69,7 +74,7 @@ async function run(): Promise<void> {
   if (!item) return; // the user is just browsing; do nothing
 
   try {
-    const { flagged } = await fillForm(item.profile_id);
+    const { flagged, questions } = await fillForm(item.profile_id);
 
     const blocking = flagged.filter((f) => NEEDS_USER_REASONS.has(f.reason));
     if (blocking.length > 0) {
@@ -77,6 +82,9 @@ async function run(): Promise<void> {
         "needs_human",
         `${blocking.length} field(s) need your input and were not answered: ` +
           blocking.map((f) => f.reason).join(", "),
+        // What the user answers once in the review queue; the next pass fills
+        // these from the answer bank instead of stopping again.
+        questions,
       );
       return;
     }

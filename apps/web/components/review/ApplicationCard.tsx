@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { diffWords } from "diff";
-import { AlertTriangleIcon, FileTextIcon } from "lucide-react";
+import { AlertTriangleIcon, FileTextIcon, MessageSquareIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import type { ResumeFact, ReviewApplication, TailoredBullet } from "@/lib/api";
 
 function scoreVariant(score: number | null): "default" | "secondary" | "outline" {
@@ -79,6 +81,40 @@ function BulletDiff({ bullet, factsById }: { bullet: TailoredBullet; factsById: 
   );
 }
 
+/**
+ * One question an auto-apply run stopped on. Answering saves it to the answer
+ * bank (ADR-015), which is what makes every later form asking it fill itself —
+ * the backend then drops it from pending_questions, so it disappears on refetch.
+ */
+function PendingQuestion({ question, onSave }: { question: string; onSave: (answer: string) => Promise<void> }) {
+  const [answer, setAnswer] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(answer.trim());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save the answer.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <li className="space-y-1.5">
+      <p className="font-medium">{question}</p>
+      <Textarea value={answer} onChange={(e) => setAnswer(e.target.value)} aria-label={question} rows={2} />
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      <Button size="sm" onClick={save} disabled={saving || !answer.trim()}>
+        {saving ? "Saving…" : "Save answer"}
+      </Button>
+    </li>
+  );
+}
+
 export function ApplicationCard({
   application,
   facts,
@@ -87,6 +123,7 @@ export function ApplicationCard({
   onDismiss,
   isDismissing,
   resumeUrl,
+  onSaveAnswer,
 }: {
   application: ReviewApplication;
   facts: ResumeFact[];
@@ -95,8 +132,10 @@ export function ApplicationCard({
   onDismiss: () => void;
   isDismissing: boolean;
   resumeUrl: string;
+  onSaveAnswer: (question: string, answer: string) => Promise<void>;
 }) {
-  const { job, match_score, tailored_summary, tailored_bullets, flagged_unsupported_claims } = application;
+  const { job, match_score, tailored_summary, tailored_bullets, flagged_unsupported_claims, pending_questions } =
+    application;
   const factsById = new Map(facts.map((f) => [f.id, f]));
 
   return (
@@ -142,6 +181,23 @@ export function ApplicationCard({
               <ul className="mt-1 list-disc pl-4">
                 {flagged_unsupported_claims.map((claim, i) => (
                   <li key={i}>{claim}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {pending_questions?.length > 0 && (
+          <div className="flex items-start gap-2 rounded-md border p-3 text-sm">
+            <MessageSquareIcon className="mt-0.5 size-4 shrink-0" />
+            <div className="w-full">
+              <p className="font-medium">The form asked something only you can answer</p>
+              <p className="text-xs text-muted-foreground">
+                Answer once — it&apos;s saved and reused on every later form that asks. Then approve to retry.
+              </p>
+              <ul className="mt-2 space-y-3">
+                {pending_questions.map((q) => (
+                  <PendingQuestion key={q} question={q} onSave={(answer) => onSaveAnswer(q, answer)} />
                 ))}
               </ul>
             </div>

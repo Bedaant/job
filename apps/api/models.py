@@ -202,6 +202,10 @@ class Application(Base):
     # never persisted it before sub-project #2 — silently dropped on every
     # call. Surfaced, not silently kept, is the whole point of the check.
     flagged_unsupported_claims = Column(JSON, default=list)
+    # ADR-015: questions a driver run stopped on, verbatim as the form asked them.
+    # Never demographic. The review queue shows only the ones the answer bank still
+    # can't answer, so saving an answer is what clears them.
+    pending_questions = Column(JSON, default=list)
     applied_at = Column(DateTime, nullable=True)
     next_follow_up_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

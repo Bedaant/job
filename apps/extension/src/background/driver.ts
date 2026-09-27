@@ -49,14 +49,19 @@ export async function fetchWorkQueue(): Promise<WorkItem[]> {
   return resp.json();
 }
 
-async function reportResult(applicationId: string, outcome: Outcome, reason?: string): Promise<void> {
+async function reportResult(
+  applicationId: string,
+  outcome: Outcome,
+  reason?: string,
+  questions: string[] = [],
+): Promise<void> {
   // Reporting is not optional: an unreported item stays `submitting` forever,
   // which is invisible to the user and to the next driver pass. If this throws,
   // it surfaces rather than being swallowed.
   const resp = await fetch(`${API_BASE_URL}/applications/${applicationId}/submission-result`, {
     method: "POST",
     headers: { ...(await authHeaders()), "Content-Type": "application/json" },
-    body: JSON.stringify({ outcome, reason }),
+    body: JSON.stringify({ outcome, reason, unanswered_questions: questions }),
   });
   if (!resp.ok) {
     throw new Error(`could not report ${outcome} for ${applicationId} (${resp.status})`);
@@ -69,12 +74,14 @@ async function reportResult(applicationId: string, outcome: Outcome, reason?: st
  * timeout — one leaked tab per failed application makes the browser unusable
  * after a dozen of them.
  */
-function runItem(item: WorkItem): Promise<{ outcome: Outcome; reason?: string }> {
+type ItemResult = { outcome: Outcome; reason?: string; questions?: string[] };
+
+function runItem(item: WorkItem): Promise<ItemResult> {
   return new Promise((resolve) => {
     let settled = false;
     let tabId: number | undefined;
 
-    const finish = (result: { outcome: Outcome; reason?: string }) => {
+    const finish = (result: ItemResult) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -96,7 +103,7 @@ function runItem(item: WorkItem): Promise<{ outcome: Outcome; reason?: string }>
     const onMessage = (message: any, sender: chrome.runtime.MessageSender) => {
       if (message?.type !== "jc:apply-result") return;
       if (sender.tab?.id !== tabId) return; // another tab's report is not ours
-      finish({ outcome: message.outcome, reason: message.reason });
+      finish({ outcome: message.outcome, reason: message.reason, questions: message.questions });
     };
 
     chrome.runtime.onMessage.addListener(onMessage);
@@ -128,9 +135,9 @@ export async function runQueueOnce(): Promise<{ attempted: number; results: Reco
 
   for (const item of plan) {
     attempts.set(item.application_id, (attempts.get(item.application_id) ?? 0) + 1);
-    const { outcome, reason } = await runItem(item);
+    const { outcome, reason, questions } = await runItem(item);
     try {
-      await reportResult(item.application_id, outcome, reason);
+      await reportResult(item.application_id, outcome, reason, questions);
       results[outcome] = (results[outcome] ?? 0) + 1;
     } catch (error) {
       // The submission itself may well have succeeded; we just failed to record

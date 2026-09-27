@@ -1,6 +1,6 @@
 import re
 from datetime import date, datetime
-from typing import Optional, List, Literal, Union
+from typing import Annotated, Optional, List, Literal, Union
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
@@ -378,6 +378,7 @@ class ApplicationReviewOut(BaseModel):
     tailored_bullets: List[BulletOut] = []
     tailored_cover_letter: Optional[str] = None
     flagged_unsupported_claims: List[str] = []
+    pending_questions: List[str] = []
     created_at: datetime
 
 
@@ -476,6 +477,11 @@ class SubmissionResultIn(BaseModel):
     # silently ignored no-op that leaves the row stuck in `submitting` forever.
     outcome: Literal["submitted", "failed", "needs_human"]
     reason: Optional[str] = Field(default=None, max_length=2000)
+    # The form questions a needs_human run could not answer, so the user can answer
+    # each once into the answer bank. Bounded: this is client-supplied text.
+    unanswered_questions: List[Annotated[str, Field(max_length=1000)]] = Field(
+        default_factory=list, max_length=50
+    )
 
 
 class SubmissionResultOut(BaseModel):

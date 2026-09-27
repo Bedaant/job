@@ -156,6 +156,12 @@ def list_review_queue(profile: models.Profile = Depends(get_owned_profile), db: 
             tailored_bullets=tailored.get("bullets", []),
             tailored_cover_letter=row.tailored_cover_letter,
             flagged_unsupported_claims=row.flagged_unsupported_claims or [],
+            # Derived, not stored twice: a question drops off the moment the bank
+            # can answer it, however the answer got there.
+            pending_questions=[
+                q for q in (row.pending_questions or [])
+                if answer_bank_service.find_answer(db, profile.id, q) is None
+            ],
             created_at=row.created_at,
         ))
     return result
@@ -378,6 +384,17 @@ def report_submission_result(
     if payload.reason:
         stamp = f"[{payload.outcome}] {payload.reason}"
         application.notes = f"{application.notes}\n{stamp}" if application.notes else stamp
+    # Only needs_human leaves questions for the user; any other outcome means the
+    # form went through or will be retried, so stale questions must not linger.
+    # dict.fromkeys: dedupe, order kept. Demographic questions are dropped here —
+    # they are never answerable, so asking the user for one is a trap.
+    application.pending_questions = (
+        list(dict.fromkeys(
+            q.strip() for q in payload.unanswered_questions
+            if q.strip() and not answer_bank_service.is_demographic_label(q)
+        ))
+        if payload.outcome == "needs_human" else []
+    )
 
     write_event(
         db, current_user.id, f"application.{payload.outcome}",

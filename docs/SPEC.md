@@ -99,6 +99,7 @@ applications:
   tailored_resume_json  JSON  NULL
   tailored_cover_letter  TEXT  NULL
   flagged_unsupported_claims  JSON  NULL  -- default: app-level callable list() — not a DB DEFAULT, set by the ORM on insert
+  pending_questions  JSON  NULL  -- default: app-level callable list() — not a DB DEFAULT, set by the ORM on insert
   applied_at  TIMESTAMP WITHOUT TIME ZONE  NULL
   next_follow_up_at  TIMESTAMP WITHOUT TIME ZONE  NULL
   created_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
@@ -167,6 +168,18 @@ resume_uploads:
   draft_facts  JSON  NULL
   error  TEXT  NULL
   created_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
+
+answer_bank:
+  id  UUID  NOT NULL  PRIMARY KEY  -- default: app-level callable gen_uuid() — not a DB DEFAULT, set by the ORM on insert
+  profile_id  UUID  NOT NULL  -- FK -> profiles.id ON DELETE CASCADE
+  question_text  TEXT  NOT NULL
+  question_normalized  VARCHAR  NOT NULL
+  answer_text  TEXT  NOT NULL
+  times_used  INTEGER  NOT NULL  -- default 0 (app-level, not a DB DEFAULT)
+  last_used_at  TIMESTAMP WITHOUT TIME ZONE  NULL
+  created_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
+  updated_at  TIMESTAMP WITHOUT TIME ZONE  NULL  -- default: app-level callable utcnow() — not a DB DEFAULT, set by the ORM on insert
+  UNIQUE (profile_id, question_normalized)
 ```
 
 <!-- END GENERATED SCHEMA -->

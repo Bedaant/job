@@ -27,3 +27,13 @@ export function decideFieldActions(
   fields: FieldDescriptor[],
   mappings: FieldMapping[],
 ): { fill: { field_id: string; value: string }[]; flag: { field_id: string; reason: string }[] };
+export function classifyFileInput(field: {
+  label_text: string | null;
+  name?: string | null;
+  dom_id?: string | null;
+  required?: boolean;
+}): "resume" | "flag" | "skip";
+export function unansweredQuestions(
+  fields: { field_id: string; label_text: string | null }[],
+  flag: { field_id: string; reason: string }[],
+): string[];

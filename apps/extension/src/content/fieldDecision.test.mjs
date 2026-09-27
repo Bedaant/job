@@ -6,9 +6,11 @@ import {
   DEMOGRAPHIC_LABEL_KEYWORDS,
   ESSAY_LABEL_KEYWORDS,
   FORBIDDEN_LABEL_KEYWORDS,
+  classifyFileInput,
   decideFieldActions,
   isDemographicLabel,
   isForbiddenLabel,
+  unansweredQuestions,
 } from "./fieldDecision.mjs";
 
 test("confidence threshold is 0.75", () => {
@@ -134,4 +136,50 @@ test("an essay field with no stored answer is still flagged", () => {
 
   assert.deepEqual(fill, []);
   assert.deepEqual(flag, [{ field_id: "f1", reason: "essay_no_stored_answer" }]);
+});
+
+// --- file inputs (resume upload) ---------------------------------------------
+
+test("classifyFileInput attaches the resume to a resume/CV upload by label, name or id", () => {
+  assert.equal(classifyFileInput({ label_text: "Resume/CV", required: true }), "resume");
+  assert.equal(classifyFileInput({ label_text: null, name: "resume", required: false }), "resume");
+  assert.equal(classifyFileInput({ label_text: "Attach", dom_id: "cv_upload" }), "resume");
+  assert.equal(classifyFileInput({ label_text: "Upload your CV" }), "resume");
+});
+
+test("classifyFileInput never puts the resume into a cover-letter upload", () => {
+  // "Cover letter" must win even though the label may also mention the resume.
+  assert.equal(classifyFileInput({ label_text: "Cover Letter", required: true }), "flag");
+  assert.equal(classifyFileInput({ label_text: "Cover letter (attach with resume)", required: false }), "skip");
+});
+
+test("classifyFileInput flags an unknown required upload and skips an optional one", () => {
+  assert.equal(classifyFileInput({ label_text: "Portfolio PDF", required: true }), "flag");
+  assert.equal(classifyFileInput({ label_text: "Anything else?", required: false }), "skip");
+  // "cv" inside another word is not a CV.
+  assert.equal(classifyFileInput({ label_text: "Certificate (CVS pharmacy)", name: "cvs_doc", required: true }), "flag");
+});
+
+// --- questions handed to the answer bank -------------------------------------
+
+test("unansweredQuestions returns labels of flagged fields the user can answer", () => {
+  const fields = [
+    { field_id: "a", label_text: "Why do you want to work here?" },
+    { field_id: "b", label_text: "How did you hear about us?" },
+    { field_id: "c", label_text: "What is your gender?" },
+    { field_id: "d", label_text: "Portfolio PDF" },
+    { field_id: "e", label_text: null },
+    { field_id: "f", label_text: "Email" },
+  ];
+  const flag = [
+    { field_id: "a", reason: "essay_no_stored_answer" },
+    { field_id: "b", reason: "low_confidence" },
+    { field_id: "c", reason: "demographic" },
+    { field_id: "d", reason: "file_upload" },
+    { field_id: "e", reason: "low_confidence" },
+  ];
+  assert.deepEqual(unansweredQuestions(fields, flag), [
+    "Why do you want to work here?",
+    "How did you hear about us?",
+  ]);
 });

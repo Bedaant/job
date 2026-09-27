@@ -102,6 +102,55 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-27 (latest+20) — the answer bank fills itself at `needs_human`; the resume reaches file inputs
+
+**What changed.**
+1. *Answer capture.* A `needs_human` run now reports the questions it stopped on
+   (`SubmissionResultIn.unanswered_questions`, ≤50 × ≤1000 chars). They are stored
+   on `applications.pending_questions` (migration `0015`), demographic ones dropped
+   server-side, deduped. `GET /applications/review-queue` returns
+   `pending_questions` **derived** against the bank (`find_answer`), so saving an
+   answer is what clears a question — no second state to sync. Any non-`needs_human`
+   outcome clears the list. The review card (`ApplicationCard.tsx`) shows each with a
+   textarea → `PUT /profiles/{id}/answers` → refetch; the user then approves to retry
+   and the next pass fills it from the bank.
+2. *Resume upload.* File inputs no longer go to `map-fields` (writing a string into a
+   file input's `.value` throws — every form with an upload was a guaranteed
+   failure). `classifyFileInput` (pure, `fieldDecision.mjs`): resume/CV by
+   label/name/id → attach `/profiles/{id}/resume.docx` via `DataTransfer`;
+   cover-letter wins over resume; unknown required upload → `file_upload` flag
+   (needs_human, not a bank question); optional → skipped.
+
+**Why.** `latest+19`'s Next: without capture the bank never grows; without the
+upload nearly every real ATS form stops the run.
+
+**Files.** api: `main.py`, `models.py`, `schemas.py`,
+`alembic/versions/0015_application_pending_questions.py`,
+`tests/test_pending_questions.py` (new). extension: `fieldDecision.mjs/.d.mts/.test.mjs`,
+`formFill.content.ts`, `autoApply.content.ts`, `background/driver.ts`. web:
+`lib/api.ts` (`saveAnswer`, `pending_questions`), `lib/answers.test.ts` (new),
+`components/review/ApplicationCard.tsx`, `app/review/page.tsx`. `docs/SPEC.md`
+schema regenerated — it was already stale (latest+19 never added `answer_bank`).
+
+**Dependencies added.** None.
+
+**Tests.** Red confirmed before green on all three layers: api 6 new (400/400
+total), extension 4 new (33/33), web 2 new (27/27). Extension typecheck + build and
+web `next build` clean. First `classifyFileInput` run failed on `cv_upload` — `\b`
+treats `_` as a word char; switched to letter-bounded lookarounds.
+
+**Problems hit / not verified.** The content-script DOM glue (DataTransfer attach,
+question labels) is still not live-browser-tested — same standing limitation as the
+rest of the extension. Uses the profile's facts-only docx, not a per-application
+tailored one (`ponytail:` in `fetchResumeFile`). Migration `0015` not yet applied to
+Neon.
+
+**Next.** Apply `0015`; per-ATS field schemas; feed the keyword-gap scorer into
+`tailoring/engine.py`; a tailored per-application docx once `ANTHROPIC_API_KEY` is
+real (still a placeholder).
+
+---
+
 ### 2026-09-27 (latest+19) — the answer bank: the interruption shrinks, and the demographic rail is finally its own thing
 
 **Context.** `latest+17` closed the execution loop, and its honest ending was
