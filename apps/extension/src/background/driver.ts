@@ -16,7 +16,14 @@
 // code. The decisions live in driverCore.mjs and are unit-tested; everything here
 // is chrome API glue, which is exactly why it is kept this thin.
 import { API_BASE_URL } from "../apiConfig";
-import { classifyFailure, planRun } from "./driverCore.mjs";
+import {
+  answerForFrame,
+  chooseFrame,
+  classifyFailure,
+  isFromAssignedFrame,
+  planRun,
+  type FrameAssignment,
+} from "./driverCore.mjs";
 import { VERIFY_TIMEOUT_MS } from "../content/submitVerification.mjs";
 import "./apiProxy"; // content scripts reach the API through the worker (CORS, LIVE-FORM-TEST #1)
 
@@ -27,9 +34,6 @@ export type WorkItem = {
   company: string;
   title: string;
   ats_type?: string | null;
-  // Set once the content script says the submit is being sent: from then on the
-  // tab (and any page it navigates to) only verifies. See autoApply.content.ts.
-  verify?: { urlBefore: string; sentAt: number };
 };
 
 type Outcome = "submitted" | "unconfirmed" | "failed" | "needs_human";
@@ -43,10 +47,34 @@ const ITEM_TIMEOUT_MS = 60_000;
 // that may well have gone through.
 const VERIFY_SLACK_MS = 10_000;
 
+// How long the driver collects frame claims after the first one before choosing
+// (the richest frame wins, driverCore.chooseFrame): a careers page's own
+// "talent community" form must not beat the embedded application.
+const CLAIM_SETTLE_MS = 1_500;
+
 const attempts = new Map<string, number>();
 // What each tab was opened to do, so the content script can ask "what am I here
-// for?" instead of the driver trusting the page's own URL.
-const assignments = new Map<number, WorkItem>();
+// for?" instead of the driver trusting the page's own URL. Keyed by tab; inside it,
+// `frameId` is the one frame that may fill/submit/report and `verify` is set once
+// that frame said the submit is being sent (see driverCore.mjs, frames).
+type Claim = { frameId: number; fieldCount: number; respond: (granted: boolean) => void };
+type Assignment = FrameAssignment<WorkItem> & { claims?: Claim[] };
+const assignments = new Map<number, Assignment>();
+
+function onClaim(tabId: number, frameId: number, fieldCount: number, respond: (granted: boolean) => void) {
+  const a = assignments.get(tabId);
+  if (!a || a.verify) return respond(false);
+  if (a.frameId !== undefined) return respond(a.frameId === frameId);
+  if (a.claims) return void a.claims.push({ frameId, fieldCount, respond });
+  a.claims = [{ frameId, fieldCount, respond }];
+  setTimeout(() => {
+    const claims = a.claims ?? [];
+    a.claims = undefined;
+    // The tab may have finished (timeout) meanwhile: then nobody is granted.
+    if (assignments.get(tabId) === a) a.frameId = chooseFrame(claims);
+    for (const c of claims) c.respond(a.frameId === c.frameId);
+  }, CLAIM_SETTLE_MS);
+}
 
 async function authHeaders(): Promise<Record<string, string>> {
   const { jc_token: token } = await chrome.storage.local.get("jc_token");
@@ -107,7 +135,14 @@ function runItem(item: WorkItem): Promise<ItemResult> {
     };
 
     let timer = setTimeout(
-      () => finish({ outcome: "failed", reason: `timed out after ${ITEM_TIMEOUT_MS}ms` }),
+      () =>
+        finish({
+          outcome: "failed",
+          reason:
+            tabId !== undefined && assignments.get(tabId)?.frameId === undefined
+              ? `no application form found in any frame of the page within ${ITEM_TIMEOUT_MS}ms`
+              : `timed out after ${ITEM_TIMEOUT_MS}ms`,
+        }),
       ITEM_TIMEOUT_MS,
     );
 
@@ -117,11 +152,14 @@ function runItem(item: WorkItem): Promise<ItemResult> {
       sendResponse: (response: unknown) => void,
     ) => {
       if (tabId === undefined || sender.tab?.id !== tabId) return; // another tab's message is not ours
+      const assignment = assignments.get(tabId);
+      // Only the chosen frame counts; a captcha/ad frame is never heard (no ack either).
+      if (!isFromAssignedFrame(assignment, sender.frameId)) return;
       if (message?.type === "jc:submit-sent") {
-        if (settled) return; // no ack -> the content script does not submit
-        // The submit is about to fire: hand the tab over to verification, so the
+        if (settled || !assignment) return; // no ack -> the content script does not submit
+        // The submit is about to fire: hand the frame over to verification, so the
         // page it navigates to only watches, and switch to the verify timer.
-        assignments.set(tabId, { ...item, verify: { urlBefore: message.urlBefore, sentAt: message.sentAt } });
+        assignment.verify = { urlBefore: message.urlBefore, sentAt: message.sentAt };
         clearTimeout(timer);
         timer = setTimeout(
           () =>
@@ -148,7 +186,7 @@ function runItem(item: WorkItem): Promise<ItemResult> {
           finish({ outcome: "failed", reason: "could not open a tab for the apply page" });
           return;
         }
-        assignments.set(tabId, item);
+        assignments.set(tabId, { item });
       })
       .catch((error) => finish(classifyFailure(error)));
   });
@@ -187,8 +225,17 @@ export async function runQueueOnce(): Promise<{ attempted: number; results: Reco
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "jc:what-am-i-doing") {
     const tabId = sender.tab?.id;
-    sendResponse(tabId !== undefined ? (assignments.get(tabId) ?? null) : null);
+    sendResponse(tabId !== undefined ? answerForFrame(assignments.get(tabId), sender.frameId) : null);
     return true;
+  }
+  if (message?.type === "jc:claim-frame") {
+    const tabId = sender.tab?.id;
+    if (tabId === undefined || sender.frameId === undefined || typeof message.fieldCount !== "number") {
+      sendResponse(false);
+      return true;
+    }
+    onClaim(tabId, sender.frameId, message.fieldCount, sendResponse);
+    return true; // async: answered after CLAIM_SETTLE_MS
   }
   if (message?.type === "jc:run-queue") {
     runQueueOnce()

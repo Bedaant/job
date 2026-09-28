@@ -26,6 +26,7 @@ import {
   readAllOptions,
 } from "./combobox.mjs";
 import { base64ToBytes } from "../background/apiProxyCore.mjs";
+import { holdsApplicationForm } from "../background/driverCore.mjs";
 import type { ApiProxyResponse } from "../background/apiProxy";
 
 // ADR-001 runtime guard, defense-in-depth alongside the static source-text
@@ -452,8 +453,17 @@ export async function fillForm(profileId: string, atsType?: string | null): Prom
   };
 }
 
+/** Input types (or tag names) of this frame's controls — driverCore.holdsApplicationForm decides. */
+export function controlTypes(): string[] {
+  return Array.from(document.querySelectorAll<HTMLElement>("input, select, textarea")).map((el) =>
+    el instanceof HTMLInputElement ? el.type : el.tagName.toLowerCase(),
+  );
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type === "jc:fill-form") {
+  // The popup's message reaches every frame (all_frames). A sub-frame without an
+  // application form (captcha, ads) stays out of it: no fill, no alert, no answer.
+  if (message?.type === "jc:fill-form" && (window === window.top || holdsApplicationForm(controlTypes()))) {
     // The interactive path keeps its alert — a user who clicked "fill" is present
     // to read it. The automated path (autoApply.content.ts) handles the throw.
     fillForm(message.profileId)

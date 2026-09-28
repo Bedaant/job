@@ -30,11 +30,11 @@
 //
 // NOT live-browser-tested (no loaded-extension access in this project). The
 // classification it relies on is unit-tested in ../background/driverCore.test.mjs.
-import { classifyFailure } from "../background/driverCore.mjs";
+import { classifyFailure, countFields, holdsApplicationForm } from "../background/driverCore.mjs";
 // Which flag reasons stop the run (an optional EEO field does not — it is left
 // blank) and the needs_human message, both pure and tested in fieldDecision.test.mjs.
 import { NEEDS_USER_REASONS, needsHumanReason } from "./fieldDecision.mjs";
-import { fillForm } from "./formFill.content";
+import { controlTypes, fillForm } from "./formFill.content";
 import { submitApprovedApplication } from "./submitApprovedApplication";
 import { decideVerification, isCaptchaChallengeSrc, verificationReport } from "./submitVerification.mjs";
 
@@ -52,6 +52,27 @@ type WorkItem = {
 };
 
 const POLL_MS = 500;
+// How long an assigned frame waits for its application form to render (SPA boards
+// render after document_idle) before concluding it doesn't hold one.
+const FORM_WAIT_MS = 10_000;
+
+/**
+ * Frames (latest+48): the content scripts run in every frame, captcha widgets
+ * included. A frame takes part only if it holds an application form, and then only
+ * if the driver chooses it among the claiming frames (most fields wins). Everyone
+ * else returns silently — never reports — so a captcha frame's "no form here"
+ * can't win the race to the driver.
+ */
+async function claimThisFrame(): Promise<boolean> {
+  const deadline = Date.now() + FORM_WAIT_MS;
+  let types = controlTypes();
+  while (!holdsApplicationForm(types)) {
+    if (Date.now() > deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    types = controlTypes();
+  }
+  return (await chrome.runtime.sendMessage({ type: "jc:claim-frame", fieldCount: countFields(types) })) === true;
+}
 
 function report(
   outcome: "submitted" | "unconfirmed" | "failed" | "needs_human",
@@ -145,10 +166,11 @@ async function run(): Promise<void> {
   } catch {
     return; // no background driver listening: an ordinary page visit
   }
-  if (!item) return; // the user is just browsing; do nothing
+  if (!item) return; // the user is just browsing, or another frame has this tab: do nothing
 
   // The page the submit navigated to: verify only. Filling or submitting here
-  // would be a second application.
+  // would be a second application. The driver hands `verify` only to the frame
+  // that submitted (same frameId after its navigation).
   if (item.verify) {
     try {
       await verify(item.verify, null);
@@ -156,6 +178,12 @@ async function run(): Promise<void> {
       report("unconfirmed", `Couldn't check the page after submit: ${String(error)}`.slice(0, 2000));
     }
     return;
+  }
+
+  try {
+    if (!(await claimThisFrame())) return; // not the application frame: stay silent
+  } catch {
+    return; // driver gone
   }
 
   // Once the submit is sent, no error may become `failed`: that returns the row
