@@ -17,7 +17,8 @@
       "matches": ["http://*/*", "https://*/*"],
       "exclude_matches": ["*://*.linkedin.com/*"],
       "js": ["src/content/formFill.content.ts", "src/content/autoApply.content.ts"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ]
 }

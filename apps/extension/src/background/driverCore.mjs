@@ -81,3 +81,53 @@ export function planRun(queue, attempts) {
       Boolean(item.apply_url) && (attempts.get(item.application_id) ?? 0) < MAX_ATTEMPTS_PER_ITEM,
   );
 }
+
+// --- frames (latest+48) -------------------------------------------------------
+// The content scripts run in every frame (all_frames), so embedded boards
+// (boards.greenhouse.io/embed, job-boards.greenhouse.io/embed/...) are reached. The
+// catch: captcha and ad frames run it too. So a frame only claims the tab if it
+// holds an application form, the driver gives the tab to ONE claiming frame (the
+// most fields), and only that frame is answered, acked or listened to.
+//
+// An assignment is { item, frameId?, verify? }: frameId once a frame is chosen,
+// verify once that frame said the submit is being sent.
+
+// A real application form has name, email, phone, resume at the least. A
+// reCAPTCHA/hCaptcha frame has a hidden response textarea and hidden inputs.
+export const MIN_APPLICATION_FIELDS = 4;
+const NOT_A_FIELD = new Set(["hidden", "submit", "button", "reset", "image"]);
+
+/** controlTypes: input `type`s, or "select"/"textarea", of every control in the frame. */
+export function countFields(controlTypes) {
+  return controlTypes.filter((t) => !NOT_A_FIELD.has(String(t).toLowerCase())).length;
+}
+
+export function holdsApplicationForm(controlTypes) {
+  return countFields(controlTypes) >= MIN_APPLICATION_FIELDS;
+}
+
+/** claims: [{frameId, fieldCount}] -> the frameId with the most fields (ties: lower id; the top frame is 0). */
+export function chooseFrame(claims) {
+  let best;
+  for (const c of claims) {
+    if (!best || c.fieldCount > best.fieldCount || (c.fieldCount === best.fieldCount && c.frameId < best.frameId)) {
+      best = c;
+    }
+  }
+  return best?.frameId;
+}
+
+/** What `jc:what-am-i-doing` answers a frame. null = stay silent. */
+export function answerForFrame(assignment, frameId) {
+  if (!assignment) return null;
+  if (assignment.frameId !== undefined && assignment.frameId !== frameId) return null;
+  // Verify lives only in the submitting frame: an iframe's form navigates the iframe,
+  // which keeps its frameId. If the top frame navigated instead, nothing verifies
+  // and the driver's timer reports `unconfirmed` — the safe direction.
+  return assignment.verify ? { ...assignment.item, verify: assignment.verify } : assignment.item;
+}
+
+/** Whether a report / submit-sent from this frame counts. */
+export function isFromAssignedFrame(assignment, frameId) {
+  return assignment?.frameId !== undefined && assignment.frameId === frameId;
+}

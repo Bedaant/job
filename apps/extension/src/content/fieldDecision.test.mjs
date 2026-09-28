@@ -494,3 +494,50 @@ test("EEO keywords match whole words (plural allowed), same as the server", () =
   assert.equal(isDemographicLabel("Veteran status"), true);
   assert.equal(isDemographicLabel("Sexual orientation"), true);
 });
+
+// latest+48 — age: shared spec with answer_bank.is_demographic_field
+// (apps/api/tests/test_age_demographic.py carries the same cases).
+test("age / date-of-birth questions are demographic", () => {
+  for (const q of [
+    "Age", "Age:", "Age (optional)", "What is your age?", "How old are you?", "Age range",
+    "Please select your age group", "Which age bracket do you fall into?", "Date of Birth",
+    "Date of birth (MM/DD/YYYY)", "Birth date", "Birthdate", "Year of birth", "Birth year", "DOB",
+  ]) {
+    assert.equal(isDemographicField({ label_text: q }), true, q);
+  }
+});
+
+test("legal-age eligibility and ordinary questions are NOT demographic", () => {
+  for (const q of [
+    "Are you 18 years of age or older?", "Are you at least 18?", "Are you over the age of 21?",
+    "Are you of legal working age?", "Are you legally authorized to work in the United States?",
+    "Will you now or in the future require visa sponsorship?", "Are you willing to relocate?",
+    "Page 2 of the application", "Stage of your career", "Manager name", "Job title",
+    "How many years of experience do you have with Python?",
+  ]) {
+    assert.equal(isDemographicField({ label_text: q, options: ["Yes", "No"] }), false, q);
+  }
+});
+
+test("age-bracket option groups are demographic; legal-age and numeric non-age sets are not", () => {
+  for (const options of [
+    ["Under 18", "18-24", "25-34", "35-44", "45-54", "55-64", "65 or older"],
+    ["18 - 24", "25 – 34"],
+    ["40 or over", "Under 40"],
+    ["18-24", "Prefer not to say"],
+    ["25 to 34 years", "35 to 44 years"],
+  ]) {
+    assert.equal(isDemographicField({ label_text: "Please select", options }), true, options.join("|"));
+  }
+  for (const options of [
+    ["Yes", "No"],
+    ["18 or older", "Under 18"],
+    ["21 or over", "Under 21"],
+    ["0-2", "3-5", "6-10", "10+"],
+    ["Less than 10", "10-20", "20+"],
+    ["1-10", "11-50", "51-200", "201-500"],
+    ["$50,000-$75,000", "$75,000-$100,000"],
+  ]) {
+    assert.equal(isDemographicField({ label_text: "Please select", options }), false, options.join("|"));
+  }
+});

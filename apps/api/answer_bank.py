@@ -70,6 +70,39 @@ DEMOGRAPHIC_OPTION_TERMS = (
 DECLINE_PHRASES = ("decline to self identify", "i don t wish to answer", "prefer not to say")
 _NOT_WORD_CHARS = re.compile(r"[^a-z0-9\s]+")
 
+# Age (latest+48), same shared spec. Separate from DEMOGRAPHIC_LABEL_KEYWORDS on
+# purpose: map_fields.is_forbidden_label substring-matches that list, where "dob"
+# would hit "job". Question: label starts with "age", or contains one of these
+# phrases (whole words, optional plural). Bare "age" elsewhere is NOT caught —
+# "Are you 18 years of age or older?" / "over the age of 21" are eligibility.
+AGE_LABEL_PHRASES = (
+    "age range", "age group", "age bracket", "date of birth", "year of birth", "birth date",
+    "birthdate", "birth year", "birthday", "dob", "how old", "your age",
+)
+_AGE_QUESTION = re.compile(r"^ages?\b|\b(?:" + "|".join(map(re.escape, AGE_LABEL_PHRASES)) + r")s?\b")
+# Age-bracket options count as demographic terms (each distinct bracket one term):
+# "25-34" / "25 to 34 years" (both bounds two digits, 16 <= lo < hi <= lo+10), or an
+# open end "under 40" / "65 or older" at 16..99 — except 18 and 21, which are legal-age
+# thresholds: "18 or older" / "Under 18" alone is an eligibility check.
+# ponytail: numeric heuristic; "20-25" years of experience twice would read as
+# ages. Add a question-side "experience" exclusion if it ever shows up live.
+_AGE_BRACKET = re.compile(
+    r"(?:(?:under|over|less than|younger than|older than) (\d\d)|(\d\d) (?:to )?(\d\d)"
+    r"|(\d\d) (?:or|and) (?:older|over|above))(?: years(?: old)?)?"
+)
+_LEGAL_AGES = {18, 21}
+
+
+def _is_age_bracket(option: str) -> bool:
+    m = _AGE_BRACKET.fullmatch(option)
+    if not m:
+        return False
+    if m[2]:
+        lo, hi = int(m[2]), int(m[3])
+        return 16 <= lo < hi <= lo + 10
+    bound = int(m[1] or m[4])
+    return bound >= 16 and bound not in _LEGAL_AGES
+
 
 def _normalize_eeo(text: str | None) -> str:
     return _WHITESPACE.sub(" ", _NOT_WORD_CHARS.sub(" ", (text or "").lower())).strip()
@@ -140,11 +173,13 @@ def is_demographic_field(label_text: str | None, options: list[str] | None = Non
     one, or (b) the options are an EEO answer set: a decline phrase alongside
     any demographic option, or at least two demographic options.
     """
-    if _DEMOGRAPHIC_QUESTION.search(_normalize_eeo(label_text)):
+    label = _normalize_eeo(label_text)
+    if _DEMOGRAPHIC_QUESTION.search(label) or _AGE_QUESTION.search(label):
         return True
 
     normalized = [_normalize_eeo(o) for o in options or []]
     terms = {t for o in normalized for t in DEMOGRAPHIC_OPTION_TERMS if o == t or o.startswith(t + " ")}
+    terms |= {o for o in normalized if _is_age_bracket(o)}
     declines = any(f" {p} " in f" {o} " for o in normalized for p in DECLINE_PHRASES)
     return len(terms) >= 2 or (declines and bool(terms))
 

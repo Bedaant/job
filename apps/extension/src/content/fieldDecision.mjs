@@ -38,12 +38,39 @@ export const DEMOGRAPHIC_OPTIONS = [
 
 const norm = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
+// Age (latest+48), identical to answer_bank.AGE_LABEL_PHRASES / _AGE_BRACKET — see
+// the comment there. Kept out of DEMOGRAPHIC_LABEL_KEYWORDS ("dob" in "job" once
+// anything substring-matches that list). Question: normalized label starts with
+// "age" or contains a phrase (whole words, optional plural); "18 years of age or
+// older" / "over the age of 21" are eligibility, not caught. Options: distinct age
+// brackets count as demographic terms; open ends at 18/21 are legal-age thresholds.
+export const AGE_LABEL_PHRASES = [
+  "age range", "age group", "age bracket", "date of birth", "year of birth", "birth date",
+  "birthdate", "birth year", "birthday", "dob", "how old", "your age",
+];
+const AGE_QUESTION_RE = new RegExp(`^ages?\\b|\\b(?:${AGE_LABEL_PHRASES.join("|")})s?\\b`);
+const AGE_BRACKET_RE =
+  /^(?:(?:under|over|less than|younger than|older than) (\d\d)|(\d\d) (?:to )?(\d\d)|(\d\d) (?:or|and) (?:older|over|above))(?: years(?: old)?)?$/;
+const LEGAL_AGES = new Set([18, 21]);
+
+function isAgeBracket(option) {
+  const m = AGE_BRACKET_RE.exec(option);
+  if (!m) return false;
+  if (m[2]) {
+    const lo = Number(m[2]), hi = Number(m[3]);
+    return lo >= 16 && lo < hi && hi <= lo + 10;
+  }
+  const bound = Number(m[1] ?? m[4]);
+  return bound >= 16 && !LEGAL_AGES.has(bound);
+}
+
 function hasDemographicOptions(options) {
   if (!options?.length) return false;
   const opts = options.map(norm);
-  const terms = new Set(
-    DEMOGRAPHIC_OPTIONS.filter((t) => opts.some((o) => o === norm(t) || o.startsWith(`${norm(t)} `))),
-  );
+  const terms = new Set([
+    ...DEMOGRAPHIC_OPTIONS.filter((t) => opts.some((o) => o === norm(t) || o.startsWith(`${norm(t)} `))),
+    ...opts.filter(isAgeBracket),
+  ]);
   const decline = opts.some((o) => DEMOGRAPHIC_DECLINE_OPTIONS.some((p) => ` ${o} `.includes(` ${norm(p)} `)));
   return terms.size >= 2 || (decline && terms.size >= 1);
 }
@@ -81,7 +108,10 @@ const DEMOGRAPHIC_KEYWORD_RE = new RegExp(
 );
 
 export function isDemographicLabel(labelText) {
-  return !!labelText && (DEMOGRAPHIC_KEYWORD_RE.test(labelText) || SEX_WORD.test(labelText));
+  return (
+    !!labelText &&
+    (DEMOGRAPHIC_KEYWORD_RE.test(labelText) || SEX_WORD.test(labelText) || AGE_QUESTION_RE.test(norm(labelText)))
+  );
 }
 
 // The question text OR the options: Ashby's EEO radios carry no question text the

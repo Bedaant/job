@@ -21,3 +21,22 @@ export function planRun<T extends WorkQueueItem>(
   queue: T[],
   attempts: Map<string, number>,
 ): T[];
+
+export type Verify = { urlBefore: string; sentAt: number };
+export interface FrameAssignment<T> {
+  item: T;
+  frameId?: number;
+  verify?: Verify;
+}
+export const MIN_APPLICATION_FIELDS: number;
+export function countFields(controlTypes: string[]): number;
+export function holdsApplicationForm(controlTypes: string[]): boolean;
+export function chooseFrame(claims: { frameId: number; fieldCount: number }[]): number | undefined;
+export function answerForFrame<T extends object>(
+  assignment: FrameAssignment<T> | undefined,
+  frameId: number | undefined,
+): (T & { verify?: Verify }) | null;
+export function isFromAssignedFrame<T>(
+  assignment: FrameAssignment<T> | undefined,
+  frameId: number | undefined,
+): boolean;

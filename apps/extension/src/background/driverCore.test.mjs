@@ -1,7 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { classifyFailure, planRun, MAX_ATTEMPTS_PER_ITEM } from "./driverCore.mjs";
+import {
+  classifyFailure,
+  planRun,
+  MAX_ATTEMPTS_PER_ITEM,
+  MIN_APPLICATION_FIELDS,
+  holdsApplicationForm,
+  countFields,
+  chooseFrame,
+  answerForFrame,
+  isFromAssignedFrame,
+} from "./driverCore.mjs";
 
 // --- classifyFailure ----------------------------------------------------------
 // The distinction that matters: `failed` puts the application back in the work
@@ -108,4 +118,52 @@ test("planRun skips items with no apply_url even if the server sent one", () => 
 
 test("planRun tolerates an empty queue", () => {
   assert.deepEqual(planRun([], new Map()), []);
+});
+
+// --- frames (latest+48) -------------------------------------------------------
+// With all_frames, every frame of the apply tab (captcha widgets included) runs the
+// content script. Only the frame holding the application form may fill, submit or
+// report; the rest must stay silent, or a captcha frame's "no form" wins the race.
+
+test("captcha and search frames don't hold an application form; a real form does", () => {
+  // reCAPTCHA anchor frame: hidden inputs + one response textarea
+  assert.equal(holdsApplicationForm(["hidden", "hidden", "textarea"]), false);
+  // careers-page search + newsletter
+  assert.equal(holdsApplicationForm(["search", "email", "submit", "button"]), false);
+  assert.equal(holdsApplicationForm(["text", "text", "email", "tel", "file", "select", "textarea", "submit"]), true);
+  assert.equal(MIN_APPLICATION_FIELDS, 4);
+  assert.equal(holdsApplicationForm(["text", "email", "tel", "hidden", "submit", "reset", "image"]), false);
+  assert.equal(holdsApplicationForm([]), false);
+  assert.equal(countFields(["text", "hidden", "SELECT", "textarea", "submit"]), 3);
+});
+
+test("chooseFrame picks the frame with the most fields; ties go to the lower frameId", () => {
+  assert.equal(chooseFrame([{ frameId: 0, fieldCount: 5 }, { frameId: 7, fieldCount: 22 }]), 7);
+  assert.equal(chooseFrame([{ frameId: 9, fieldCount: 22 }, { frameId: 0, fieldCount: 22 }]), 0);
+  assert.equal(chooseFrame([{ frameId: 3, fieldCount: 8 }]), 3);
+  assert.equal(chooseFrame([]), undefined);
+});
+
+const ITEM = { application_id: "a1", profile_id: "p1", apply_url: "https://x", company: "C", title: "T" };
+
+test("before a frame is chosen every frame learns the item; after, only the chosen one", () => {
+  assert.equal(answerForFrame(undefined, 0), null);
+  assert.deepEqual(answerForFrame({ item: ITEM }, 5), ITEM);
+  assert.deepEqual(answerForFrame({ item: ITEM, frameId: 5 }, 5), ITEM);
+  assert.equal(answerForFrame({ item: ITEM, frameId: 5 }, 0), null);
+});
+
+test("after the submit only the submitting frame verifies (the page it navigated to)", () => {
+  const verify = { urlBefore: "https://x/form", sentAt: 1 };
+  assert.deepEqual(answerForFrame({ item: ITEM, frameId: 5, verify }, 5), { ...ITEM, verify });
+  assert.equal(answerForFrame({ item: ITEM, frameId: 5, verify }, 0), null, "top frame must not verify an iframe's submit");
+  assert.equal(answerForFrame({ item: ITEM, frameId: 5, verify }, 6), null);
+});
+
+test("reports and submit-sent are accepted only from the chosen frame", () => {
+  assert.equal(isFromAssignedFrame({ item: ITEM, frameId: 5 }, 5), true);
+  assert.equal(isFromAssignedFrame({ item: ITEM, frameId: 5 }, 0), false, "a captcha/top frame's report is ignored");
+  assert.equal(isFromAssignedFrame({ item: ITEM }, 0), false, "no frame chosen yet: nobody may report");
+  assert.equal(isFromAssignedFrame(undefined, 0), false);
+  assert.equal(isFromAssignedFrame({ item: ITEM, frameId: 5 }, undefined), false);
 });
