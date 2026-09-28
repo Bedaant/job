@@ -5,9 +5,9 @@ WHATWG HTML spec §autofill-field-name) first, then name/id/label patterns.
 Checked in map_fields.py::map_form_fields BEFORE the bounded LLM path, not
 instead of it — anything this can't resolve falls through unchanged.
 
-Given/family name fill only from the user's own given_name/family_name
-basics (migration 0018), never from a split of full_name — a split is a
-guess, which the null-over-guess rule forbids for identity data.
+Given/family name fill only from the summary's given_name/family_name:
+the user's own (migration 0018), else first/last token of full_name
+(map_fields.build_profile_summary). This module never splits anything.
 
 Rules match whole tokens (docs/LIVE-FORM-TEST.md #6: `tel` matched
 "Telugu", `country` matched a visa question). name/id are split into tokens

@@ -9,8 +9,8 @@ Every entry was read off a live public form on 2026-09-27, never guessed:
 - ashby: jobs.ashbyhq.com/ashby/7458d4e9-da2e-47bd-98cb-adfda43d42b2/application
   (rendered input name+id) and its public non-user-graphql ApiJobPosting form.
 
-Greenhouse first_name/last_name fill from the user's own given_name/family_name
-(migration 0018), never from a split of full_name; without them they fall through.
+Greenhouse first_name/last_name fill from given_name/family_name (migration 0018,
+or split from full_name by map_fields.build_profile_summary); missing -> flagged.
 
 Verified but deliberately absent (no truthful profile value): greenhouse country and ashby _systemfield_location (typeahead comboboxes),
 lever location (typeahead) and org (no current-company column). Lever
