@@ -1,0 +1,1278 @@
+[
+ {
+  "name": "padding_outcome",
+  "facts": [
+   {
+    "id": "a1",
+    "category": "experience",
+    "achievement": "Built REST APIs in Python and FastAPI for an internal billing tool",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   },
+   {
+    "id": "a2",
+    "category": "experience",
+    "achievement": "Wrote unit tests with Pytest",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   }
+  ],
+  "draft": {
+   "summary": "Backend engineer who builds REST APIs in Python and FastAPI.",
+   "bullets": [
+    "Built REST APIs in Python and FastAPI for an internal billing tool, ensuring maintainable code and on-time delivery",
+    "Wrote unit tests with Pytest"
+   ],
+   "cover_letter": "I built REST APIs in Python and FastAPI for an internal billing tool. I also wrote unit tests with Pytest."
+  },
+  "unsupported": [
+   "ensuring maintainable code and on-time delivery"
+  ]
+ },
+ {
+  "name": "padding_scope",
+  "facts": [
+   {
+    "id": "b1",
+    "category": "experience",
+    "achievement": "Added request logging and alerting to a Node.js service",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   }
+  ],
+  "draft": {
+   "summary": "Engineer focused on observability for Node.js services.",
+   "bullets": [
+    "Added request logging and alerting across microservices in a Node.js platform"
+   ],
+   "cover_letter": "I added request logging and alerting to a Node.js service."
+  },
+  "unsupported": [
+   "across microservices"
+  ]
+ },
+ {
+  "name": "padding_domain",
+  "facts": [
+   {
+    "id": "c1",
+    "category": "experience",
+    "achievement": "Optimised PostgreSQL queries for a reporting dashboard",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   }
+  ],
+  "draft": {
+   "summary": "Engineer who tunes PostgreSQL.",
+   "bullets": [
+    "Optimised PostgreSQL queries powering high-throughput financial transactions"
+   ],
+   "cover_letter": "I have optimised PostgreSQL queries for a reporting dashboard."
+  },
+  "unsupported": [
+   "high-throughput financial transactions"
+  ]
+ },
+ {
+  "name": "invented_tool",
+  "facts": [
+   {
+    "id": "d1",
+    "category": "experience",
+    "achievement": "Built an event pipeline in Python that ingests order events",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   }
+  ],
+  "draft": {
+   "summary": "Data-minded Python engineer.",
+   "bullets": [
+    "Built an event pipeline in Python and Kafka that ingests order events"
+   ],
+   "cover_letter": "I built an event pipeline in Python that ingests order events."
+  },
+  "unsupported": [
+   "Kafka"
+  ]
+ },
+ {
+  "name": "invented_metric",
+  "facts": [
+   {
+    "id": "e1",
+    "category": "experience",
+    "achievement": "Added Redis caching to the product search endpoint",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   }
+  ],
+  "draft": {
+   "summary": "Backend engineer with caching experience.",
+   "bullets": [
+    "Added Redis caching to the product search endpoint, cutting p95 latency by 40%"
+   ],
+   "cover_letter": "I added Redis caching to our product search endpoint."
+  },
+  "unsupported": [
+   "cutting p95 latency by 40%"
+  ]
+ },
+ {
+  "name": "inflated_number",
+  "facts": [
+   {
+    "id": "f1",
+    "category": "experience",
+    "achievement": "Led a team of 5 engineers",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   },
+   {
+    "id": "f2",
+    "category": "skill",
+    "achievement": "Python",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   }
+  ],
+  "draft": {
+   "summary": "Engineering lead and Python developer.",
+   "bullets": [
+    "Led a team of 12 engineers",
+    "Python"
+   ],
+   "cover_letter": "I have led a team of engineers and write Python."
+  },
+  "unsupported": [
+   "12 engineers"
+  ]
+ },
+ {
+  "name": "inflated_title_and_years",
+  "facts": [
+   {
+    "id": "g1",
+    "category": "experience",
+    "achievement": "Software Engineer at Zeta for 3 years building React front ends",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   }
+  ],
+  "draft": {
+   "summary": "Senior Staff Engineer with 8+ years building React front ends.",
+   "bullets": [
+    "Software Engineer at Zeta for 3 years building React front ends"
+   ],
+   "cover_letter": "At Zeta I spent 3 years building React front ends."
+  },
+  "unsupported": [
+   "Senior Staff Engineer",
+   "8+ years"
+  ]
+ },
+ {
+  "name": "praise_adjectives",
+  "facts": [
+   {
+    "id": "h1",
+    "category": "experience",
+    "achievement": "Designed the onboarding flow for a mobile banking app",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   }
+  ],
+  "draft": {
+   "summary": "Product designer.",
+   "bullets": [
+    "Designed the award-winning, industry-leading onboarding flow for a mobile banking app"
+   ],
+   "cover_letter": "I designed the onboarding flow for a mobile banking app."
+  },
+  "unsupported": [
+   "award-winning",
+   "industry-leading"
+  ]
+ },
+ {
+  "name": "cover_letter_invention",
+  "facts": [
+   {
+    "id": "i1",
+    "category": "experience",
+    "achievement": "Wrote product requirement documents for a checkout redesign",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   },
+   {
+    "id": "i2",
+    "category": "experience",
+    "achievement": "Ran weekly user interviews",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   }
+  ],
+  "draft": {
+   "summary": "Product manager who writes clear requirements and talks to users every week.",
+   "bullets": [
+    "Wrote product requirement documents for a checkout redesign",
+    "Ran weekly user interviews"
+   ],
+   "cover_letter": "I wrote the requirement documents for a checkout redesign and ran weekly user interviews. I also led a cross-functional team of designers and engineers through launch."
+  },
+  "unsupported": [
+   "led a cross-functional team of designers and engineers through launch"
+  ]
+ },
+ {
+  "name": "invented_outcome_pm",
+  "facts": [
+   {
+    "id": "j1",
+    "category": "experience",
+    "achievement": "Launched a referral program for a fitness app",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   }
+  ],
+  "draft": {
+   "summary": "Growth product manager.",
+   "bullets": [
+    "Launched a referral program for a fitness app, driving a 25% increase in retention"
+   ],
+   "cover_letter": "I launched a referral program for a fitness app."
+  },
+  "unsupported": [
+   "driving a 25% increase in retention"
+  ]
+ },
+ {
+  "name": "padding_purpose",
+  "facts": [
+   {
+    "id": "k1",
+    "category": "experience",
+    "achievement": "Migrated CI from Jenkins to GitHub Actions",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   }
+  ],
+  "draft": {
+   "summary": "DevOps-minded engineer.",
+   "bullets": [
+    "Migrated CI from Jenkins to GitHub Actions to improve developer velocity and release reliability"
+   ],
+   "cover_letter": "I migrated our CI from Jenkins to GitHub Actions."
+  },
+  "unsupported": [
+   "improve developer velocity and release reliability"
+  ]
+ },
+ {
+  "name": "invented_scale",
+  "facts": [
+   {
+    "id": "l1",
+    "category": "experience",
+    "achievement": "Deployed services on K8s with Helm charts",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   }
+  ],
+  "draft": {
+   "summary": "Platform engineer running Kubernetes.",
+   "bullets": [
+    "Deployed services on Kubernetes with Helm charts serving millions of users"
+   ],
+   "cover_letter": "I deployed services on Kubernetes using Helm charts."
+  },
+  "unsupported": [
+   "serving millions of users"
+  ]
+ },
+ {
+  "name": "clean_reword",
+  "facts": [
+   {
+    "id": "m1",
+    "category": "experience",
+    "achievement": "Built REST APIs in Python and FastAPI",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   },
+   {
+    "id": "m2",
+    "category": "experience",
+    "achievement": "Reduced page load time by 30% by lazy-loading images",
+    "proof": null,
+    "metric": "30%",
+    "tags": []
+   }
+  ],
+  "draft": {
+   "summary": "Python engineer who builds FastAPI REST APIs and cares about page speed.",
+   "bullets": [
+    "Developed REST APIs using Python and FastAPI",
+    "Cut page load time 30% by lazy-loading images"
+   ],
+   "cover_letter": "I have developed REST APIs with Python and FastAPI, and I cut page load time by 30% by lazy-loading images."
+  },
+  "unsupported": []
+ },
+ {
+  "name": "clean_synonyms",
+  "facts": [
+   {
+    "id": "n1",
+    "category": "experience",
+    "achievement": "Deployed 12 services on K8s",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   },
+   {
+    "id": "n2",
+    "category": "experience",
+    "achievement": "Led a team of five engineers",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   }
+  ],
+  "draft": {
+   "summary": "Platform engineer and team lead.",
+   "bullets": [
+    "Deployed 12 services on Kubernetes",
+    "Managed a team of 5 engineers"
+   ],
+   "cover_letter": "I deployed 12 services on Kubernetes and managed a team of five engineers."
+  },
+  "unsupported": []
+ },
+ {
+  "name": "clean_pm",
+  "facts": [
+   {
+    "id": "o1",
+    "category": "experience",
+    "achievement": "Product manager for a B2B invoicing product",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   },
+   {
+    "id": "o2",
+    "category": "experience",
+    "achievement": "Ran A/B tests on the pricing page",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   },
+   {
+    "id": "o3",
+    "category": "experience",
+    "achievement": "Wrote SQL queries to build weekly metrics reports",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   }
+  ],
+  "draft": {
+   "summary": "Product manager for a B2B invoicing product who runs A/B tests and writes SQL.",
+   "bullets": [
+    "Ran A/B tests on the pricing page",
+    "Wrote SQL queries for weekly metrics reports",
+    "Managed a B2B invoicing product"
+   ],
+   "cover_letter": "I am excited to apply. As product manager for a B2B invoicing product I ran A/B tests on the pricing page and wrote SQL for our weekly metrics reports."
+  },
+  "unsupported": []
+ },
+ {
+  "name": "clean_skill_list",
+  "facts": [
+   {
+    "id": "p1",
+    "category": "skill",
+    "achievement": "TypeScript",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   },
+   {
+    "id": "p2",
+    "category": "skill",
+    "achievement": "React",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   },
+   {
+    "id": "p3",
+    "category": "experience",
+    "achievement": "Built an admin dashboard in React and TypeScript at Acme",
+    "proof": null,
+    "metric": null,
+    "tags": []
+   }
+  ],
+  "draft": {
+   "summary": "Front-end engineer working in React and TypeScript.",
+   "bullets": [
+    "Built an admin dashboard in React and TypeScript at Acme",
+    "TypeScript, React"
+   ],
+   "cover_letter": "At Acme I built an admin dashboard in React and TypeScript."
+  },
+  "unsupported": []
+ },
+ {
+  "name": "full_padding",
+  "facts": [
+   {
+    "id": "x1",
+    "category": "experience",
+    "achievement": "Led backend rewrite from Flask monolith to FastAPI microservices",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": "cut p95 latency 40%",
+    "tags": [
+     "python",
+     "fastapi",
+     "microservices",
+     "backend"
+    ]
+   },
+   {
+    "id": "x2",
+    "category": "experience",
+    "achievement": "Designed and shipped a real-time event pipeline",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": "processes 50M events/day",
+    "tags": [
+     "kafka",
+     "python",
+     "data-engineering"
+    ]
+   },
+   {
+    "id": "x3",
+    "category": "project",
+    "achievement": "Built internal CI/CD platform adopted org-wide",
+    "proof": "Acme Corp platform team",
+    "metric": "cut deploy time from 40min to 4min",
+    "tags": [
+     "ci/cd",
+     "docker",
+     "kubernetes",
+     "devops"
+    ]
+   },
+   {
+    "id": "x4",
+    "category": "skill",
+    "achievement": "Deep experience with PostgreSQL performance tuning and query optimization",
+    "proof": null,
+    "metric": null,
+    "tags": [
+     "postgresql",
+     "sql",
+     "database"
+    ]
+   },
+   {
+    "id": "x5",
+    "category": "skill",
+    "achievement": "Production experience with AWS (ECS, RDS, Lambda) and Terraform-managed infra",
+    "proof": null,
+    "metric": null,
+    "tags": [
+     "aws",
+     "terraform",
+     "cloud"
+    ]
+   },
+   {
+    "id": "x6",
+    "category": "experience",
+    "achievement": "Mentored 4 junior engineers, two promoted to mid-level within a year",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": null,
+    "tags": [
+     "mentoring",
+     "leadership"
+    ]
+   },
+   {
+    "id": "x7",
+    "category": "certification",
+    "achievement": "AWS Certified Solutions Architect - Associate",
+    "proof": "AWS",
+    "metric": null,
+    "tags": [
+     "aws",
+     "certification"
+    ]
+   }
+  ],
+  "draft": {
+   "summary": "Staff Engineer at Acme Corp who led a Flask-to-FastAPI microservices rewrite and built an org-wide CI/CD platform. Deep PostgreSQL tuning and production AWS experience with Terraform.",
+   "bullets": [
+    "Led the backend rewrite from a Flask monolith to FastAPI microservices, cutting p95 latency 40%, ensuring maintainable code and on-time delivery",
+    "Designed and shipped a real-time Kafka event pipeline processing 50M events/day",
+    "Built an internal CI/CD platform adopted org-wide, cutting deploy time from 40 minutes to 4",
+    "Tuned PostgreSQL performance and optimized queries for high-throughput financial transactions",
+    "Ran production workloads on AWS (ECS, RDS, Lambda) with Terraform-managed infrastructure",
+    "Mentored 4 junior engineers; two were promoted to mid-level within a year"
+   ],
+   "cover_letter": "Dear Hiring Manager, I am excited to apply for the Senior Backend Engineer role at Nimbus Cloud. As a Staff Engineer at Acme Corp I led our backend rewrite from a Flask monolith to FastAPI microservices, which cut p95 latency by 40%. I also designed and shipped a real-time event pipeline that processes 50M events a day, and built the internal CI/CD platform the whole organization adopted, taking deploys from 40 minutes to 4. I have deep experience tuning PostgreSQL and run production systems on AWS with Terraform, and I hold the AWS Certified Solutions Architect - Associate certification. I have also mentored four junior engineers, two of whom were promoted within a year. I would welcome the chance to bring this experience to Nimbus Cloud. Sincerely,"
+  },
+  "unsupported": [
+   "ensuring maintainable code and on-time delivery",
+   "high-throughput financial transactions"
+  ]
+ },
+ {
+  "name": "full_scope_tool",
+  "facts": [
+   {
+    "id": "x1",
+    "category": "experience",
+    "achievement": "Led backend rewrite from Flask monolith to FastAPI microservices",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": "cut p95 latency 40%",
+    "tags": [
+     "python",
+     "fastapi",
+     "microservices",
+     "backend"
+    ]
+   },
+   {
+    "id": "x2",
+    "category": "experience",
+    "achievement": "Designed and shipped a real-time event pipeline",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": "processes 50M events/day",
+    "tags": [
+     "kafka",
+     "python",
+     "data-engineering"
+    ]
+   },
+   {
+    "id": "x3",
+    "category": "project",
+    "achievement": "Built internal CI/CD platform adopted org-wide",
+    "proof": "Acme Corp platform team",
+    "metric": "cut deploy time from 40min to 4min",
+    "tags": [
+     "ci/cd",
+     "docker",
+     "kubernetes",
+     "devops"
+    ]
+   },
+   {
+    "id": "x4",
+    "category": "skill",
+    "achievement": "Deep experience with PostgreSQL performance tuning and query optimization",
+    "proof": null,
+    "metric": null,
+    "tags": [
+     "postgresql",
+     "sql",
+     "database"
+    ]
+   },
+   {
+    "id": "x5",
+    "category": "skill",
+    "achievement": "Production experience with AWS (ECS, RDS, Lambda) and Terraform-managed infra",
+    "proof": null,
+    "metric": null,
+    "tags": [
+     "aws",
+     "terraform",
+     "cloud"
+    ]
+   },
+   {
+    "id": "x6",
+    "category": "experience",
+    "achievement": "Mentored 4 junior engineers, two promoted to mid-level within a year",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": null,
+    "tags": [
+     "mentoring",
+     "leadership"
+    ]
+   },
+   {
+    "id": "x7",
+    "category": "certification",
+    "achievement": "AWS Certified Solutions Architect - Associate",
+    "proof": "AWS",
+    "metric": null,
+    "tags": [
+     "aws",
+     "certification"
+    ]
+   }
+  ],
+  "draft": {
+   "summary": "Staff Engineer at Acme Corp who led a Flask-to-FastAPI microservices rewrite and built an org-wide CI/CD platform. Deep PostgreSQL tuning and production AWS experience with Terraform.",
+   "bullets": [
+    "Led the backend rewrite from a Flask monolith to FastAPI microservices, cutting p95 latency 40%",
+    "Designed and shipped a real-time Kafka event pipeline processing 50M events/day",
+    "Built an internal CI/CD platform adopted org-wide across 30+ teams, cutting deploy time from 40 minutes to 4",
+    "Tuned PostgreSQL performance and optimized queries",
+    "Ran production workloads on AWS (ECS, EKS, RDS, Lambda) with Terraform-managed infrastructure",
+    "Mentored 4 junior engineers; two were promoted to mid-level within a year"
+   ],
+   "cover_letter": "Dear Hiring Manager, I am excited to apply for the Senior Backend Engineer role at Nimbus Cloud. As a Staff Engineer at Acme Corp I led our backend rewrite from a Flask monolith to FastAPI microservices, which cut p95 latency by 40%. I also designed and shipped a real-time event pipeline that processes 50M events a day, and built the internal CI/CD platform the whole organization adopted, taking deploys from 40 minutes to 4. I have deep experience tuning PostgreSQL and run production systems on AWS with Terraform, and I hold the AWS Certified Solutions Architect - Associate certification. I have also mentored four junior engineers, two of whom were promoted within a year. I would welcome the chance to bring this experience to Nimbus Cloud. Sincerely,"
+  },
+  "unsupported": [
+   "across 30+ teams",
+   "EKS"
+  ]
+ },
+ {
+  "name": "full_cover_letter",
+  "facts": [
+   {
+    "id": "x1",
+    "category": "experience",
+    "achievement": "Led backend rewrite from Flask monolith to FastAPI microservices",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": "cut p95 latency 40%",
+    "tags": [
+     "python",
+     "fastapi",
+     "microservices",
+     "backend"
+    ]
+   },
+   {
+    "id": "x2",
+    "category": "experience",
+    "achievement": "Designed and shipped a real-time event pipeline",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": "processes 50M events/day",
+    "tags": [
+     "kafka",
+     "python",
+     "data-engineering"
+    ]
+   },
+   {
+    "id": "x3",
+    "category": "project",
+    "achievement": "Built internal CI/CD platform adopted org-wide",
+    "proof": "Acme Corp platform team",
+    "metric": "cut deploy time from 40min to 4min",
+    "tags": [
+     "ci/cd",
+     "docker",
+     "kubernetes",
+     "devops"
+    ]
+   },
+   {
+    "id": "x4",
+    "category": "skill",
+    "achievement": "Deep experience with PostgreSQL performance tuning and query optimization",
+    "proof": null,
+    "metric": null,
+    "tags": [
+     "postgresql",
+     "sql",
+     "database"
+    ]
+   },
+   {
+    "id": "x5",
+    "category": "skill",
+    "achievement": "Production experience with AWS (ECS, RDS, Lambda) and Terraform-managed infra",
+    "proof": null,
+    "metric": null,
+    "tags": [
+     "aws",
+     "terraform",
+     "cloud"
+    ]
+   },
+   {
+    "id": "x6",
+    "category": "experience",
+    "achievement": "Mentored 4 junior engineers, two promoted to mid-level within a year",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": null,
+    "tags": [
+     "mentoring",
+     "leadership"
+    ]
+   },
+   {
+    "id": "x7",
+    "category": "certification",
+    "achievement": "AWS Certified Solutions Architect - Associate",
+    "proof": "AWS",
+    "metric": null,
+    "tags": [
+     "aws",
+     "certification"
+    ]
+   }
+  ],
+  "draft": {
+   "summary": "Staff Engineer at Acme Corp who led a Flask-to-FastAPI microservices rewrite and built an org-wide CI/CD platform. Deep PostgreSQL tuning and production AWS experience with Terraform.",
+   "bullets": [
+    "Led the backend rewrite from a Flask monolith to FastAPI microservices, cutting p95 latency 40%",
+    "Designed and shipped a real-time Kafka event pipeline processing 50M events/day",
+    "Built an internal CI/CD platform adopted org-wide, cutting deploy time from 40 minutes to 4",
+    "Tuned PostgreSQL performance and optimized queries",
+    "Ran production workloads on AWS (ECS, RDS, Lambda) with Terraform-managed infrastructure",
+    "Mentored 4 junior engineers; two were promoted to mid-level within a year"
+   ],
+   "cover_letter": "Dear Hiring Manager, I am excited to apply for the Senior Backend Engineer role at Nimbus Cloud. As a Staff Engineer at Acme Corp I led our backend rewrite from a Flask monolith to FastAPI microservices, which cut p95 latency by 40%. I also designed and shipped a real-time event pipeline that processes 500M events a day, and built the internal CI/CD platform the whole organization adopted, taking deploys from 40 minutes to 4. I have deep experience tuning PostgreSQL and run production systems on AWS with Terraform, and I hold the AWS Certified Solutions Architect - Associate certification. I have also mentored four junior engineers, two of whom were promoted within a year. I also led the migration of our monitoring stack to Datadog and Prometheus. I would welcome the chance to bring this experience to Nimbus Cloud. Sincerely,"
+  },
+  "unsupported": [
+   "500M events a day",
+   "migration of our monitoring stack to Datadog and Prometheus"
+  ]
+ },
+ {
+  "name": "full_outcomes",
+  "facts": [
+   {
+    "id": "x1",
+    "category": "experience",
+    "achievement": "Led backend rewrite from Flask monolith to FastAPI microservices",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": "cut p95 latency 40%",
+    "tags": [
+     "python",
+     "fastapi",
+     "microservices",
+     "backend"
+    ]
+   },
+   {
+    "id": "x2",
+    "category": "experience",
+    "achievement": "Designed and shipped a real-time event pipeline",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": "processes 50M events/day",
+    "tags": [
+     "kafka",
+     "python",
+     "data-engineering"
+    ]
+   },
+   {
+    "id": "x3",
+    "category": "project",
+    "achievement": "Built internal CI/CD platform adopted org-wide",
+    "proof": "Acme Corp platform team",
+    "metric": "cut deploy time from 40min to 4min",
+    "tags": [
+     "ci/cd",
+     "docker",
+     "kubernetes",
+     "devops"
+    ]
+   },
+   {
+    "id": "x4",
+    "category": "skill",
+    "achievement": "Deep experience with PostgreSQL performance tuning and query optimization",
+    "proof": null,
+    "metric": null,
+    "tags": [
+     "postgresql",
+     "sql",
+     "database"
+    ]
+   },
+   {
+    "id": "x5",
+    "category": "skill",
+    "achievement": "Production experience with AWS (ECS, RDS, Lambda) and Terraform-managed infra",
+    "proof": null,
+    "metric": null,
+    "tags": [
+     "aws",
+     "terraform",
+     "cloud"
+    ]
+   },
+   {
+    "id": "x6",
+    "category": "experience",
+    "achievement": "Mentored 4 junior engineers, two promoted to mid-level within a year",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": null,
+    "tags": [
+     "mentoring",
+     "leadership"
+    ]
+   },
+   {
+    "id": "x7",
+    "category": "certification",
+    "achievement": "AWS Certified Solutions Architect - Associate",
+    "proof": "AWS",
+    "metric": null,
+    "tags": [
+     "aws",
+     "certification"
+    ]
+   }
+  ],
+  "draft": {
+   "summary": "Staff Engineer at Acme Corp who led a Flask-to-FastAPI microservices rewrite and built an org-wide CI/CD platform. Deep PostgreSQL tuning and production AWS experience with Terraform.",
+   "bullets": [
+    "Led the backend rewrite from a Flask monolith to FastAPI microservices, cutting p95 latency 40%",
+    "Designed and shipped a real-time Kafka event pipeline processing 50M events/day, enabling real-time fraud detection",
+    "Built an internal CI/CD platform adopted org-wide, cutting deploy time from 40 minutes to 4",
+    "Tuned PostgreSQL performance and optimized queries",
+    "Ran production workloads on AWS (ECS, RDS, Lambda) with Terraform-managed infrastructure",
+    "Mentored 4 junior engineers and built the team's hiring process; two were promoted to mid-level within a year"
+   ],
+   "cover_letter": "Dear Hiring Manager, I am excited to apply for the Senior Backend Engineer role at Nimbus Cloud. As a Staff Engineer at Acme Corp I led our backend rewrite from a Flask monolith to FastAPI microservices, which cut p95 latency by 40%. I also designed and shipped a real-time event pipeline that processes 50M events a day, and built the internal CI/CD platform the whole organization adopted, taking deploys from 40 minutes to 4. I have deep experience tuning PostgreSQL and run production systems on AWS with Terraform, and I hold the AWS Certified Solutions Architect - Associate certification. I have also mentored four junior engineers, two of whom were promoted within a year. I would welcome the chance to bring this experience to Nimbus Cloud. Sincerely,"
+  },
+  "unsupported": [
+   "enabling real-time fraud detection",
+   "built the team's hiring process"
+  ]
+ },
+ {
+  "name": "full_years_money",
+  "facts": [
+   {
+    "id": "x1",
+    "category": "experience",
+    "achievement": "Led backend rewrite from Flask monolith to FastAPI microservices",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": "cut p95 latency 40%",
+    "tags": [
+     "python",
+     "fastapi",
+     "microservices",
+     "backend"
+    ]
+   },
+   {
+    "id": "x2",
+    "category": "experience",
+    "achievement": "Designed and shipped a real-time event pipeline",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": "processes 50M events/day",
+    "tags": [
+     "kafka",
+     "python",
+     "data-engineering"
+    ]
+   },
+   {
+    "id": "x3",
+    "category": "project",
+    "achievement": "Built internal CI/CD platform adopted org-wide",
+    "proof": "Acme Corp platform team",
+    "metric": "cut deploy time from 40min to 4min",
+    "tags": [
+     "ci/cd",
+     "docker",
+     "kubernetes",
+     "devops"
+    ]
+   },
+   {
+    "id": "x4",
+    "category": "skill",
+    "achievement": "Deep experience with PostgreSQL performance tuning and query optimization",
+    "proof": null,
+    "metric": null,
+    "tags": [
+     "postgresql",
+     "sql",
+     "database"
+    ]
+   },
+   {
+    "id": "x5",
+    "category": "skill",
+    "achievement": "Production experience with AWS (ECS, RDS, Lambda) and Terraform-managed infra",
+    "proof": null,
+    "metric": null,
+    "tags": [
+     "aws",
+     "terraform",
+     "cloud"
+    ]
+   },
+   {
+    "id": "x6",
+    "category": "experience",
+    "achievement": "Mentored 4 junior engineers, two promoted to mid-level within a year",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": null,
+    "tags": [
+     "mentoring",
+     "leadership"
+    ]
+   },
+   {
+    "id": "x7",
+    "category": "certification",
+    "achievement": "AWS Certified Solutions Architect - Associate",
+    "proof": "AWS",
+    "metric": null,
+    "tags": [
+     "aws",
+     "certification"
+    ]
+   }
+  ],
+  "draft": {
+   "summary": "Staff Engineer with 10+ years of backend experience at Acme Corp who led a Flask-to-FastAPI microservices rewrite and built an org-wide CI/CD platform. Deep PostgreSQL tuning and production AWS experience with Terraform.",
+   "bullets": [
+    "Led the backend rewrite from a Flask monolith to FastAPI microservices, cutting p95 latency 40%",
+    "Designed and shipped a real-time Kafka event pipeline processing 50M events/day",
+    "Built an internal CI/CD platform adopted org-wide, cutting deploy time from 40 minutes to 4 and saving $2M annually",
+    "Tuned PostgreSQL performance and optimized queries",
+    "Ran production workloads on AWS (ECS, RDS, Lambda) with Terraform-managed infrastructure",
+    "Mentored 4 junior engineers; two were promoted to mid-level within a year"
+   ],
+   "cover_letter": "Dear Hiring Manager, I am excited to apply for the Senior Backend Engineer role at Nimbus Cloud. As a Staff Engineer at Acme Corp I led our backend rewrite from a Flask monolith to FastAPI microservices, which cut p95 latency by 40%. I also designed and shipped a real-time event pipeline that processes 50M events a day, and built the internal CI/CD platform the whole organization adopted, taking deploys from 40 minutes to 4. I have deep experience tuning PostgreSQL and run production systems on AWS with Terraform, and I hold the AWS Certified Solutions Architect - Associate certification. I have also mentored four junior engineers, two of whom were promoted within a year. I would welcome the chance to bring this experience to Nimbus Cloud. Sincerely,"
+  },
+  "unsupported": [
+   "10+ years",
+   "saving $2M annually"
+  ]
+ },
+ {
+  "name": "full_adjectives_scale",
+  "facts": [
+   {
+    "id": "x1",
+    "category": "experience",
+    "achievement": "Led backend rewrite from Flask monolith to FastAPI microservices",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": "cut p95 latency 40%",
+    "tags": [
+     "python",
+     "fastapi",
+     "microservices",
+     "backend"
+    ]
+   },
+   {
+    "id": "x2",
+    "category": "experience",
+    "achievement": "Designed and shipped a real-time event pipeline",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": "processes 50M events/day",
+    "tags": [
+     "kafka",
+     "python",
+     "data-engineering"
+    ]
+   },
+   {
+    "id": "x3",
+    "category": "project",
+    "achievement": "Built internal CI/CD platform adopted org-wide",
+    "proof": "Acme Corp platform team",
+    "metric": "cut deploy time from 40min to 4min",
+    "tags": [
+     "ci/cd",
+     "docker",
+     "kubernetes",
+     "devops"
+    ]
+   },
+   {
+    "id": "x4",
+    "category": "skill",
+    "achievement": "Deep experience with PostgreSQL performance tuning and query optimization",
+    "proof": null,
+    "metric": null,
+    "tags": [
+     "postgresql",
+     "sql",
+     "database"
+    ]
+   },
+   {
+    "id": "x5",
+    "category": "skill",
+    "achievement": "Production experience with AWS (ECS, RDS, Lambda) and Terraform-managed infra",
+    "proof": null,
+    "metric": null,
+    "tags": [
+     "aws",
+     "terraform",
+     "cloud"
+    ]
+   },
+   {
+    "id": "x6",
+    "category": "experience",
+    "achievement": "Mentored 4 junior engineers, two promoted to mid-level within a year",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": null,
+    "tags": [
+     "mentoring",
+     "leadership"
+    ]
+   },
+   {
+    "id": "x7",
+    "category": "certification",
+    "achievement": "AWS Certified Solutions Architect - Associate",
+    "proof": "AWS",
+    "metric": null,
+    "tags": [
+     "aws",
+     "certification"
+    ]
+   }
+  ],
+  "draft": {
+   "summary": "Staff Engineer at Acme Corp who led a Flask-to-FastAPI microservices rewrite and built a world-class, org-wide CI/CD platform. Deep PostgreSQL tuning and production AWS experience with Terraform.",
+   "bullets": [
+    "Led the backend rewrite from a Flask monolith to FastAPI microservices serving millions of users, cutting p95 latency 40%",
+    "Designed and shipped a real-time Kafka event pipeline processing 50M events/day",
+    "Built an internal CI/CD platform adopted org-wide, cutting deploy time from 40 minutes to 4",
+    "Tuned PostgreSQL performance and optimized queries",
+    "Ran production workloads on AWS (ECS, RDS, Lambda) with Terraform-managed infrastructure",
+    "Mentored 4 junior engineers; two were promoted to mid-level within a year"
+   ],
+   "cover_letter": "Dear Hiring Manager, I am excited to apply for the Senior Backend Engineer role at Nimbus Cloud. As a Staff Engineer at Acme Corp I led our backend rewrite from a Flask monolith to FastAPI microservices, which cut p95 latency by 40%. I also designed and shipped a real-time event pipeline that processes 50M events a day, and built the internal CI/CD platform the whole organization adopted, taking deploys from 40 minutes to 4. I have deep experience tuning PostgreSQL and run production systems on AWS with Terraform, and I hold the AWS Certified Solutions Architect - Associate certification. I have also mentored four junior engineers, two of whom were promoted within a year. I would welcome the chance to bring this experience to Nimbus Cloud. Sincerely,"
+  },
+  "unsupported": [
+   "world-class",
+   "serving millions of users"
+  ]
+ },
+ {
+  "name": "full_clean",
+  "facts": [
+   {
+    "id": "x1",
+    "category": "experience",
+    "achievement": "Led backend rewrite from Flask monolith to FastAPI microservices",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": "cut p95 latency 40%",
+    "tags": [
+     "python",
+     "fastapi",
+     "microservices",
+     "backend"
+    ]
+   },
+   {
+    "id": "x2",
+    "category": "experience",
+    "achievement": "Designed and shipped a real-time event pipeline",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": "processes 50M events/day",
+    "tags": [
+     "kafka",
+     "python",
+     "data-engineering"
+    ]
+   },
+   {
+    "id": "x3",
+    "category": "project",
+    "achievement": "Built internal CI/CD platform adopted org-wide",
+    "proof": "Acme Corp platform team",
+    "metric": "cut deploy time from 40min to 4min",
+    "tags": [
+     "ci/cd",
+     "docker",
+     "kubernetes",
+     "devops"
+    ]
+   },
+   {
+    "id": "x4",
+    "category": "skill",
+    "achievement": "Deep experience with PostgreSQL performance tuning and query optimization",
+    "proof": null,
+    "metric": null,
+    "tags": [
+     "postgresql",
+     "sql",
+     "database"
+    ]
+   },
+   {
+    "id": "x5",
+    "category": "skill",
+    "achievement": "Production experience with AWS (ECS, RDS, Lambda) and Terraform-managed infra",
+    "proof": null,
+    "metric": null,
+    "tags": [
+     "aws",
+     "terraform",
+     "cloud"
+    ]
+   },
+   {
+    "id": "x6",
+    "category": "experience",
+    "achievement": "Mentored 4 junior engineers, two promoted to mid-level within a year",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": null,
+    "tags": [
+     "mentoring",
+     "leadership"
+    ]
+   },
+   {
+    "id": "x7",
+    "category": "certification",
+    "achievement": "AWS Certified Solutions Architect - Associate",
+    "proof": "AWS",
+    "metric": null,
+    "tags": [
+     "aws",
+     "certification"
+    ]
+   }
+  ],
+  "draft": {
+   "summary": "Staff Engineer at Acme Corp who led a Flask-to-FastAPI microservices rewrite and built an org-wide CI/CD platform. Deep PostgreSQL tuning and production AWS experience with Terraform.",
+   "bullets": [
+    "Led the backend rewrite from a Flask monolith to FastAPI microservices, cutting p95 latency 40%",
+    "Designed and shipped a real-time Kafka event pipeline processing 50M events/day",
+    "Built an internal CI/CD platform adopted org-wide, cutting deploy time from 40 minutes to 4",
+    "Tuned PostgreSQL performance and optimized queries",
+    "Ran production workloads on AWS (ECS, RDS, Lambda) with Terraform-managed infrastructure",
+    "Mentored 4 junior engineers; two were promoted to mid-level within a year"
+   ],
+   "cover_letter": "Dear Hiring Manager, I am excited to apply for the Senior Backend Engineer role at Nimbus Cloud. As a Staff Engineer at Acme Corp I led our backend rewrite from a Flask monolith to FastAPI microservices, which cut p95 latency by 40%. I also designed and shipped a real-time event pipeline that processes 50M events a day, and built the internal CI/CD platform the whole organization adopted, taking deploys from 40 minutes to 4. I have deep experience tuning PostgreSQL and run production systems on AWS with Terraform, and I hold the AWS Certified Solutions Architect - Associate certification. I have also mentored four junior engineers, two of whom were promoted within a year. I would welcome the chance to bring this experience to Nimbus Cloud. Sincerely,"
+  },
+  "unsupported": []
+ },
+ {
+  "name": "full_clean_reworded",
+  "facts": [
+   {
+    "id": "x1",
+    "category": "experience",
+    "achievement": "Led backend rewrite from Flask monolith to FastAPI microservices",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": "cut p95 latency 40%",
+    "tags": [
+     "python",
+     "fastapi",
+     "microservices",
+     "backend"
+    ]
+   },
+   {
+    "id": "x2",
+    "category": "experience",
+    "achievement": "Designed and shipped a real-time event pipeline",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": "processes 50M events/day",
+    "tags": [
+     "kafka",
+     "python",
+     "data-engineering"
+    ]
+   },
+   {
+    "id": "x3",
+    "category": "project",
+    "achievement": "Built internal CI/CD platform adopted org-wide",
+    "proof": "Acme Corp platform team",
+    "metric": "cut deploy time from 40min to 4min",
+    "tags": [
+     "ci/cd",
+     "docker",
+     "kubernetes",
+     "devops"
+    ]
+   },
+   {
+    "id": "x4",
+    "category": "skill",
+    "achievement": "Deep experience with PostgreSQL performance tuning and query optimization",
+    "proof": null,
+    "metric": null,
+    "tags": [
+     "postgresql",
+     "sql",
+     "database"
+    ]
+   },
+   {
+    "id": "x5",
+    "category": "skill",
+    "achievement": "Production experience with AWS (ECS, RDS, Lambda) and Terraform-managed infra",
+    "proof": null,
+    "metric": null,
+    "tags": [
+     "aws",
+     "terraform",
+     "cloud"
+    ]
+   },
+   {
+    "id": "x6",
+    "category": "experience",
+    "achievement": "Mentored 4 junior engineers, two promoted to mid-level within a year",
+    "proof": "Staff Engineer, Acme Corp",
+    "metric": null,
+    "tags": [
+     "mentoring",
+     "leadership"
+    ]
+   },
+   {
+    "id": "x7",
+    "category": "certification",
+    "achievement": "AWS Certified Solutions Architect - Associate",
+    "proof": "AWS",
+    "metric": null,
+    "tags": [
+     "aws",
+     "certification"
+    ]
+   }
+  ],
+  "draft": {
+   "summary": "Staff Engineer at Acme Corp who led a Flask-to-FastAPI microservices rewrite and built an org-wide CI/CD platform. Deep PostgreSQL tuning and production AWS experience with Terraform.",
+   "bullets": [
+    "Led the backend rewrite from a Flask monolith to FastAPI microservices, cutting p95 latency 40%",
+    "Designed and shipped a real-time Kafka event pipeline processing 50M events/day",
+    "Reduced deploy time from 40 min to 4 min with an internal CI/CD platform the whole org adopted",
+    "Optimized PostgreSQL query performance",
+    "Ran production workloads on AWS (ECS, RDS, Lambda) with Terraform-managed infrastructure",
+    "Mentored 4 junior engineers; two were promoted to mid-level within a year"
+   ],
+   "cover_letter": "Dear Hiring Manager, I am excited to apply for the Senior Backend Engineer role at Nimbus Cloud. As a Staff Engineer at Acme Corp I led our backend rewrite from a Flask monolith to FastAPI microservices, which cut p95 latency by 40%. I also designed and shipped a real-time event pipeline that processes 50M events a day, and built the internal CI/CD platform the whole organization adopted, taking deploys from 40 minutes to 4. I have deep experience tuning PostgreSQL and run production systems on AWS with Terraform, and I hold the AWS Certified Solutions Architect - Associate certification. I have also mentored four junior engineers, two of whom were promoted within a year. I would welcome the chance to bring this experience to Nimbus Cloud. Sincerely,"
+  },
+  "unsupported": []
+ }
+]
