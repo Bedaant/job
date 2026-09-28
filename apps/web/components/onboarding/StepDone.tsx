@@ -154,7 +154,7 @@ export function StepDone({ campaign, profileId, started }: { campaign: Campaign;
           Go to Today
         </Link>
         <Link
-          href="/matches"
+          href="/applications/matches"
           className="inline-flex min-h-11 items-center rounded-md border border-input px-4 text-sm font-medium hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           See all matches

@@ -255,7 +255,7 @@ export default function ReviewPage() {
             Nothing needs you right now. New applications are tailored and truth-checked, then land here.
           </p>
           <Button asChild variant="outline" className="mt-5">
-            <Link href="/matches">See matches</Link>
+            <Link href="/applications/matches">See matches</Link>
           </Button>
         </div>
       )}

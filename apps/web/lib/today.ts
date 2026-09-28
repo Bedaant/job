@@ -43,7 +43,7 @@ export function greeting(now = new Date()): string {
 }
 
 export function activityHref(type: string): string {
-  if (type === "match.new") return "/matches";
+  if (type === "match.new") return "/applications/matches";
   if (type === "application.ready_for_review" || type === "application.needs_human") return "/review";
   return "/campaign";
 }

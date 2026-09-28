@@ -228,7 +228,7 @@ export default function TodayPage() {
               <Tile label="Sent today" value={counts.sent_today} sub={dailyLimitCaption(campaign.daily_cap)} />
               <Tile label="Ready to send" value={counts.ready_to_send ?? 0} sub="Send them" href="/review#ready-to-send" />
               <Tile label="Needs you" value={counts.needs_you} sub="Open Review" href="/review" />
-              <Tile label="New matches" value={counts.new_matches_today} sub="See matches" href="/matches" />
+              <Tile label="New matches" value={counts.new_matches_today} sub="See matches" href="/applications/matches" />
             </div>
           )}
 

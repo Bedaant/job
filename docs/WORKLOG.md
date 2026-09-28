@@ -102,6 +102,24 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-28 (latest+48) — Post-merge check; match links skip the redirect
+
+**What changed.** Merged master (profile + onboarding + applications branches) verified
+together: api **604/604**, web **136/136**, `tsc` + `next build` clean. Migration chain is
+linear (0020 → 0018; no 0019 landed, so no second head). Today tile, Today activity rows
+(`activityHref`), StepDone and the empty Review state now link `/applications/matches`
+directly instead of bouncing through the `/matches` redirect.
+
+**Files.** web: `lib/today.ts` + test, `app/today/page.tsx`, `app/review/page.tsx`,
+`components/onboarding/StepDone.tsx`.
+
+**Tests.** Red first (`activityHref` expected the new path), then green.
+
+**Next.** Apply 0020 to Neon before deploying. Redis Cloud DB still gone (new REDIS_URL
+needed). Dropzone rejects too-big/wrong-type files silently. 6 local commits not pushed.
+
+---
+
 ### 2026-09-28 (latest+47) — Onboarding: no duplicates, survives refresh, real sources; 404/error pages
 
 **What changed.**

@@ -69,7 +69,7 @@ describe("greeting", () => {
 
 describe("activityHref", () => {
   it("links each row to where the user can act on it", () => {
-    expect(activityHref("match.new")).toBe("/matches");
+    expect(activityHref("match.new")).toBe("/applications/matches");
     expect(activityHref("application.ready_for_review")).toBe("/review");
     expect(activityHref("application.needs_human")).toBe("/review");
     expect(activityHref("application.submitted")).toBe("/campaign");
