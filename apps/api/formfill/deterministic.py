@@ -6,7 +6,7 @@ Checked in map_fields.py::map_form_fields BEFORE the bounded LLM path, not
 instead of it — anything this can't resolve falls through unchanged.
 
 Given/family name fill only from the summary's given_name/family_name:
-the user's own (migration 0018), else first/last token of full_name
+the user's own (migration 0018), else a two-word full_name split in two
 (map_fields.build_profile_summary). This module never splits anything.
 
 Rules match whole tokens (docs/LIVE-FORM-TEST.md #6: `tel` matched

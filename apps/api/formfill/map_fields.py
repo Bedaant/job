@@ -58,13 +58,12 @@ def build_profile_summary(profile, email: str) -> dict:
             summary[name] = value
 
     # Missing name parts come from the user's own full_name, mapping-time only
-    # (never written back): first token -> given, last -> family. One token
-    # fills given only; family stays missing and the field is flagged.
+    # (never written back), and only for an unambiguous two-word name. "Mary Jane
+    # Watson" or "Cher" has no one right split: those stay missing and are flagged.
     tokens = (summary.get("full_name") or "").split()
-    if tokens:
+    if len(tokens) == 2:
         summary.setdefault("given_name", tokens[0])
-        if len(tokens) > 1:
-            summary.setdefault("family_name", tokens[-1])
+        summary.setdefault("family_name", tokens[1])
 
     if getattr(profile, "network_profiles", None):
         summary["network_profiles"] = profile.network_profiles

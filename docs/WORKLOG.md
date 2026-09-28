@@ -102,6 +102,30 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-28 (latest+53) — Names from a two-word full_name, Voyage free-tier backfill, digest email
+
+Three parallel worktree agents, each reviewed and merged. Suite **672/672**.
+- **First/Last Name.** `formfill/map_fields.build_profile_summary` only copied
+  `given_name`/`family_name`, so a profile with just `full_name` left Greenhouse's two
+  required name fields flagged. Now a **two-word** full_name fills the missing parts at
+  mapping time. It is never written back, and parts the user typed win. The agent's
+  version split any name (first/last token); narrowed on review to exactly two words,
+  because the earlier "a split is a guess" call (entries around lines 713/1582) is right
+  for "Mary Jane Watson" / "Juan Carlos García López" / "Cher". Those stay flagged; the
+  Profile page sets the parts.
+- **Voyage backfill** (`connectors/pipeline.py`). All 50 pending jobs went in ONE request
+  (far over the 10K TPM free tier; the client has `max_retries=0`), so every pass got a
+  429 and embedded nothing. Now requests are ≤24K chars (~6K tokens, ponytail-marked
+  estimate), each committed as it lands, and the first failure ends the pass. No sleeping
+  in the SimpleWorker. `upsert_jobs`' one-shot embed is unchanged.
+- **Digest email** (`digest.smtp_sender`, stdlib smtplib). Set `SMTP_HOST/PORT/USER/
+  PASSWORD/FROM` (repo-root `.env.example`) to send; port 465 = SSL, else STARTTLS. Unset
+  = log-only as before. A failed send → Notification `failed`, only the exception type
+  is logged. A failed day is not retried (the per-day idempotency check sees the row).
+  Gmail needs an App Password.
+
+---
+
 ### 2026-09-28 (latest+52) — Embedded Greenhouse, tested live: two bugs found and fixed
 
 **How tested.** A local careers page (127.0.0.1) with its own one-field "talent

@@ -339,8 +339,12 @@ def test_profile_summary_carries_given_and_family_name():
 
 @pytest.mark.parametrize("full_name,given,family", [
     ("Morgan Ellery", "Morgan", "Ellery"),
-    ("  Mary Jane   Watson ", "Mary", "Watson"),
-    ("Cher", "Cher", None),  # one token: family stays unfilled, never invented
+    ("  Morgan   Ellery ", "Morgan", "Ellery"),
+    # Only an unambiguous two-word name is split. "Mary Jane Watson" / "Juan Carlos
+    # García López" / "Cher" have no one right answer: both stay unfilled (flagged).
+    ("Mary Jane Watson", None, None),
+    ("Juan Carlos García López", None, None),
+    ("Cher", None, None),
 ])
 def test_profile_summary_splits_full_name_only_when_parts_are_missing(full_name, given, family):
     """Harness profile (full_name only) left Greenhouse First/Last Name flagged."""
