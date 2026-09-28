@@ -189,17 +189,38 @@ export const NEEDS_USER_REASONS = new Set([
   "file_upload", // a required upload that isn't the resume
 ]);
 
-// apps/api/needs_input.py sets demographic_left_blank on /\bdemographic\b/, and
-// "_" is a word char, so the raw reason code alone would not match.
+// Plain words per blocking reason. apps/api/needs_input.py reads the kind back from
+// this text: "demographic" (whole word) sets demographic_left_blank, "upload" and
+// "no saved answer"/"not sure what to enter" pick the kind. Keep them in step.
 const REASON_TEXT = {
-  demographic_required: "required demographic self-identification question",
+  demographic_required: "required demographic self-identification, only you can answer",
+  essay_no_stored_answer: "no saved answer",
+  low_confidence: "not sure what to enter",
+  file_upload: "a file to upload",
 };
+// 15 names x 80 chars keeps the note far under the API's 2000-char reason cap.
+const MAX_NAMES = 15;
+const MAX_NAME = 80;
 
+// blocking: {field_id, reason, label}[] (label = the field's label_text, else its name).
 export function needsHumanReason(blocking) {
-  return (
-    `${blocking.length} field(s) need your input and were not answered: ` +
-    blocking.map((f) => REASON_TEXT[f.reason] ?? f.reason).join(", ")
-  );
+  const groups = new Map(); // reason text -> Set of names, first-seen order
+  for (const f of blocking) {
+    const text = REASON_TEXT[f.reason] ?? "needs your input";
+    const name = (f.label ?? "").trim().slice(0, MAX_NAME) || "an unlabeled field";
+    if (!groups.has(text)) groups.set(text, new Set());
+    groups.get(text).add(name);
+  }
+  let left = MAX_NAMES;
+  let dropped = 0;
+  const parts = [];
+  for (const [text, names] of groups) {
+    const shown = [...names].slice(0, left);
+    dropped += names.size - shown.length;
+    left -= shown.length;
+    if (shown.length) parts.push(`${shown.join(", ")} (${text})`);
+  }
+  return `Needs you: ${parts.join("; ")}${dropped ? `; and ${dropped} more` : ""}`;
 }
 
 // --- file inputs --------------------------------------------------------------

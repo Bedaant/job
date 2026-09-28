@@ -317,7 +317,7 @@ function markField(el: HTMLElement, kind: keyof typeof OUTLINES, title: string) 
 
 export type FillOutcome = {
   filled: number;
-  flagged: { field_id: string; reason: string }[];
+  flagged: { field_id: string; reason: string; label: string | null }[];
   // Labels of flagged fields the user can answer once into the answer bank.
   questions: string[];
 };
@@ -468,7 +468,10 @@ export async function fillForm(profileId: string, atsType?: string | null): Prom
 
   return {
     filled,
-    flagged: flag.map((f) => ({ field_id: f.field_id, reason: f.reason })),
+    flagged: flag.map((f) => {
+      const d = descriptorById.get(f.field_id) ?? files.find((x) => x.descriptor.field_id === f.field_id)?.descriptor;
+      return { field_id: f.field_id, reason: f.reason, label: d?.label_text?.trim() || d?.name || null };
+    }),
     questions: unansweredQuestions(descriptors, flag),
   };
 }

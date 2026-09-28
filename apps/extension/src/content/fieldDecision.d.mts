@@ -30,7 +30,9 @@ export function decideFieldActions(
   mappings: FieldMapping[],
 ): { fill: { field_id: string; value: string }[]; flag: { field_id: string; reason: string }[] };
 export const NEEDS_USER_REASONS: Set<string>;
-export function needsHumanReason(blocking: { field_id: string; reason: string }[]): string;
+export function needsHumanReason(
+  blocking: { field_id: string; reason: string; label?: string | null }[],
+): string;
 export function classifyFileInput(field: {
   label_text: string | null;
   name?: string | null;
