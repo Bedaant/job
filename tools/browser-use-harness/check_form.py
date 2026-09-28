@@ -278,6 +278,20 @@ async def run_auditor(cdp_url: str, host: str, identity: dict, timings: dict) ->
     }
 
 
+async def form_frame(page):
+    """The frame holding the application form (most fields): the top frame on an ATS page,
+    the iframe on a careers page that embeds the board (boards.greenhouse.io/embed/...)."""
+    best, most = page.main_frame, -1
+    for f in page.frames:
+        try:
+            n = await f.evaluate("() => document.querySelectorAll('input:not([type=hidden]), select, textarea').length")
+        except Exception:  # detached / cross-process frame mid-navigation
+            continue
+        if n > most:
+            best, most = f, n
+    return best
+
+
 async def check(url: str, ats: str, headed: bool, audit: bool) -> dict:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     timings: dict = {}
@@ -318,7 +332,9 @@ async def check(url: str, ats: str, headed: bool, audit: bool) -> dict:
             await page.wait_for_timeout(2500)
             await verify_guard(page, guard)  # loud failure if either layer is not live here
             timings["navigate_s"] = round(time.monotonic() - t, 1)
-            before = await page.evaluate(SNAPSHOT_JS)
+            form = await form_frame(page)
+            report["form_frame_url"] = form.url
+            before = await form.evaluate(SNAPSHOT_JS)
 
             t = time.monotonic()
             try:
@@ -334,7 +350,7 @@ async def check(url: str, ats: str, headed: bool, audit: bool) -> dict:
                 report["extension_response"] = {"ok": False, "error": f"no answer in {FILL_TIMEOUT_S}s"}
             await page.wait_for_timeout(1500)  # let React settle / re-render after the fill
             timings["fill_s"] = round(time.monotonic() - t, 1)
-            after = await page.evaluate(SNAPSHOT_JS)
+            after = await form.evaluate(SNAPSHOT_JS)
             report["dom"] = analyse(before, after)
             report["dom_snapshot"] = after
             REPORTS.mkdir(exist_ok=True)
@@ -370,6 +386,9 @@ async def check(url: str, ats: str, headed: bool, audit: bool) -> dict:
         failures.append(f"{report['guard']['submit_attempts_blocked']} submit attempt(s)")
     for d in report.get("dom", {}).get("demographic_violations", []):
         failures.append(f"demographic field got a value: {d['label'] or d['group'] or d['key']} = {d['value']!r}")
+    said = (report.get("extension_response") or {}).get("filled") or 0
+    if said and not report.get("dom", {}).get("filled"):  # the embedded-Greenhouse bug: writes to detached nodes
+        failures.append(f"extension reported {said} filled, none visible in the form")
     report["failures"] = failures
     report["passed"] = not failures
     write_report(report, stamp, ats)

@@ -25,8 +25,9 @@ import {
   matchOption,
   readAllOptions,
 } from "./combobox.mjs";
+import { relink } from "./relink.mjs";
 import { base64ToBytes } from "../background/apiProxyCore.mjs";
-import { holdsApplicationForm } from "../background/driverCore.mjs";
+import { fillsOnPopup } from "../background/driverCore.mjs";
 import type { ApiProxyResponse } from "../background/apiProxy";
 
 // ADR-001 runtime guard, defense-in-depth alongside the static source-text
@@ -393,6 +394,18 @@ export async function fillForm(profileId: string, atsType?: string | null): Prom
     }
   }
 
+  // The form may have been re-rendered while we waited (Greenhouse's embed does):
+  // write to the live elements, never to detached ones.
+  if (controls.some((el) => !el.isConnected)) {
+    const fresh = Array.from(document.querySelectorAll<HTMLElement>("input, select, textarea"));
+    const sig = (el: HTMLElement) => ({
+      tag: el.tagName, type: (el as HTMLInputElement).type ?? "", id: el.id, name: el.getAttribute("name") ?? "",
+    });
+    relink(controls.map(sig), fresh.map(sig)).forEach((j, i) => {
+      if (j >= 0 && !controls[i].isConnected) controls[i] = fresh[j];
+    });
+  }
+
   const { fill, flag } = decideFieldActions(descriptors, mappings);
 
   // Files FIRST: an upload re-renders React ATSes (Ashby wiped text filled before
@@ -461,9 +474,11 @@ export function controlTypes(): string[] {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  // The popup's message reaches every frame (all_frames). A sub-frame without an
-  // application form (captcha, ads) stays out of it: no fill, no alert, no answer.
-  if (message?.type === "jc:fill-form" && (window === window.top || holdsApplicationForm(controlTypes()))) {
+  // The popup's message reaches every frame (all_frames) and the first answer wins.
+  // A frame without the application form (captcha, ads, a careers page around an
+  // embedded board) stays out of it: no fill, no alert, no answer.
+  const frame = { isTop: window === window.top, controlTypes: controlTypes(), hasIframes: !!document.querySelector("iframe") };
+  if (message?.type === "jc:fill-form" && fillsOnPopup(frame)) {
     // The interactive path keeps its alert — a user who clicked "fill" is present
     // to read it. The automated path (autoApply.content.ts) handles the throw.
     fillForm(message.profileId)

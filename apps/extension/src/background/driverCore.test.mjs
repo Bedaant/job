@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   classifyFailure,
+  fillsOnPopup,
   planRun,
   MAX_ATTEMPTS_PER_ITEM,
   MIN_APPLICATION_FIELDS,
@@ -166,4 +167,16 @@ test("reports and submit-sent are accepted only from the chosen frame", () => {
   assert.equal(isFromAssignedFrame({ item: ITEM }, 0), false, "no frame chosen yet: nobody may report");
   assert.equal(isFromAssignedFrame(undefined, 0), false);
   assert.equal(isFromAssignedFrame({ item: ITEM, frameId: 5 }, undefined), false);
+});
+
+// Found live (harness, careers page embedding boards.greenhouse.io): the top frame
+// answered the popup first and filled the page's one-field "talent community" box.
+test("fillsOnPopup: only a frame with the application form fills; a formless top page with iframes stays out", () => {
+  const form = ["text", "text", "email", "tel", "file", "textarea"];
+  const tiny = ["email", "button"];
+  assert.equal(fillsOnPopup({ isTop: false, controlTypes: form, hasIframes: false }), true);
+  assert.equal(fillsOnPopup({ isTop: false, controlTypes: ["hidden", "textarea"], hasIframes: false }), false);
+  assert.equal(fillsOnPopup({ isTop: true, controlTypes: tiny, hasIframes: true }), false);
+  assert.equal(fillsOnPopup({ isTop: true, controlTypes: form, hasIframes: true }), true);
+  assert.equal(fillsOnPopup({ isTop: true, controlTypes: tiny, hasIframes: false }), true); // plain page: as before
 });

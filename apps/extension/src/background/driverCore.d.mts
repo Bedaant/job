@@ -40,3 +40,4 @@ export function isFromAssignedFrame<T>(
   assignment: FrameAssignment<T> | undefined,
   frameId: number | undefined,
 ): boolean;
+export function fillsOnPopup(frame: { isTop: boolean; controlTypes: string[]; hasIframes: boolean }): boolean;

@@ -131,3 +131,10 @@ export function answerForFrame(assignment, frameId) {
 export function isFromAssignedFrame(assignment, frameId) {
   return assignment?.frameId !== undefined && assignment.frameId === frameId;
 }
+
+/** Popup "fill" (jc:fill-form reaches every frame; the first answer wins): a frame
+ *  holding the application form fills; the top frame also fills a small form, but only
+ *  on a page without iframes — otherwise the embedded board's form must answer. */
+export function fillsOnPopup({ isTop, controlTypes, hasIframes }) {
+  return holdsApplicationForm(controlTypes) || (isTop && !hasIframes);
+}

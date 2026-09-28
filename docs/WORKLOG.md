@@ -102,6 +102,45 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-28 (latest+52) — Embedded Greenhouse, tested live: two bugs found and fixed
+
+**How tested.** A local careers page (127.0.0.1) with its own one-field "talent
+community" form and Greenhouse's official embed iframe
+(`job-boards.greenhouse.io/embed/job_app?for=anthropic&token=4461450008`), run through
+the no-submit harness with a freshly built extension. `check_form.py` now snapshots
+the frame holding the most fields (`form_frame`), not always the top frame.
+
+**Bug 1: the wrong frame answered the popup.** `jc:fill-form` reaches every frame and
+the first answer wins. The top frame always filled, so it answered first and filled
+the careers page's talent-community email box; the Greenhouse form got nothing, and
+the harness still said PASS. Fix: `driverCore.fillsOnPopup`, where a frame fills only
+if it holds an application form (≥4 fields). The top frame still fills a small form,
+but only on a page without iframes. The popup now says "No application form found on
+this page." when no frame answers (before, `sendMessage` threw and nothing was shown).
+
+**Bug 2: writes to detached elements.** Greenhouse's embed re-renders its whole form
+(an in-page navigation, window state kept) as the fill starts. Proven by tagging every
+input first: 0 tagged inputs left live. `fillForm` held the old elements through the
+~20 s `/map-fields` call, then wrote into detached nodes, so it reported `filled: 4`
+with nothing on screen. Fix: after mapping, any detached control is swapped for its
+live twin (`content/relink.mjs`: same index if the form has the same shape, else the
+same id, else left alone and never guessed).
+
+**Result.** Embedded and direct runs are now identical: Email, Country +1, Phone and
+LinkedIn filled; demographics blank; 0 submits. The harness now also fails when the
+extension reports fields filled but none are visible.
+
+**Tests.** Red first for `fillsOnPopup` and `relink`. Extension 98/98, `tsc` clean,
+guard 12/12.
+
+**Notes.** First/Last Name come back `low_confidence` on both direct and embedded
+pages. The harness profile sets only `full_name`, not `given_name`/`family_name`;
+this is a mapping gap and not specific to the embed. Only the popup fill was tested
+live; the auto-apply frame claim (`jc:claim-frame`) was not driven (that needs an
+approved queue item).
+
+---
+
 ### 2026-09-28 (latest+51) — Redis back; worker socket leak fixed
 
 **What changed.** New Redis Cloud DB (`REDIS_URL` in `apps/api/.env`). The first

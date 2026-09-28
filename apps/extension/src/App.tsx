@@ -72,7 +72,9 @@ export default function App() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) return;
     setStatus("Filling…");
-    const response = await chrome.tabs.sendMessage(tab.id, { type: "jc:fill-form", profileId });
+    // No frame answers (no application form anywhere on the page) -> sendMessage rejects.
+    const response = await chrome.tabs.sendMessage(tab.id, { type: "jc:fill-form", profileId }).catch(() => null);
+    if (response === null) return setStatus("No application form found on this page.");
     setStatus(
       response?.ok
         ? "Filled. Check the highlighted fields before you submit."
