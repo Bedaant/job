@@ -606,3 +606,8 @@ test("a label ending in * counts as required for unmapped fields", () => {
   assert.equal(reasons["Website"], "optional_left_blank");
   assert.equal(reasons["Rate 5*5"], "optional_left_blank");
 });
+
+test("military status is demographic (same list as the server)", () => {
+  assert.equal(isDemographicField({ label_text: "What is your military status?*" }), true);
+  assert.equal(isDemographicField({ label_text: "Military experience (years)" }), false);
+});

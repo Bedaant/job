@@ -125,17 +125,24 @@ const countryName = (code) => {
   }
 };
 
-// "CA" fits "California": same first letter, then the rest in order.
-// ponytail: a subsequence heuristic ("MA" also fits "Maryland"); a subdivision table
-// is the upgrade if a same-country, same-name, wrong-state city ever gets picked.
+// A region fits when it is spelled the same, or is a US state code for that state
+// ("CA" -> California; "MA" is Massachusetts, never Maryland).
+// ponytail: US codes only; elsewhere the region must be written out in full.
+const US_STATES = Object.fromEntries(
+  ("al alabama|ak alaska|az arizona|ar arkansas|ca california|co colorado|ct connecticut|" +
+    "de delaware|dc district of columbia|fl florida|ga georgia|hi hawaii|id idaho|il illinois|" +
+    "in indiana|ia iowa|ks kansas|ky kentucky|la louisiana|me maine|md maryland|ma massachusetts|" +
+    "mi michigan|mn minnesota|ms mississippi|mo missouri|mt montana|ne nebraska|nv nevada|" +
+    "nh new hampshire|nj new jersey|nm new mexico|ny new york|nc north carolina|nd north dakota|" +
+    "oh ohio|ok oklahoma|or oregon|pa pennsylvania|ri rhode island|sc south carolina|" +
+    "sd south dakota|tn tennessee|tx texas|ut utah|vt vermont|va virginia|wa washington|" +
+    "wv west virginia|wi wisconsin|wy wyoming")
+    .split("|")
+    .map((s) => [s.slice(0, 2), s.slice(3)]),
+);
 const regionFits = (part, region) => {
   const r = key(region), p = key(part);
-  if (!r) return false;
-  if (r === p) return true;
-  if (!/^[a-z]{2,3}$/.test(r) || p[0] !== r[0]) return false;
-  let i = 0;
-  for (const ch of p) if (ch === r[i]) i++;
-  return i === r.length;
+  return r !== "" && (r === p || US_STATES[r] === p);
 };
 
 // The one option that is the user's city, e.g. "San Francisco, California, United

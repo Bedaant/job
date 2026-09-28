@@ -86,3 +86,16 @@ def test_legal_age_answer_is_still_saved(db_session):
     profile = _profile(db_session, "age-legal@example.com")
     save_answer(db_session, profile.id, "Are you 18 years of age or older?", "Yes")
     assert db_session.query(models.AnswerBank).count() == 1
+
+
+# Live miss (Robinhood): "What is your military status?*" was not demographic, so an
+# answer to it could be saved to the bank and auto-filled later.
+@pytest.mark.parametrize("label", ["What is your military status?*", "Military Status"])
+def test_military_status_is_demographic(label):
+    assert is_demographic_field(label) is True
+
+
+def test_military_status_answer_is_refused_on_save(db_session):
+    profile = _profile(db_session, "military@example.com")
+    with pytest.raises(HTTPException):
+        save_answer(db_session, profile.id, "What is your military status?", "Not a veteran")

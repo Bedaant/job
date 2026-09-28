@@ -257,3 +257,13 @@ test("fillCityTypeahead: the click didn't take -> false, typed text cleared", as
   assert.equal(await fillCityTypeahead(w, HOME), false);
   assert.equal(w.text, "");
 });
+
+// Review: "MA" must never fit "Maryland" (the old letter-order check did). A wrong
+// state is wrong data sent to an employer.
+test("matchCityOption: a state code only matches its own state", () => {
+  const ma = { city: "Springfield", region: "MA", country_code: "US" };
+  assert.equal(matchCityOption(["Springfield, Maryland, United States"], ma), -1);
+  assert.equal(matchCityOption(["Springfield, Maryland, United States", "Springfield, Massachusetts, United States"], ma), 1);
+  assert.equal(matchCityOption(["Portland, Oregon, United States"], { city: "Portland", region: "ME", country_code: "US" }), -1);
+  assert.equal(matchCityOption(["San Francisco, California, United States"], { city: "San Francisco", region: "CA", country_code: "US" }), 0);
+});

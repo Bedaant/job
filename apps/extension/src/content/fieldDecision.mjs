@@ -22,7 +22,7 @@ export const CONFIDENCE_THRESHOLD = 0.75;
 // "Texas Woman's University" and "Asian Institute of Technology" is not EEO.
 export const DEMOGRAPHIC_LABEL_KEYWORDS = [
   "race", "ethnicity", "ethnic", "hispanic", "latino", "latina", "latinx",
-  "gender", "sexual orientation", "transgender", "pronoun", "veteran",
+  "gender", "sexual orientation", "transgender", "pronoun", "veteran", "military status",
   "disability", "disabled",
 ];
 const SEX_WORD = /\bsex\b/i;

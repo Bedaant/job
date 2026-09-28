@@ -50,7 +50,7 @@ import models
 DEMOGRAPHIC_LABEL_KEYWORDS = [
     "race", "ethnicity", "ethnic", "hispanic", "latino", "latina", "latinx",
     "gender", "sexual orientation", "transgender", "pronoun",
-    "veteran", "disability", "disabled",
+    "veteran", "military status", "disability", "disabled",
 ]
 _DEMOGRAPHIC_QUESTION = re.compile(
     r"\b(?:" + "|".join(re.escape(k) for k in [*DEMOGRAPHIC_LABEL_KEYWORDS, "sex"]) + r")s?\b"
