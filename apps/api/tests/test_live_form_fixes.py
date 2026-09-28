@@ -337,6 +337,33 @@ def test_profile_summary_carries_given_and_family_name():
     assert summary["given_name"] == "Priya" and summary["family_name"] == "Raman"
 
 
+@pytest.mark.parametrize("full_name,given,family", [
+    ("Morgan Ellery", "Morgan", "Ellery"),
+    ("  Mary Jane   Watson ", "Mary", "Watson"),
+    ("Cher", "Cher", None),  # one token: family stays unfilled, never invented
+])
+def test_profile_summary_splits_full_name_only_when_parts_are_missing(full_name, given, family):
+    """Harness profile (full_name only) left Greenhouse First/Last Name flagged."""
+    class P:
+        pass
+    p = P()
+    p.full_name, p.given_name, p.family_name = full_name, None, None
+    summary = build_profile_summary(p, "m@example.com")
+    assert summary.get("given_name") == given and summary.get("family_name") == family
+    assert p.given_name is None and p.family_name is None  # never written back
+
+    fields = [_field(dom_id="first_name", label_text="First Name"), _field(dom_id="last_name", label_text="Last Name")]
+    got = [match_field_deterministic(f, summary, ats_type="greenhouse") for f in fields]
+    assert [g and g["value"] for g in got] == [given, family]
+
+
+def test_user_entered_name_parts_win_over_the_split():
+    class P:
+        full_name, given_name, family_name = "Morgan Ellery", "Mo", None
+    summary = build_profile_summary(P(), "m@example.com")
+    assert summary["given_name"] == "Mo" and summary["family_name"] == "Ellery"
+
+
 def test_a_recognised_first_name_field_never_falls_through_to_the_llm():
     """Found by the browser-use harness on the real Greenhouse form: First Name
     and Last Name (autocomplete given-name/family-name) both got the FULL name.

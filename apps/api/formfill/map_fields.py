@@ -30,7 +30,7 @@ _CHOICE_TYPES = {"radio", "checkbox"}
 # phone, location and links always came back `unknown`).
 _BASICS_FIELDS = (
     "full_name",
-    "given_name",   # user-entered, never split from full_name (migration 0018)
+    "given_name",   # user-entered (migration 0018); else split from full_name below
     "family_name",
     "phone",
     "website_url",
@@ -56,6 +56,15 @@ def build_profile_summary(profile, email: str) -> dict:
         value = getattr(profile, name, None)
         if value:
             summary[name] = value
+
+    # Missing name parts come from the user's own full_name, mapping-time only
+    # (never written back): first token -> given, last -> family. One token
+    # fills given only; family stays missing and the field is flagged.
+    tokens = (summary.get("full_name") or "").split()
+    if tokens:
+        summary.setdefault("given_name", tokens[0])
+        if len(tokens) > 1:
+            summary.setdefault("family_name", tokens[-1])
 
     if getattr(profile, "network_profiles", None):
         summary["network_profiles"] = profile.network_profiles
