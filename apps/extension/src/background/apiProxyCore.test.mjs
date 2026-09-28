@@ -5,9 +5,11 @@ import { allowedRoute, base64ToBytes, bytesToBase64 } from "./apiProxyCore.mjs";
 
 const PROFILE = "f89e912b-1234-4abc-9def-0123456789ab";
 
-test("only the two allow-listed endpoints pass, each with its own method", () => {
+test("only the allow-listed endpoints pass, each with its own method", () => {
   assert.equal(allowedRoute("POST", "/extension/map-fields")?.response, "json");
   assert.equal(allowedRoute("GET", `/profiles/${PROFILE}/resume.docx`)?.response, "bytes");
+  // read-only: the user's own city for a location typeahead (combobox.mjs fillCityTypeahead)
+  assert.equal(allowedRoute("GET", `/profiles/${PROFILE}/basics`)?.response, "json");
 });
 
 test("everything else is refused: other paths, methods, hosts, traversal, query strings", () => {
@@ -21,6 +23,9 @@ test("everything else is refused: other paths, methods, hosts, traversal, query 
     ["POST", "/applications/1/claim-submission"],
     ["GET", "/profiles/not-a-uuid/resume.docx"],
     ["GET", `/profiles/${PROFILE}/../answers`],
+    ["POST", `/profiles/${PROFILE}/basics`],
+    ["PUT", `/profiles/${PROFILE}/basics`],
+    ["GET", "/profiles/not-a-uuid/basics"],
     ["GET", `/profiles/${PROFILE}/resume.docx#x`],
     ["GET", `//evil.example/profiles/${PROFILE}/resume.docx`],
     ["GET", `http://evil.example/profiles/${PROFILE}/resume.docx`],

@@ -21,9 +21,12 @@ import {
   COMBOBOX_TYPE_WAIT_MS,
   COMBOBOX_WAIT_MS,
   comboboxKind,
+  fillCityTypeahead,
   fillCombobox,
+  isCityQuestion,
   matchOption,
   readAllOptions,
+  type Place,
 } from "./combobox.mjs";
 import { readLive, relink } from "./relink.mjs";
 import { base64ToBytes } from "../background/apiProxyCore.mjs";
@@ -269,33 +272,38 @@ async function readComboboxOptions(controls: HTMLElement[], raws: RawControl[]):
   return kinds;
 }
 
-// Picks `label` through the widget's own option click, then checks what it shows.
-function selectComboboxOption(el: HTMLInputElement, kind: ComboKind, label: string): Promise<boolean> {
+// The DOM side of combobox.mjs's fill sequencing for one widget.
+function comboboxOps(el: HTMLInputElement, kind: ComboKind) {
   let wait = COMBOBOX_WAIT_MS;
-  return fillCombobox<HTMLElement>(
-    {
-      // react-select shows the choice as text in its control; a typeahead in its input
-      displayed: () => (kind === "react-select" ? textOf(controlOf(el)) ?? "" : el.value),
-      open: () => openMenu(el),
-      findOption: (want) =>
-        waitFor(() => optionsOf(el).find((o) => matchOption([o.textContent ?? ""], want) === 0) ?? null, wait),
-      canType: !el.readOnly && !el.disabled,
-      type: async (text) => {
-        wait = COMBOBOX_TYPE_WAIT_MS; // an async search has to come back
-        setNativeValue(el, text);
-      },
-      click: async (option) => {
-        // click only: a mouseup first makes Greenhouse's wrapper toggle the menu shut,
-        // detaching the option before its click lands
-        option.click();
-        await sleep(50);
-      },
-      clear: async () => setNativeValue(el, ""),
-      close: () => closeMenu(el),
+  return {
+    // react-select shows the choice as text in its control; a typeahead in its input
+    displayed: () => (kind === "react-select" ? textOf(controlOf(el)) ?? "" : el.value),
+    open: () => openMenu(el),
+    findOption: (want: string) =>
+      waitFor(() => optionsOf(el).find((o) => matchOption([o.textContent ?? ""], want) === 0) ?? null, wait),
+    waitForOptions: async () => {
+      await waitFor(() => optionsOf(el).length > 0, wait);
+      return optionsOf(el).map((o) => o.textContent ?? "");
     },
-    label,
-  );
+    canType: !el.readOnly && !el.disabled,
+    type: async (text: string) => {
+      wait = COMBOBOX_TYPE_WAIT_MS; // an async search has to come back
+      setNativeValue(el, text);
+    },
+    click: async (option: HTMLElement) => {
+      // click only: a mouseup first makes Greenhouse's wrapper toggle the menu shut,
+      // detaching the option before its click lands
+      option.click();
+      await sleep(50);
+    },
+    clear: async () => setNativeValue(el, ""),
+    close: () => closeMenu(el),
+  };
 }
+
+// Picks `label` through the widget's own option click, then checks what it shows.
+const selectComboboxOption = (el: HTMLInputElement, kind: ComboKind, label: string) =>
+  fillCombobox<HTMLElement>(comboboxOps(el, kind), label);
 
 // Content scripts can't fetch the API themselves (the employer page's origin is
 // CORS-refused): the background worker does it, token and all (apiProxy.ts).
@@ -452,6 +460,25 @@ export async function fillForm(profileId: string, atsType?: string | null): Prom
     } else {
       setNativeValue(el, plan.value);
     }
+    markField(el, "filled", "Auto-filled by ApplyScout — verify before submitting.");
+    filled++;
+  }
+
+  // A location typeahead has no options until typed, so nothing could bind to it:
+  // type the user's own city and pick only the option that is that city.
+  let place: Place | null | undefined;
+  for (const f of [...flag]) {
+    const target = targets.get(f.field_id);
+    const descriptor = descriptorById.get(f.field_id);
+    const kind = target && comboKinds.get(target.keys[0]);
+    if (f.reason !== "low_confidence" || !kind || target.choices.length || !descriptor) continue;
+    if (isDemographicField(descriptor) || !isCityQuestion(descriptor.label_text)) continue;
+    if (place === undefined) {
+      place = await callApi("GET", `/profiles/${profileId}/basics`).then((r) => r.json as Place, () => null);
+    }
+    const el = controls[target.keys[0]] as HTMLInputElement;
+    if (!place || !(await fillCityTypeahead(comboboxOps(el, kind), place))) continue;
+    flag.splice(flag.indexOf(f), 1);
     markField(el, "filled", "Auto-filled by ApplyScout — verify before submitting.");
     filled++;
   }

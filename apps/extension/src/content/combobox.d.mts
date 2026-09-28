@@ -39,3 +39,15 @@ export interface FillOps<H> {
   close(): Promise<unknown>;
 }
 export function fillCombobox<H>(ops: FillOps<H>, label: string): Promise<boolean>;
+
+export interface Place {
+  city?: string | null;
+  region?: string | null;
+  country_code?: string | null;
+}
+export function isCityQuestion(label: string | null | undefined): boolean;
+export function matchCityOption(labels: string[], place?: Place): number;
+export function fillCityTypeahead<H>(
+  ops: FillOps<H> & { waitForOptions(): Promise<string[]> },
+  place: Place | null | undefined,
+): Promise<boolean>;

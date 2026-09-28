@@ -109,3 +109,75 @@ export async function fillCombobox(ops, label) {
   };
   return clicked && (shows() || showsTail());
 }
+
+// --- a location typeahead: no options until typed (Greenhouse "Location (City)") --
+
+// Where the applicant is, not where they'd like to work.
+export function isCityQuestion(label) {
+  return /^\s*(current\s+)?(location|city)\b/i.test(label ?? "");
+}
+
+const countryName = (code) => {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region" }).of(String(code).toUpperCase());
+  } catch {
+    return null;
+  }
+};
+
+// "CA" fits "California": same first letter, then the rest in order.
+// ponytail: a subsequence heuristic ("MA" also fits "Maryland"); a subdivision table
+// is the upgrade if a same-country, same-name, wrong-state city ever gets picked.
+const regionFits = (part, region) => {
+  const r = key(region), p = key(part);
+  if (!r) return false;
+  if (r === p) return true;
+  if (!/^[a-z]{2,3}$/.test(r) || p[0] !== r[0]) return false;
+  let i = 0;
+  for (const ch of p) if (ch === r[i]) i++;
+  return i === r.length;
+};
+
+// The one option that is the user's city, e.g. "San Francisco, California, United
+// States" for {city: "San Francisco", region: "CA", country_code: "US"}: its first
+// part is the city and every other part is the user's region or country (the
+// country must be among them when the profile has one). Zero or several -> -1.
+export function matchCityOption(labels, { city, region, country_code } = {}) {
+  const want = key(city);
+  if (!want) return -1;
+  const country = country_code ? [key(country_code), key(countryName(country_code))] : [];
+  const hits = labels.flatMap((l, i) => {
+    const [first, ...rest] = String(l).split(",").map(key);
+    const isCountry = (p) => country.includes(p);
+    const ok =
+      first === want &&
+      rest.every((p) => isCountry(p) || regionFits(p, region)) &&
+      (rest.length === 0 || !country.length || rest.some(isCountry));
+    return ok ? [i] : [];
+  });
+  return hits.length === 1 ? hits[0] : -1;
+}
+
+// ops: FillOps + waitForOptions() -> string[] (after typing). Types the user's city,
+// picks only matchCityOption's option through fillCombobox (click + verify), and
+// clears the typed text unless that pick shows.
+export async function fillCityTypeahead(ops, place) {
+  if (!key(place?.city) || !ops.canType) return false;
+  let picked = false;
+  try {
+    await ops.open();
+    await ops.type(norm(place.city));
+    const labels = optionLabels(await ops.waitForOptions());
+    const i = matchCityOption(labels, place);
+    if (i >= 0) picked = await fillCombobox(ops, labels[i]);
+  } catch {
+    picked = false;
+  } finally {
+    try {
+      if (!picked) await ops.clear();
+    } finally {
+      await ops.close();
+    }
+  }
+  return picked;
+}
