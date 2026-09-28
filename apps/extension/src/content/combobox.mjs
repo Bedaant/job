@@ -100,5 +100,12 @@ export async function fillCombobox(ops, label) {
       await ops.close();
     }
   }
-  return clicked && shows();
+  // After OUR click only: a widget may show just the option's trailing words
+  // (Greenhouse's phone country: "United States +1" shows "+1"). Never trusted
+  // before the click — "+1" is Canada too.
+  const showsTail = () => {
+    const shown = key(ops.displayed());
+    return shown !== "" && key(label).endsWith(" " + shown);
+  };
+  return clicked && (shows() || showsTail());
 }

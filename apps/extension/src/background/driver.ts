@@ -21,6 +21,7 @@ import {
   chooseFrame,
   classifyFailure,
   isFromAssignedFrame,
+  ITEM_TIMEOUT_MS,
   planRun,
   type FrameAssignment,
 } from "./driverCore.mjs";
@@ -38,9 +39,6 @@ export type WorkItem = {
 
 type Outcome = "submitted" | "unconfirmed" | "failed" | "needs_human";
 
-// How long one application gets before the driver gives up on it. A real ATS
-// page plus form fill plus submit is seconds; a minute means something is stuck.
-const ITEM_TIMEOUT_MS = 60_000;
 // After the submit is sent the page gets VERIFY_TIMEOUT_MS to decide; this slack
 // covers a navigation + content-script injection. If it still hasn't reported,
 // the outcome is `unconfirmed` — never `failed`, which would retry an application

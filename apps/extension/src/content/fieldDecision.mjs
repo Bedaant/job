@@ -141,11 +141,11 @@ export function decideFieldActions(fields, mappings) {
   );
 
   for (const field of fields) {
+    const required =
+      field.required || (field.input_type === "radio" && requiredRadioNames.has(field.name));
     // Unconditional, and before anything else looks at the mapping: never
     // filled. Whether it blocks depends only on whether the form requires it.
     if (isDemographicField(field)) {
-      const required =
-        field.required || (field.input_type === "radio" && requiredRadioNames.has(field.name));
       flag.push({
         field_id: field.field_id,
         reason: required ? "demographic_required" : "demographic_left_blank",
@@ -156,8 +156,13 @@ export function decideFieldActions(fields, mappings) {
     if (!mapping || mapping.maps_to === "unknown" || mapping.confidence < CONFIDENCE_THRESHOLD || !mapping.value) {
       // An essay question with no answer gets its own reason rather than
       // "low_confidence": it is the one flag the user can clear permanently, by
-      // writing the answer once into the answer bank.
-      const reason = isEssayLabel(field.label_text) ? "essay_no_stored_answer" : "low_confidence";
+      // writing the answer once into the answer bank. Any other OPTIONAL field
+      // is left blank, like an optional EEO one: the form goes without it.
+      const reason = isEssayLabel(field.label_text)
+        ? "essay_no_stored_answer"
+        : required
+          ? "low_confidence"
+          : "optional_left_blank";
       flag.push({ field_id: field.field_id, reason });
       continue;
     }
