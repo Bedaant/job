@@ -12,7 +12,15 @@ import {
   chooseFrame,
   answerForFrame,
   isFromAssignedFrame,
+  ITEM_TIMEOUT_MS,
 } from "./driverCore.mjs";
+
+// Found live (auto-apply, embedded Greenhouse): page load (~8 s) + reading 12
+// dropdowns (twice, when the embed hydrates mid-read) + /map-fields (22-51 s live,
+// LLM) ran past the old 60 s, so a fill still in progress was reported `failed`.
+test("ITEM_TIMEOUT_MS leaves a slow /map-fields call room to finish", () => {
+  assert.ok(ITEM_TIMEOUT_MS >= 8_000 + 20_000 + 2 * 51_000, `${ITEM_TIMEOUT_MS} ms is too short`);
+});
 
 // --- classifyFailure ----------------------------------------------------------
 // The distinction that matters: `failed` puts the application back in the work

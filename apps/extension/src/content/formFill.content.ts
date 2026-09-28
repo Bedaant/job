@@ -25,7 +25,7 @@ import {
   matchOption,
   readAllOptions,
 } from "./combobox.mjs";
-import { relink } from "./relink.mjs";
+import { readLive, relink } from "./relink.mjs";
 import { base64ToBytes } from "../background/apiProxyCore.mjs";
 import { fillsOnPopup } from "../background/driverCore.mjs";
 import type { ApiProxyResponse } from "../background/apiProxy";
@@ -329,6 +329,7 @@ const FLAG_MESSAGES: Record<string, string> = {
   demographic_required:
     "ApplyScout: required self-identification question — only you can answer it (never auto-answered).",
   demographic_left_blank: "Left blank for you — ApplyScout never answers these.",
+  optional_left_blank: "Left blank: optional, and ApplyScout has no answer for it.",
   essay_no_stored_answer:
     "ApplyScout: needs your input — save the answer and we'll reuse it next time.",
   low_confidence: "ApplyScout: needs your input (low confidence).",
@@ -367,10 +368,16 @@ function attachFile(el: HTMLInputElement, file: File): void {
  * so nothing changes for a user who triggered the fill themselves.
  */
 export async function fillForm(profileId: string, atsType?: string | null): Promise<FillOutcome> {
-  const controls = Array.from(document.querySelectorAll<HTMLElement>("input, select, textarea"));
+  // Read again if the form was replaced mid-read (relink.mjs readLive).
+  const { controls, raws, comboKinds } = await readLive(
+    async () => {
+      const controls = Array.from(document.querySelectorAll<HTMLElement>("input, select, textarea"));
+      const raws = readControls(controls);
+      return { controls, raws, comboKinds: await readComboboxOptions(controls, raws) };
+    },
+    ({ controls }) => controls.some((el) => !el.isConnected),
+  );
   // File inputs never go to map-fields: no text value can fill one.
-  const raws = readControls(controls);
-  const comboKinds = await readComboboxOptions(controls, raws);
   const { descriptors, files, targets } = buildDescriptors(raws);
   const descriptorById = new Map(descriptors.map((d) => [d.field_id, d]));
   if (descriptors.length === 0 && files.length === 0) {
@@ -454,7 +461,7 @@ export async function fillForm(profileId: string, atsType?: string | null): Prom
     if (!el) continue;
     markField(
       el,
-      reason === "demographic_left_blank" ? "left_blank" : "flagged",
+      reason.endsWith("_left_blank") ? "left_blank" : "flagged",
       FLAG_MESSAGES[reason] ?? FLAG_MESSAGES.low_confidence,
     );
   }

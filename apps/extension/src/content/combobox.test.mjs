@@ -162,6 +162,23 @@ test("fillCombobox: the menu is closed even if a step throws", async () => {
   assert.equal(w.calls.at(-1), "close");
 });
 
+// Found live (embedded Greenhouse, auto-apply): the phone-country select's option is
+// "United States +1", but once chosen the widget shows only "+1". The exact check
+// called that a failed fill: a required field flagged low_confidence on every pass.
+test("fillCombobox: a widget showing the chosen option's trailing words (dial code) is a selection", async () => {
+  const w = fillWidget({ rendered: ["United States +1", "Canada +1"], shown: "+1" });
+  w.click = async (opt) => { w.calls.push(`click:${opt.label}`); w.shown = opt.label.split(" ").at(-1); };
+  assert.equal(await fillCombobox(w, "United States +1"), true);
+  assert.ok(w.calls.includes("click:United States +1"), "a '+1' shown before the click is not trusted: Canada is +1 too");
+});
+
+test("fillCombobox: a shown value that is not the chosen option's tail is still a failure", async () => {
+  const w = fillWidget({ rendered: ["United States +1"], shown: "+44", clickWorks: false });
+  assert.equal(await fillCombobox(w, "United States +1"), false);
+  const v = fillWidget({ rendered: ["United States +1"], shown: "States", clickWorks: false });
+  assert.equal(await fillCombobox(v, "United States +1"), false);
+});
+
 test("fillCombobox: a typeahead showing our own typed text is NOT a selection", async () => {
   // the input's value is what it displays: typing "Yes" makes it "show" Yes with nothing chosen
   const w = fillWidget({ rendered: [], afterType: [] });

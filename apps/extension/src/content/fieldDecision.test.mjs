@@ -44,7 +44,7 @@ test("decideFieldActions fills high-confidence non-forbidden fields", () => {
 });
 
 test("decideFieldActions flags low-confidence fields instead of filling them", () => {
-  const fields = [{ field_id: "f1", label_text: "Cover letter summary" }];
+  const fields = [{ field_id: "f1", label_text: "Cover letter summary", required: true }];
   const mappings = [{ field_id: "f1", maps_to: "literal:something", confidence: 0.4, value: "guess" }];
 
   const { fill, flag } = decideFieldActions(fields, mappings);
@@ -54,7 +54,7 @@ test("decideFieldActions flags low-confidence fields instead of filling them", (
 });
 
 test("decideFieldActions flags unknown mappings", () => {
-  const fields = [{ field_id: "f1", label_text: "Salary expectation" }];
+  const fields = [{ field_id: "f1", label_text: "Salary expectation", required: true }];
   const mappings = [{ field_id: "f1", maps_to: "unknown", confidence: 0.0, value: null }];
 
   const { fill, flag } = decideFieldActions(fields, mappings);
@@ -74,7 +74,7 @@ test("decideFieldActions always flags demographic fields, even with a high-confi
 });
 
 test("decideFieldActions flags a field with no mapping returned at all", () => {
-  const fields = [{ field_id: "f1", label_text: "Portfolio URL" }, { field_id: "f2", label_text: "Email" }];
+  const fields = [{ field_id: "f1", label_text: "Portfolio URL", required: true }, { field_id: "f2", label_text: "Email" }];
   const mappings = [{ field_id: "f2", maps_to: "profile.email", confidence: 0.9, value: "a@b.com" }];
 
   const { fill, flag } = decideFieldActions(fields, mappings);
@@ -154,6 +154,34 @@ test("an optional EEO field is left blank and does not block; a required one blo
   assert.equal(NEEDS_USER_REASONS.has("demographic_left_blank"), false);
   assert.equal(NEEDS_USER_REASONS.has("demographic_required"), true);
   assert.deepEqual(flag.filter((f) => NEEDS_USER_REASONS.has(f.reason)).map((f) => f.field_id), ["req"]);
+});
+
+// Found live (auto-apply, embedded Greenhouse): an OPTIONAL "Website" nobody mapped
+// was flagged low_confidence, and low_confidence stops the run, so a form whose
+// every required field was filled still went to needs_human on every pass.
+test("an optional field nobody can answer is left blank and does not block; a required one blocks", () => {
+  const { fill, flag } = decideFieldActions(
+    [
+      { field_id: "web", label_text: "Website", required: false },
+      { field_id: "pref", label_text: "Preferred pronunciation" }, // required absent = optional
+      { field_id: "city", label_text: "Location (City)", required: true },
+      { field_id: "essay", label_text: "Why do you want to work here?", required: false },
+    ],
+    [
+      { field_id: "web", maps_to: "unknown", confidence: 0, value: null },
+      { field_id: "pref", maps_to: "literal:x", confidence: 0.3, value: "x" },
+      { field_id: "city", maps_to: "unknown", confidence: 0, value: null },
+    ],
+  );
+  assert.deepEqual(fill, []);
+  assert.deepEqual(flag, [
+    { field_id: "web", reason: "optional_left_blank" },
+    { field_id: "pref", reason: "optional_left_blank" },
+    { field_id: "city", reason: "low_confidence" },
+    { field_id: "essay", reason: "essay_no_stored_answer" }, // the user may still want to write it
+  ]);
+  assert.equal(NEEDS_USER_REASONS.has("optional_left_blank"), false);
+  assert.deepEqual(unansweredQuestions([{ field_id: "web", label_text: "Website" }], flag), []);
 });
 
 test("a radio group is required if any member is required", () => {

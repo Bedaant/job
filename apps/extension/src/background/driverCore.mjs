@@ -15,6 +15,11 @@
 // restart, move it to chrome.storage.local keyed by application_id.
 export const MAX_ATTEMPTS_PER_ITEM = 3;
 
+// How long one application gets, up to the submit, before the driver gives up on
+// it. Page load + reading every dropdown + /map-fields (an LLM call: 22-51 s live)
+// is routinely past a minute on a long form; 3 minutes means something is stuck.
+export const ITEM_TIMEOUT_MS = 180_000;
+
 const REASON_MAX = 2000; // schemas.SubmissionResultIn caps `reason` at 2000
 
 // Failures a human can actually resolve. Everything else is transient or ours to

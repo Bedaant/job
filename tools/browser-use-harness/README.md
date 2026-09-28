@@ -69,6 +69,16 @@ Each run creates a throwaway account (`bu-harness-<stamp>-<hex>@example.com`) wi
 D:\job-copilot\apps\api\.venv\Scripts\python.exe cleanup_accounts.py
 ```
 
+### Auto-apply mode
+
+`auto_apply.py` drives the driver path instead of the popup: a harness job (`cleanup_accounts.py --add-job`; the API has no job-create route) whose `apply_url` is a local careers page with its own 2-field "talent community" form and a Greenhouse embed iframe. The application is approved through `batch-approve`, then `jc:run-queue` is sent from an extension page. The harness watches the tab the driver opens: it proves the guard on that tab, and it records every ApplyScout mark as it lands. A `needs_human` pass answers the returned questions in the answer bank (like the user in review) and re-approves. The run fails on a missing guard, any talent-community value, a demographic value, no fill in the iframe, or a reported send the guard didn't see.
+
+```
+..\.venv-browser-use\Scripts\python auto_apply.py [--job anthropic/4461450008] [--passes 2] [--ext-dist <dist>] [--headed]
+```
+
+The default Anthropic posting stops at `needs_human` on its required arbitration consent, which ApplyScout never gives. `--job brex/8795500002` has no consent and no required location, so it reaches the submit. The guard cancels the submit, and the driver reports `unconfirmed`. The harness job is deleted along with the account.
+
 ## Reading the report
 
 Each run writes `reports/<UTC stamp>-<ats>.json`, `.md` and a full-page `.png`. The directory is gitignored.
