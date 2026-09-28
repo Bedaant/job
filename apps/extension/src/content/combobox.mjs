@@ -13,6 +13,28 @@ export const COMBOBOX_WAIT_MS = 300; // per menu, for its options to render
 export const COMBOBOX_TYPE_WAIT_MS = 1000; // an async (typeahead) search round-trip
 export const COMBOBOX_TOTAL_MS = 8000; // all menus read in one extraction
 
+// Resolves with probe()'s first truthy answer, or its last one after `ms`. Wakes on
+// onChange(cb) -> unsubscribe (a MutationObserver in the page), never on a polling
+// timer: the driver's tab is a background tab, where Chrome runs timers at most once
+// a second (measured live: ~1.9 s per menu instead of ~0.16 s, so the 8 s read budget
+// covered 5 of Anthropic's 8 dropdowns). Only the give-up timer is still throttled.
+export function waitFor(probe, ms, onChange) {
+  const hit = probe();
+  if (hit) return Promise.resolve(hit);
+  return new Promise((resolve) => {
+    const done = () => {
+      const v = probe();
+      if (!v && !timedOut) return;
+      clearTimeout(timer);
+      stop();
+      resolve(v);
+    };
+    let timedOut = false;
+    const timer = setTimeout(() => ((timedOut = true), done()), ms);
+    const stop = onChange(done);
+  });
+}
+
 // "react-select" | "listbox" | null (not a menu widget we can open and read).
 // s: {tag, role, visible, inReactSelect, ariaAutocomplete, ariaHaspopup, ariaControls}
 export function comboboxKind(s) {

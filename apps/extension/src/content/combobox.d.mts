@@ -13,6 +13,7 @@ export interface ComboboxSnapshot {
   ariaHaspopup: string | null;
   ariaControls: string | null;
 }
+export function waitFor<T>(probe: () => T, ms: number, onChange: (cb: () => void) => () => void): Promise<T>;
 export function comboboxKind(s: ComboboxSnapshot): "react-select" | "listbox" | null;
 export function optionLabels(texts: (string | null | undefined)[]): string[];
 export function matchOption(labels: string[], value: string): number;

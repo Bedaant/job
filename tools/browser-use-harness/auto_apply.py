@@ -18,6 +18,8 @@ import asyncio
 import http.server
 import json
 import shutil
+import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -54,6 +56,29 @@ MARKS_SCRIPT = """(() => {
     try { window.%s(label(el), el.title, String(el.value || '').slice(0, 100)); } catch (_) {}
   } }).observe(document, {subtree: true, attributes: true, attributeFilter: ['title']});
 })();""" % MARKS_BINDING
+# Observation only: a chained 25 ms timer in every frame, to measure background-tab throttling
+# (Chrome aligns hidden-tab timers to 1 s), plus when menus opened (option reads) and the first
+# ApplyScout mark landed, in ms since the frame loaded. Read by the Watcher with each snapshot.
+TIMER_PROBE = """(() => {
+  const p = window.__jcTimerProbe = {n: 0, hidden_n: 0, max_ms: 0, hidden_max_ms: 0, over_500: 0, hidden_seen: false,
+    menus_opened: 0, first_menu_ms: null, last_menu_before_mark_ms: null, first_mark_ms: null, read_ids: []};
+  new MutationObserver((ms) => { for (const m of ms) {
+    const now = Math.round(performance.now());
+    if (m.attributeName === 'title' && (m.target.title || '').includes('ApplyScout')) p.first_mark_ms ??= now;
+    if (m.attributeName === 'aria-expanded' && p.first_mark_ms === null) { (p.ev ??= []).push([m.target.id.slice(-6), m.target.getAttribute('aria-expanded'), now]); (window.__refs ??= []).push(m.target); }
+    if (m.attributeName === 'aria-expanded' && m.target.getAttribute('aria-expanded') === 'true') {
+      p.menus_opened++; p.first_menu_ms ??= now;
+      if (p.first_mark_ms === null) { p.last_menu_before_mark_ms = now; p.read_ids.push(m.target.id); } }
+  } }).observe(document, {subtree: true, attributes: true, attributeFilter: ['title', 'aria-expanded']});
+new MutationObserver((ms) => { if (p.first_mark_ms !== null) return; const now = Math.round(performance.now()); for (const m of ms) { const has = (n) => n.nodeType === 1 && (n.matches('[role=listbox]') || n.querySelector('[role=listbox]')); for (const n of m.addedNodes) if (has(n)) (p.ev ??= []).push(['+lb', now]); for (const n of m.removedNodes) if (has(n)) (p.ev ??= []).push(['-lb', now]); } }).observe(document, {subtree: true, childList: true});  document.addEventListener('focusin', (e) => { if (p.first_mark_ms === null) (p.ev ??= []).push(['focus', (e.target.id||'').slice(-6), Math.round(performance.now())]); }, true);  document.addEventListener('keyup', (e) => { if (p.first_mark_ms === null) (p.ev ??= []).push(['keyup', Math.round(performance.now())]); }, true);  document.addEventListener('mouseup', (e) => { if (p.first_mark_ms === null) (p.ev ??= []).push(['mouseup', Math.round(performance.now())]); }, true);
+  let t = performance.now();
+  const tick = () => { const d = performance.now() - t; p.n++; p.max_ms = Math.max(p.max_ms, Math.round(d));
+    if (document.hidden) { p.hidden_seen = true; p.hidden_n++; p.hidden_max_ms = Math.max(p.hidden_max_ms, Math.round(d)); }
+    if (d > 500) p.over_500++; t = performance.now(); setTimeout(tick, 25); };
+  setTimeout(tick, 25);
+})();"""
+# = Playwright's service_workers="block", which a CDP-joined context doesn't take (guard layer 1)
+BLOCK_SW = "if (navigator.serviceWorker) navigator.serviceWorker.register = async () => {};"
 RUN_TIMEOUT_S = 300  # ITEM_TIMEOUT 60 s + verify 20+10 s per item, plus slack
 # Fictional answers for questions a needs_human pass returns (the user would type these in review).
 CANNED = [("notified", "Yes"), ("name of your current manager", "Alex Example"), ("sponsor", "No"), ("interviewed", "No"), ("deadline", "No"), ("country", "United States"), ("visa", "No"), ("authorized", "Yes"), ("relocat", "Yes"), ("remote", "Yes"),
@@ -85,8 +110,30 @@ def serve_host_page(embed: str) -> tuple[http.server.ThreadingHTTPServer, str]:
     return srv, f"http://127.0.0.1:{srv.server_address[1]}/careers"
 
 
+async def launch_like_a_user(pw, user_dir: str):
+    """--headed: Chromium started by us and joined over CDP with no_defaults. Playwright's own launch
+    passes --disable-background-timer-throttling & co and turns on focus emulation for every page it
+    attaches, which keeps a background tab visible: the driver's active:false tab would never be
+    throttled and the run would prove nothing about background tabs."""
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    proc = subprocess.Popen([pw.chromium.executable_path, f"--remote-debugging-port={port}",
+                             f"--user-data-dir={user_dir}", "--no-first-run", "--no-default-browser-check",
+                             "--window-size=1280,900", f"--disable-extensions-except={cf.EXT_DIST}",
+                             f"--load-extension={cf.EXT_DIST}", "about:blank"])
+    for _ in range(100):
+        try:
+            httpx.get(f"http://127.0.0.1:{port}/json/version").raise_for_status()
+            break
+        except httpx.HTTPError:
+            await asyncio.sleep(0.2)
+    browser = await pw.chromium.connect_over_cdp(f"http://127.0.0.1:{port}", no_defaults=True)
+    await browser.contexts[0].add_init_script(BLOCK_SW)
+    return proc, browser.contexts[0]
+
+
 def add_job(url: str) -> str:
-    import subprocess
     r = subprocess.run([str(cf.API_PY), str(cf.HERE / "cleanup_accounts.py"), "--add-job", url],
                        capture_output=True, encoding="utf-8", errors="replace", timeout=120)
     if r.returncode:
@@ -122,6 +169,8 @@ class Watcher:
                         snap = await gh.evaluate(cf.SNAPSHOT_JS)
                         rec["iframe_first"] = rec["iframe_first"] or snap
                         rec["iframe"], rec["iframe_url"] = snap, gh.url
+                        rec["timer_probe"] = await gh.evaluate(
+                            "() => ({...window.__jcTimerProbe, refs: (window.__refs || []).map((e) => [e.id.slice(-6), e.isConnected, e.getAttribute('aria-expanded'), document.activeElement === e]), comboboxes: [...document.querySelectorAll('input[role=combobox]')].map((e) => e.id)})")
                     rec["snapshots"] += 1
                 except Exception:  # closing / re-rendering mid-evaluate
                     pass
@@ -149,7 +198,7 @@ async def run(headed: bool, passes: int, job: str) -> dict:
     acct = cf.provision(stamp)
     report["account"] = {"email": acct["email"], "profile_id": acct["profile_id"]}
     user_dir = tempfile.mkdtemp(prefix="bu-harness-profile-")
-    guard = None
+    guard = proc = None
     try:
         api = httpx.Client(base_url=cf.API, timeout=60, headers={"Authorization": f"Bearer {acct['token']}"})
         pid = acct["profile_id"]
@@ -161,18 +210,23 @@ async def run(headed: bool, passes: int, job: str) -> dict:
         report["application_id"] = app_id
 
         async with async_playwright() as pw:
-            context = await pw.chromium.launch_persistent_context(
-                user_dir, channel="chromium", headless=not headed, service_workers="block",
-                viewport={"width": 1280, "height": 900},
-                args=[f"--disable-extensions-except={cf.EXT_DIST}", f"--load-extension={cf.EXT_DIST}"],
-            )
+            if headed:
+                proc, context = await launch_like_a_user(pw, user_dir)
+            else:
+                context = await pw.chromium.launch_persistent_context(
+                    user_dir, channel="chromium", headless=True, service_workers="block",
+                    viewport={"width": 1280, "height": 900},
+                    args=[f"--disable-extensions-except={cf.EXT_DIST}", f"--load-extension={cf.EXT_DIST}"],
+                )
             guard = await install_guard(context)  # before ANY navigation, covers every tab the driver opens
             marks: list = []
             await context.expose_binding(MARKS_BINDING, lambda src, label, title, value: marks.append(
                 {"frame": src["frame"].url[:120], "label": label, "mark": title.split(" —")[0], "value": value}))
             await context.add_init_script(MARKS_SCRIPT)
-            sw = context.service_workers[0] if context.service_workers else \
-                await context.wait_for_event("serviceworker", timeout=20000)
+            await context.add_init_script(TIMER_PROBE)
+            ours = lambda w: w.url.endswith("/service-worker-loader.js")  # a CDP-joined browser lists others too
+            sw = next(filter(ours, context.service_workers), None) or \
+                await context.wait_for_event("serviceworker", predicate=ours, timeout=20000)
             await sw.evaluate("(v) => chrome.storage.local.set(v)", {"jc_token": acct["token"], "jc_profile_id": pid})
             ext_id = sw.url.split("/")[2]
             popup = await context.new_page()
@@ -207,7 +261,7 @@ async def run(headed: bool, passes: int, job: str) -> dict:
                         "url": tab.get("url"), "guard_verified": tab.get("guard_verified"),
                         "guard_error": tab.get("guard_error"), "error": tab.get("error"),
                         "dialogs": tab.get("dialogs"), "snapshots": tab.get("snapshots"),
-                        "iframe_url": tab.get("iframe_url"),
+                        "iframe_url": tab.get("iframe_url"), "timer_probe": tab.get("timer_probe"),
                         "iframe": cf.analyse(tab.get("iframe_first") or [], ifr) if ifr else None,
                         "talent_community": [{"id": f["id"], "value": f["value"]} for f in top],
                     })
@@ -224,7 +278,8 @@ async def run(headed: bool, passes: int, job: str) -> dict:
                         p["answered"][q] = a
                 if not p["answered"]:
                     break
-            await context.close()
+            if not proc:
+                await context.close()
     except GuardMissing as e:
         report["guard_error"] = str(e)
     except Exception as e:  # still report and clean up
@@ -233,6 +288,9 @@ async def run(headed: bool, passes: int, job: str) -> dict:
         report["guard"] = guard.summary() if guard else {"installed": False}
         report["cleanup"] = cf.cleanup(acct["email"])
         srv.shutdown()
+        if proc:
+            proc.terminate()
+            proc.wait(timeout=30)
         shutil.rmtree(user_dir, ignore_errors=True)
 
     g, last = report["guard"], (report["passes"] or [{}])[-1]
@@ -262,7 +320,8 @@ async def run(headed: bool, passes: int, job: str) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--headed", action="store_true")
+    ap.add_argument("--headed", action="store_true",
+                    help="visible window with Chrome's real background-tab timer throttling (the driver's tab is hidden)")
     ap.add_argument("--job", default=DEFAULT_JOB, help="Greenhouse <board>/<job id> to embed")
     ap.add_argument("--passes", type=int, default=2, help="driver passes; a needs_human pass answers and re-approves")
     ap.add_argument("--ext-dist", type=Path, help=f"built extension to load (default {cf.EXT_DIST})")
