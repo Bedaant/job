@@ -156,6 +156,10 @@ export interface ReviewApplication {
   flagged_unsupported_claims: string[];
   // Questions an auto-apply run stopped on that the answer bank can't answer yet.
   pending_questions: string[];
+  // A pending question that is a dropdown → its real options, so the user picks one.
+  question_options?: Record<string, string[]>;
+  // Legal consents the form requires: never answered or stored; the user ticks them on the form.
+  consent_questions?: string[];
   // Questions the form asked that the answer bank already answers — ready to copy.
   prepared_answers?: { question: string; answer: string }[];
   // {coverage_before, coverage_after, missing} from tailoring, when it ran.
@@ -170,6 +174,8 @@ export interface NeedsInput {
   kind: "question" | "upload" | "captcha" | "account" | "other";
   message: string;
   demographic_left_blank: boolean;
+  // The form requires a legal consent only the user can give, so a retry stops again.
+  consent_required?: boolean;
 }
 
 // ---------------------------------------------------------------------------

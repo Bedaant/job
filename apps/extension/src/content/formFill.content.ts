@@ -15,6 +15,7 @@ import {
   setNativeValue,
   unansweredQuestions,
   type FieldMapping,
+  type UnansweredQuestion,
   type RawControl,
 } from "./fieldDecision.mjs";
 import {
@@ -319,7 +320,7 @@ export type FillOutcome = {
   filled: number;
   flagged: { field_id: string; reason: string }[];
   // Labels of flagged fields the user can answer once into the answer bank.
-  questions: string[];
+  questions: UnansweredQuestion[];
 };
 
 // Keyed by fieldDecision.mjs's flag reasons. `essay_no_stored_answer` is the

@@ -33,7 +33,7 @@
 import { classifyFailure, countFields, holdsApplicationForm } from "../background/driverCore.mjs";
 // Which flag reasons stop the run (an optional EEO field does not — it is left
 // blank) and the needs_human message, both pure and tested in fieldDecision.test.mjs.
-import { NEEDS_USER_REASONS, needsHumanReason } from "./fieldDecision.mjs";
+import { NEEDS_USER_REASONS, needsHumanReason, type UnansweredQuestion } from "./fieldDecision.mjs";
 import { controlTypes, fillForm } from "./formFill.content";
 import { submitApprovedApplication } from "./submitApprovedApplication";
 import { decideVerification, isCaptchaChallengeSrc, verificationReport } from "./submitVerification.mjs";
@@ -77,7 +77,7 @@ async function claimThisFrame(): Promise<boolean> {
 function report(
   outcome: "submitted" | "unconfirmed" | "failed" | "needs_human",
   reason?: string,
-  questions: string[] = [],
+  questions: UnansweredQuestion[] = [],
 ): void {
   // Fire-and-forget: the driver is waiting on this message and has its own
   // timeout, so a failed send degrades to a timeout rather than a hang.

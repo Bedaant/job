@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import type { ResumeFact, ReviewApplication, TailoredBullet } from "@/lib/api";
-import { needsInputView } from "@/lib/needs-input";
+import { CONSENT_NOTE, needsInputView } from "@/lib/needs-input";
 
 /** Save a fetched file: the endpoint needs the Bearer header, so a plain link would 401. */
 export function saveBlob(blob: Blob, filename: string) {
@@ -97,7 +97,16 @@ function BulletDiff({ bullet, factsById }: { bullet: TailoredBullet; factsById: 
  * bank (ADR-015), which is what makes every later form asking it fill itself —
  * the backend then drops it from pending_questions, so it disappears on refetch.
  */
-function PendingQuestion({ question, onSave }: { question: string; onSave: (answer: string) => Promise<void> }) {
+function PendingQuestion({
+  question,
+  options,
+  onSave,
+}: {
+  question: string;
+  /** A dropdown on the form: the answer must be one of these, so pick instead of type. */
+  options?: string[];
+  onSave: (answer: string) => Promise<void>;
+}) {
   const [answer, setAnswer] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -117,7 +126,23 @@ function PendingQuestion({ question, onSave }: { question: string; onSave: (answ
   return (
     <li className="space-y-1.5">
       <p className="font-medium">{question}</p>
-      <Textarea value={answer} onChange={(e) => setAnswer(e.target.value)} aria-label={question} rows={2} />
+      {options?.length ? (
+        <select
+          value={answer}
+          onChange={(e) => setAnswer(e.target.value)}
+          aria-label={question}
+          className="block h-11 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <option value="">Choose…</option>
+          {options.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <Textarea value={answer} onChange={(e) => setAnswer(e.target.value)} aria-label={question} rows={2} />
+      )}
       {error && <p className="text-xs text-destructive">{error}</p>}
       <Button size="sm" onClick={save} disabled={saving || !answer.trim()}>
         {saving ? "Saving…" : "Save answer"}
@@ -258,9 +283,37 @@ export function ApplicationCard({
               )}
               <ul className="mt-2 space-y-3">
                 {pending_questions.map((q) => (
-                  <PendingQuestion key={q} question={q} onSave={(answer) => onSaveAnswer(q, answer)} />
+                  <PendingQuestion
+                    key={q}
+                    question={q}
+                    options={application.question_options?.[q]}
+                    onSave={(answer) => onSaveAnswer(q, answer)}
+                  />
                 ))}
               </ul>
+            </div>
+          </div>
+        )}
+
+        {/* Never answered or saved by us (answer_bank consent rail): the user's own act, on the form. */}
+        {(application.consent_questions?.length ?? 0) > 0 && (
+          <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning-soft p-3 text-sm">
+            <AlertTriangleIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning" />
+            <div className="space-y-1">
+              <p className="font-medium">{CONSENT_NOTE}</p>
+              <ul className="list-disc pl-4">
+                {application.consent_questions!.map((q) => (
+                  <li key={q}>{q}</li>
+                ))}
+              </ul>
+              <a
+                href={job.apply_url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-block font-medium text-primary underline underline-offset-4"
+              >
+                Open the form<span className="sr-only"> (opens in a new tab)</span>
+              </a>
             </div>
           </div>
         )}

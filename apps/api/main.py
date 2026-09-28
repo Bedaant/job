@@ -26,6 +26,7 @@ from documents.generate_docx import generate_resume_docx
 from documents.parse_back import parse_back_check
 from events.outbox import write_event
 from events.sse import event_stream
+from formfill.deterministic import bind_to_options
 from formfill.map_fields import build_profile_summary, map_form_fields
 from parsing.extract import extract_text_from_docx, extract_text_from_pdf
 from parsing.llm_extract import extract_basics, extract_facts_from_text
@@ -161,15 +162,7 @@ def _review_rows(db: Session, profile: models.Profile, statuses) -> list[schemas
     for row in rows:
         match = matches_by_job_id.get(row.job_id)
         tailored = row.tailored_resume_json or {}
-        # Derived, not stored twice: a question drops off the moment the bank
-        # can answer it, however the answer got there.
-        pending, prepared = [], []
-        for q in row.pending_questions or []:
-            hit = answer_bank_service.find_answer(db, profile.id, q)
-            if hit is None:
-                pending.append(q)
-            else:
-                prepared.append(schemas.PreparedAnswerOut(question=q, answer=hit.answer_text))
+        pending, options, consent, prepared = _split_pending(db, profile.id, row.pending_questions)
         result.append(schemas.ApplicationReviewOut(
             id=row.id,
             job=row.job,
@@ -181,13 +174,43 @@ def _review_rows(db: Session, profile: models.Profile, statuses) -> list[schemas
             tailored_cover_letter=row.tailored_cover_letter,
             flagged_unsupported_claims=row.flagged_unsupported_claims or [],
             pending_questions=pending,
+            question_options=options,
+            consent_questions=consent,
             prepared_answers=prepared,
             keyword_gap=tailored.get("keyword_gap"),
-            needs_input=needs_input(row.notes, pending),
+            needs_input=needs_input(row.notes, pending, consent),
             last_attempt=last_attempt(row.notes),
             created_at=row.created_at,
         ))
     return result
+
+
+def _split_pending(db: Session, profile_id: str, stored: list | None):
+    """What a needs_human run left for the user, derived on every read (never
+    stored twice): a question drops off the moment the bank can answer it,
+    however the answer got there. Returns (pending, options, consent, prepared).
+
+    Consent is its own list: never answerable here (answer_bank rail), the user
+    ticks it on the form. A dropdown stays pending until its bank answer picks
+    one of its options — the same bind map_fields fills with, so "prepared"
+    means the next run really fills it.
+    """
+    pending, options, consent, prepared = [], {}, [], []
+    for entry in stored or []:
+        # A bare string is a row stored before options were reported.
+        q, opts = (entry, []) if isinstance(entry, str) else (entry["question"], entry.get("options") or [])
+        if answer_bank_service.is_consent_field(q, opts):
+            consent.append(q)
+            continue
+        hit = answer_bank_service.find_answer(db, profile_id, q)
+        answer = bind_to_options(hit.answer_text, opts) if hit else None
+        if answer is None:
+            pending.append(q)
+            if opts:
+                options[q] = opts
+        else:
+            prepared.append(schemas.PreparedAnswerOut(question=q, answer=answer))
+    return pending, options, consent, prepared
 
 
 @app.post("/applications/batch-prepare")
@@ -456,15 +479,16 @@ def report_submission_result(
         application.notes = f"{application.notes}\n{stamp}" if application.notes else stamp
     # Only needs_human leaves questions for the user; any other outcome means the
     # form went through or will be retried, so stale questions must not linger.
-    # dict.fromkeys: dedupe, order kept. Demographic questions are dropped here —
-    # they are never answerable, so asking the user for one is a trap.
-    application.pending_questions = (
-        list(dict.fromkeys(
-            q.strip() for q in payload.unanswered_questions
-            if q.strip() and not answer_bank_service.is_demographic_label(q)
-        ))
-        if payload.outcome == "needs_human" else []
-    )
+    # Deduped by question, order kept. Demographic questions (label or options) are
+    # dropped here — never answerable, so asking the user for one is a trap.
+    # Consent is kept: _split_pending shows it as the user's own step.
+    questions: dict[str, dict] = {}
+    for item in payload.unanswered_questions if payload.outcome == "needs_human" else []:
+        q, opts = (item, []) if isinstance(item, str) else (item.question, item.options)
+        q, opts = q.strip(), [o.strip() for o in opts if o.strip()]
+        if q and q not in questions and not answer_bank_service.is_demographic_field(q, opts):
+            questions[q] = {"question": q, "options": opts}
+    application.pending_questions = list(questions.values())
 
     write_event(
         db, current_user.id, f"application.{payload.outcome}",
@@ -1480,10 +1504,7 @@ def get_application_detail(
         .filter(models.Match.profile_id == row.profile_id, models.Match.job_id == row.job_id)
         .first()
     )
-    pending = [
-        q for q in row.pending_questions or []
-        if answer_bank_service.find_answer(db, row.profile_id, q) is None
-    ]
+    pending, options, consent, _ = _split_pending(db, row.profile_id, row.pending_questions)
     return schemas.ApplicationDetailOut(
         id=row.id, status=row.status.value, job=job, portal=row.portal,
         match_score=float(match.score) if match else None,
@@ -1493,13 +1514,15 @@ def get_application_detail(
         tailored_cover_letter=row.tailored_cover_letter,
         flagged_unsupported_claims=row.flagged_unsupported_claims or [],
         pending_questions=pending,
+        question_options=options,
+        consent_questions=consent,
         keyword_gap=tailored.get("keyword_gap"),
         keywords=schemas.KeywordsOut(
             matched=[m["keyword"] for m in gap["matched"] if m["keyword"] not in reworded],
             reworded=reworded,
             missing=[m["keyword"] for m in gap["missing"]],
         ),
-        needs_input=needs_input(row.notes, pending),
+        needs_input=needs_input(row.notes, pending, consent),
         last_attempt=last_attempt(row.notes),
         history=attempt_history(row.notes),
     )

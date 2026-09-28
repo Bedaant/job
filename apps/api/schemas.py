@@ -405,6 +405,8 @@ class NeedsInputOut(BaseModel):
     kind: Literal["question", "upload", "captcha", "account", "other"]
     message: str
     demographic_left_blank: bool = False
+    # A legal consent is blocking: only the user can agree, so a retry stops again.
+    consent_required: bool = False
 
 
 class LastAttemptOut(BaseModel):
@@ -432,6 +434,10 @@ class ApplicationReviewOut(BaseModel):
     tailored_cover_letter: Optional[str] = None
     flagged_unsupported_claims: List[str] = []
     pending_questions: List[str] = []
+    # A pending question that is a dropdown: its real options, so the user picks one.
+    question_options: dict[str, List[str]] = {}
+    # Legal consents the form requires: never answered by us, the user ticks them on the form.
+    consent_questions: List[str] = []
     # Questions the form asked that the answer bank already answers (assisted apply: copy them).
     prepared_answers: List["PreparedAnswerOut"] = []
     # {coverage_before, coverage_after, missing} from tailoring, when it ran.
@@ -566,14 +572,20 @@ class WorkQueueItemOut(BaseModel):
     board_token: Optional[str] = None
 
 
+class UnansweredQuestionIn(BaseModel):
+    question: str = Field(max_length=1000)
+    options: List[Annotated[str, Field(max_length=500)]] = Field(default_factory=list, max_length=200)
+
+
 class SubmissionResultIn(BaseModel):
     # Literal, not a plain str: an unrecognised outcome must be a 422, never a
     # silently ignored no-op that leaves the row stuck in `submitting` forever.
     outcome: Literal["submitted", "unconfirmed", "failed", "needs_human"]
     reason: Optional[str] = Field(default=None, max_length=2000)
     # The form questions a needs_human run could not answer, so the user can answer
-    # each once into the answer bank. Bounded: this is client-supplied text.
-    unanswered_questions: List[Annotated[str, Field(max_length=1000)]] = Field(
+    # each once into the answer bank. Bounded: this is client-supplied text. A bare
+    # string is an older extension build; the object carries a dropdown's options.
+    unanswered_questions: List[Union[Annotated[str, Field(max_length=1000)], UnansweredQuestionIn]] = Field(
         default_factory=list, max_length=50
     )
 
@@ -647,6 +659,8 @@ class ApplicationDetailOut(BaseModel):
     tailored_cover_letter: Optional[str] = None
     flagged_unsupported_claims: List[str] = []
     pending_questions: List[str] = []
+    question_options: dict[str, List[str]] = {}
+    consent_questions: List[str] = []
     keyword_gap: Optional[dict] = None
     keywords: KeywordsOut
     needs_input: Optional[NeedsInputOut] = None

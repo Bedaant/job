@@ -3,6 +3,9 @@ import type { NeedsInput } from "./api";
 export const DEMOGRAPHIC_NOTE =
   "This form requires a self-identification question (gender, ethnicity, veteran or disability status). ApplyScout never answers these, so open the form and answer it yourself. Optional ones are left blank automatically.";
 
+/** A legal consent (e.g. an arbitration agreement): never given by ApplyScout, never stored. */
+export const CONSENT_NOTE = "Only you can agree to this — open the form, read it, and tick it yourself.";
+
 export interface NeedsInputView {
   tone: "warning" | "info";
   title: string;
@@ -38,11 +41,15 @@ export function needsInputView(n: NeedsInput | null, company: string, pendingCou
         body: "It needs a file other than your resume. Open the form, add it, and submit it yourself.",
       };
     case "question":
-      if (demographicNote) {
+      // Demographic or consent: a retry stops at the same field, so the user finishes it.
+      if (demographicNote || n.consent_required) {
         return {
           ...byHand,
           title: `Maggie needs your input to finish ${form}.`,
-          body: "Answer any questions below so later forms fill themselves, then open this form and submit it yourself.",
+          body:
+            pendingCount > 0
+              ? "Answer any questions below so later forms fill themselves, then open this form and submit it yourself."
+              : "Open the form, finish what only you can, and submit it yourself.",
         };
       }
       return pendingCount > 0

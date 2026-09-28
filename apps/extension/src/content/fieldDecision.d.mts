@@ -40,7 +40,8 @@ export function classifyFileInput(field: {
 export function unansweredQuestions(
   fields: { field_id: string; label_text: string | null; options?: string[] }[],
   flag: { field_id: string; reason: string }[],
-): string[];
+): UnansweredQuestion[];
+export type UnansweredQuestion = { question: string; options: string[] };
 
 export const DEMOGRAPHIC_DECLINE_OPTIONS: string[];
 export const DEMOGRAPHIC_OPTIONS: string[];

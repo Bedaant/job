@@ -39,7 +39,7 @@ def last_attempt(notes: str | None) -> dict | None:
     return {"outcome": stamp[0], "message": stamp[1]} if stamp else None
 
 
-def needs_input(notes: str | None, pending_questions: list[str]) -> dict | None:
+def needs_input(notes: str | None, pending_questions: list[str], consent_questions: list[str] = ()) -> dict | None:
     """None unless the most recent attempt ended in needs_human."""
     stamp = _last_stamp(notes)
     if not stamp or stamp[0] != "needs_human":
@@ -47,5 +47,9 @@ def needs_input(notes: str | None, pending_questions: list[str]) -> dict | None:
     reason = stamp[1]
     kind = next((k for k, p in _KINDS if p.search(reason)), None)
     if kind is None:
-        kind = "question" if pending_questions else "other"
-    return {"kind": kind, "message": reason, "demographic_left_blank": bool(_DEMOGRAPHIC.search(reason))}
+        kind = "question" if pending_questions or consent_questions else "other"
+    return {
+        "kind": kind, "message": reason, "demographic_left_blank": bool(_DEMOGRAPHIC.search(reason)),
+        # A required legal consent stops every retry: only the user may agree to it.
+        "consent_required": bool(consent_questions),
+    }
