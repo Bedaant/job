@@ -102,6 +102,26 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-28 (latest+51) — Redis back; worker socket leak fixed
+
+**What changed.** New Redis Cloud DB (`REDIS_URL` in `apps/api/.env`). The first
+connect failed with `max number of clients reached`: the local RQ worker held 29
+sockets and the scheduler 1, which is the free tier's cap of 30. Root cause:
+`workers/jobs.get_redis_connection()` built a new `Redis` client (and pool) on every
+call, and jobs running inside the long-lived SimpleWorker call it repeatedly. It now
+has `@lru_cache(maxsize=1)`: one client per process. `events/sse.py` closes its own
+client, and `run_relay.py` is one client per process, so both are fine.
+
+**Verified.** Red test first (`test_redis_connection_is_one_shared_client_per_process`),
+api **660/660**. After a restart: PING ok, the scheduler's startup discover + sweep
+ran, and a `len([1,2,3])` job went queue → worker → `3`. 3 sockets open, not 30.
+
+**Notes.** Voyage is on its no-billing tier (3 RPM): the embedding backfill in
+discover hits `RateLimitError`. The job still completes, but embeddings lag until a
+payment method is added at dashboard.voyageai.com.
+
+---
+
 ### 2026-09-28 (latest+50) — Four stranded worktrees reviewed and merged
 
 The four worktrees left at f21a331 held finished-but-uncommitted work. Each one was
