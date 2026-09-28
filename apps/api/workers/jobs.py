@@ -4,6 +4,7 @@ runs in a worker process instead.
 """
 import logging
 import time
+from functools import lru_cache
 
 from redis import Redis
 from rq import Queue
@@ -36,7 +37,10 @@ logger = logging.getLogger(__name__)
 CAMPAIGN_SWEEP_INTERVAL_SECONDS = 60 * 60
 
 
+@lru_cache(maxsize=1)
 def get_redis_connection() -> Redis:
+    # One client per process: its pool reuses sockets. A new client per call leaked
+    # one socket each in the worker until Redis Cloud's 30-client cap was hit.
     return Redis.from_url(get_settings().redis_url)
 
 

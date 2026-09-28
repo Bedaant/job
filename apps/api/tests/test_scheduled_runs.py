@@ -272,3 +272,12 @@ def test_a_scheduled_run_with_nothing_new_stays_out_of_the_activity_list(mock_sc
     jobs.run_campaign_task(campaign.id, run_id="r1", scheduled=True)
 
     assert db.query(models.Event).filter(models.Event.type == "campaign.scheduled_run").count() == 0
+
+
+def test_redis_connection_is_one_shared_client_per_process():
+    # A new client (and pool) per call leaked sockets in the long-lived worker
+    # until Redis Cloud's 30-client cap refused every connection.
+    from workers.jobs import get_queue, get_redis_connection
+
+    assert get_redis_connection() is get_redis_connection()
+    assert get_queue().connection is get_redis_connection()
