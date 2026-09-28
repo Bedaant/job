@@ -92,6 +92,7 @@ def test_review_queue_exposes_needs_input_and_last_attempt():
 
     assert queue[app_id]["needs_input"] == {
         "kind": "captcha", "message": "reCAPTCHA challenge detected", "demographic_left_blank": False,
+        "consent_required": False,
     }
     assert queue[app_id]["last_attempt"] == {"outcome": "needs_human", "message": "reCAPTCHA challenge detected"}
     assert queue[plain_id]["needs_input"] is None

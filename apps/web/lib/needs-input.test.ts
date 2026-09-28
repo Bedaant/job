@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { ApiError, api } from "./api";
-import { DEMOGRAPHIC_NOTE, needsInputView } from "./needs-input";
+import { CONSENT_NOTE, DEMOGRAPHIC_NOTE, needsInputView } from "./needs-input";
 
 const ni = (kind: "question" | "upload" | "captcha" | "account" | "other", demographic = false, message = "m") => ({
   kind,
@@ -55,6 +55,17 @@ describe("needsInputView", () => {
     expect(DEMOGRAPHIC_NOTE).toBe(
       "This form requires a self-identification question (gender, ethnicity, veteran or disability status). ApplyScout never answers these, so open the form and answer it yourself. Optional ones are left blank automatically."
     );
+  });
+
+  it("consent blocks every retry: no retry framing, send the user to the form", () => {
+    const consent = { ...ni("question"), consent_required: true };
+    for (const pending of [0, 2]) {
+      const v = needsInputView(consent, "Anthropic", pending)!;
+      expect(v).toMatchObject({ openForm: true, retryHelps: false, tone: "warning" });
+      expect(v.body).not.toMatch(/approve to retry/i);
+      expect(v.title).not.toMatch(/answered everything/i);
+    }
+    expect(CONSENT_NOTE).toBe("Only you can agree to this — open the form, read it, and tick it yourself.");
   });
 
   it("other: shows what the driver reported and sends the user to the form", () => {

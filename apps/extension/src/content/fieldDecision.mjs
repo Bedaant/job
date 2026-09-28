@@ -249,16 +249,17 @@ export function classifyFileInput(field) {
 // never answerable); file_upload is not a text question.
 const ANSWERABLE_REASONS = new Set(["essay_no_stored_answer", "low_confidence"]);
 
-// The labels of flagged fields, verbatim, for the backend to hold as the
-// questions this run stopped on (POST /submission-result unanswered_questions).
+// The labels of flagged fields, verbatim, with a dropdown's options, for the
+// backend to hold as the questions this run stopped on (POST /submission-result
+// unanswered_questions). Options let Review offer the real choices and tell a
+// consent ("I agree") apart; the API keeps consent out of the answer bank.
 export function unansweredQuestions(fields, flag) {
   const fieldById = new Map(fields.map((f) => [f.field_id, f]));
   return flag
     .filter((f) => ANSWERABLE_REASONS.has(f.reason))
     .map((f) => fieldById.get(f.field_id))
-    .filter((field) => field && !isDemographicField(field))
-    .map((field) => field.label_text?.trim())
-    .filter(Boolean);
+    .filter((field) => field?.label_text?.trim() && !isDemographicField(field))
+    .map((field) => ({ question: field.label_text.trim(), options: field.options ?? [] }));
 }
 
 // --- extraction: what the page's controls ARE (LIVE-FORM-TEST #8, #10, #15) ---

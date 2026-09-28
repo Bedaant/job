@@ -302,8 +302,24 @@ test("unansweredQuestions returns labels of flagged fields the user can answer",
     { field_id: "e", reason: "low_confidence" },
   ];
   assert.deepEqual(unansweredQuestions(fields, flag), [
-    "Why do you want to work here?",
-    "How did you hear about us?",
+    { question: "Why do you want to work here?", options: [] },
+    { question: "How did you hear about us?", options: [] },
+  ]);
+});
+
+test("unansweredQuestions carries a dropdown's options, consent included (the API shows it as the user's own step)", () => {
+  const agree = "I understand and agree to the terms of the Agreement to Arbitrate set forth above.";
+  const fields = [
+    { field_id: "r", label_text: "Are you open to relocation?", options: ["Yes", "No"] },
+    { field_id: "t", label_text: "Agreement to Arbitrate*", options: [agree] },
+  ];
+  const flag = [
+    { field_id: "r", reason: "low_confidence" },
+    { field_id: "t", reason: "low_confidence" },
+  ];
+  assert.deepEqual(unansweredQuestions(fields, flag), [
+    { question: "Are you open to relocation?", options: ["Yes", "No"] },
+    { question: "Agreement to Arbitrate*", options: [agree] },
   ]);
 });
 

@@ -26,6 +26,7 @@ import {
   type FrameAssignment,
 } from "./driverCore.mjs";
 import { VERIFY_TIMEOUT_MS } from "../content/submitVerification.mjs";
+import type { UnansweredQuestion } from "../content/fieldDecision.mjs";
 import "./apiProxy"; // content scripts reach the API through the worker (CORS, LIVE-FORM-TEST #1)
 
 export type WorkItem = {
@@ -90,7 +91,7 @@ async function reportResult(
   applicationId: string,
   outcome: Outcome,
   reason?: string,
-  questions: string[] = [],
+  questions: UnansweredQuestion[] = [],
 ): Promise<void> {
   // Reporting is not optional: an unreported item stays `submitting` forever,
   // which is invisible to the user and to the next driver pass. If this throws,
@@ -111,7 +112,7 @@ async function reportResult(
  * timeout — one leaked tab per failed application makes the browser unusable
  * after a dozen of them.
  */
-type ItemResult = { outcome: Outcome; reason?: string; questions?: string[] };
+type ItemResult = { outcome: Outcome; reason?: string; questions?: UnansweredQuestion[] };
 
 function runItem(item: WorkItem): Promise<ItemResult> {
   return new Promise((resolve) => {
