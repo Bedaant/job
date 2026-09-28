@@ -569,3 +569,16 @@ test("age-bracket option groups are demographic; legal-age and numeric non-age s
     assert.equal(isDemographicField({ label_text: "Please select", options }), false, options.join("|"));
   }
 });
+
+// Review of the optional_left_blank change: many forms mark "required" only with a
+// trailing "*" in the label (no required / aria-required attribute). Such a field must
+// still block the run, not be left blank and submitted incomplete.
+test("a label ending in * counts as required for unmapped fields", () => {
+  const f = (label_text) => ({ field_id: label_text, label_text, input_type: "text", name: label_text });
+  const { flag } = decideFieldActions([f("Country*"), f("Are you open to relocation? *"), f("Website"), f("Rate 5*5")], []);
+  const reasons = Object.fromEntries(flag.map((x) => [x.field_id, x.reason]));
+  assert.equal(reasons["Country*"], "low_confidence");
+  assert.equal(reasons["Are you open to relocation? *"], "low_confidence");
+  assert.equal(reasons["Website"], "optional_left_blank");
+  assert.equal(reasons["Rate 5*5"], "optional_left_blank");
+});

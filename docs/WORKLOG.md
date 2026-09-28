@@ -102,6 +102,37 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-28 (latest+54) — Auto-apply driven live on embedded Greenhouse: five fixes; Redis password rotated
+
+**How tested.** New `tools/browser-use-harness/auto_apply.py`: a harness job (local
+careers page with a 2-field talent form + the Greenhouse embed) → batch-approve →
+`jc:run-queue` → watch the driver's tab under the full guard (`guard.py` unchanged).
+Re-run: `python auto_apply.py --ext-dist ..\..\apps\extension\dist --job brex/8795500002`.
+**Result.** The iframe is chosen and the talent form is untouched. On brex/8795500002
+the fill completed (resume, names, email, country, phone, LinkedIn), the guard cancelled
+the submit event, and the driver reported `unconfirmed` (no application POST left the
+browser). Anthropic's posting stops at `needs_human` on its arbitration consent (never
+auto-given): correct.
+**Bugs (agent, red first each).**
+1. The embed hydrates after load and swaps every control, so dropdown options were read
+   from dead nodes (0 options → every combobox low_confidence). Fix: `relink.readLive`
+   re-reads, at most 3 tries.
+2. The phone country shows "+1" for "United States +1" and was flagged every pass. Fix:
+   accept the option's trailing words, only after our own click.
+3. Optional unmapped fields (Website) blocked the run. Now `optional_left_blank`.
+4. `ITEM_TIMEOUT` 60 s was less than load + reads + /map-fields. Now 180 s (driverCore).
+5. Added on review: a label ending in "*" counts as required, so an asterisk-only
+   required field still blocks instead of being submitted blank.
+**Tests.** Extension 106/106, `tsc` clean; api 672; web 137; guard 12/12.
+**Redis.** The owner rotated the password (the old one was pasted in chat). The new one
+is verified and the old one is rejected; API, worker and scheduler restarted on it.
+**Open.** Required Location (City) typeaheads (Robinhood, GitLab) always end
+`needs_human`. Consent/unfittable questions never reach the review queue, so the user
+sees "needs input" with nothing to answer. The needs_human note lists reason codes, not
+field labels. Background-tab timer throttling is untested in a headed browser.
+
+---
+
 ### 2026-09-28 (latest+53) — Names from a two-word full_name, Voyage free-tier backfill, digest email
 
 Three parallel worktree agents, each reviewed and merged. Suite **672/672**.

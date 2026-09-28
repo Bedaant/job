@@ -141,8 +141,11 @@ export function decideFieldActions(fields, mappings) {
   );
 
   for (const field of fields) {
+    // A trailing "*" in the label is how many forms mark required (no attribute).
     const required =
-      field.required || (field.input_type === "radio" && requiredRadioNames.has(field.name));
+      field.required ||
+      (field.input_type === "radio" && requiredRadioNames.has(field.name)) ||
+      /\*\s*$/.test(field.label_text ?? "");
     // Unconditional, and before anything else looks at the mapping: never
     // filled. Whether it blocks depends only on whether the form requires it.
     if (isDemographicField(field)) {
