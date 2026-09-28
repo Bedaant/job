@@ -180,3 +180,104 @@ def test_scheduler_registers_the_digest_daily_just_after_utc_midnight(mock_sched
     assert call.kwargs["interval"] == 24 * 60 * 60
     first = call.kwargs["scheduled_time"]
     assert first > datetime.utcnow() and (first.hour, first.minute) == (0, 5)
+
+
+class _FakeSMTP:
+    instances = []
+
+    def __init__(self, host, port, timeout=None):
+        self.host, self.port, self.calls, self.sent = host, port, [], []
+        _FakeSMTP.instances.append(self)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def starttls(self):
+        self.calls.append("starttls")
+
+    def login(self, user, password):
+        self.calls.append(("login", user, password))
+
+    def send_message(self, msg):
+        self.sent.append(msg)
+
+
+def _smtp_settings(**kw):
+    s = dict(smtp_host="smtp.example.com", smtp_port=587, smtp_user="me@example.com",
+             smtp_password="app-pass", smtp_from="Maggie <digest@example.com>")
+    s.update(kw)
+    return type("S", (), s)()
+
+
+def test_smtp_sender_starttls_logs_in_and_sends_the_message():
+    _FakeSMTP.instances = []
+    with patch("digest.get_settings", return_value=_smtp_settings()), \
+            patch("digest.smtplib.SMTP", _FakeSMTP):
+        assert digest.smtp_sender("a@example.com", "Your digest", "Sent 2 applications.") is True
+    smtp = _FakeSMTP.instances[0]
+    assert (smtp.host, smtp.port) == ("smtp.example.com", 587)
+    assert smtp.calls == ["starttls", ("login", "me@example.com", "app-pass")]
+    msg = smtp.sent[0]
+    assert msg["To"] == "a@example.com" and msg["Subject"] == "Your digest"
+    assert msg["From"] == "Maggie <digest@example.com>"
+    assert msg.get_content().strip() == "Sent 2 applications."
+
+
+def test_smtp_sender_port_465_uses_ssl_and_from_defaults_to_user():
+    _FakeSMTP.instances = []
+    with patch("digest.get_settings", return_value=_smtp_settings(smtp_port=465, smtp_from=None)), \
+            patch("digest.smtplib.SMTP_SSL", _FakeSMTP):
+        assert digest.smtp_sender("a@example.com", "s", "b") is True
+    smtp = _FakeSMTP.instances[0]
+    assert "starttls" not in smtp.calls
+    assert smtp.sent[0]["From"] == "me@example.com"
+
+
+def test_smtp_sender_failure_returns_false_without_logging_the_password(caplog):
+    class Boom(_FakeSMTP):
+        def login(self, user, password):
+            raise digest.smtplib.SMTPAuthenticationError(535, b"bad credentials app-pass")
+
+    with patch("digest.get_settings", return_value=_smtp_settings()), \
+            patch("digest.smtplib.SMTP", Boom):
+        assert digest.smtp_sender("a@example.com", "s", "b") is False
+    assert "SMTPAuthenticationError" in caplog.text and "app-pass" not in caplog.text
+
+
+def _run_task(SessionLocal):
+    with patch("digest.session_scope") as scope:
+        db = SessionLocal()
+        scope.return_value.__enter__.return_value = db
+        scope.return_value.__exit__.return_value = False
+        digest.daily_digest_task()
+        db.commit()
+    return SessionLocal().query(models.Notification).one()
+
+
+def _seeded_client():
+    client, SessionLocal = _client()
+    _user(client, "a@example.com")
+    end = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    _seed(SessionLocal, "a@example.com", today=end - timedelta(hours=2), yesterday=end - timedelta(hours=30))
+    return SessionLocal
+
+
+def test_scheduled_task_uses_smtp_when_host_is_set_and_records_failures():
+    SessionLocal = _seeded_client()
+    with patch("digest.get_settings", return_value=_smtp_settings()), \
+            patch("digest.smtp_sender", return_value=False) as smtp:
+        n = _run_task(SessionLocal)
+    assert smtp.call_args.args[0] == "a@example.com"
+    assert n.status == "failed" and n.error == "email send failed"
+
+
+def test_scheduled_task_without_smtp_host_stays_log_only():
+    SessionLocal = _seeded_client()
+    with patch("digest.get_settings", return_value=_smtp_settings(smtp_host=None)), \
+            patch("digest.smtp_sender") as smtp:
+        n = _run_task(SessionLocal)
+    smtp.assert_not_called()
+    assert n.status == "skipped" and n.error == "no email sender configured"

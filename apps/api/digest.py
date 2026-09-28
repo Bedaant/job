@@ -1,17 +1,19 @@
 """ADR-015 rail: "daily caps + a digest of what went out". One user's day, read from
 the applications table + the events outbox over a [start, end) window of naive UTC.
 
-Delivery is behind `sender(to, subject, body) -> delivered?`. The default only logs:
-there are no email credentials yet (SMTP host/user/password or a provider API key).
-Plug a real one in by passing it to daily_digest_task.
+Delivery is behind `sender(to, subject, body) -> delivered?`. With SMTP_HOST set the
+scheduled task emails through smtp_sender; unset, it only logs (log_only_sender).
 """
 import logging
+import smtplib
 from collections import Counter
 from datetime import datetime, timedelta
+from email.message import EmailMessage
 
 from sqlalchemy.orm import Session
 
 import models
+from core.config import get_settings
 from database import session_scope
 
 logger = logging.getLogger(__name__)
@@ -112,7 +114,31 @@ def log_only_sender(to: str, subject: str, body: str) -> bool:
     return False
 
 
-def daily_digest_task(sender=log_only_sender) -> dict:
+def smtp_sender(to: str, subject: str, body: str) -> bool:
+    """Port 465 is implicit TLS; any other port upgrades with STARTTLS."""
+    s = get_settings()
+    msg = EmailMessage()
+    msg["From"], msg["To"], msg["Subject"] = s.smtp_from or s.smtp_user, to, subject
+    msg.set_content(body)
+    try:
+        if s.smtp_port == 465:
+            conn = smtplib.SMTP_SSL(s.smtp_host, s.smtp_port, timeout=30)
+        else:
+            conn = smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=30)
+        with conn as smtp:
+            if s.smtp_port != 465:
+                smtp.starttls()
+            if s.smtp_user:
+                smtp.login(s.smtp_user, s.smtp_password or "")
+            smtp.send_message(msg)
+        return True
+    except Exception as e:  # one user's bad send must not stop the others
+        # Type only: a server reply can echo what was sent, and that includes the password.
+        logger.warning("digest email to %s failed: %s", to, type(e).__name__)
+        return False
+
+
+def daily_digest_task(sender=None) -> dict:
     """Yesterday's UTC day for every user who had activity. Runs on the owner role
     (cross-tenant by design, like the campaign sweep); every query is by user id.
     Re-running the same day writes nothing new."""
@@ -120,6 +146,8 @@ def daily_digest_task(sender=log_only_sender) -> dict:
     # day; add users.timezone (web already knows it) to send at local midnight.
     end = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     start = end - timedelta(days=1)
+    if sender is None:
+        sender = smtp_sender if get_settings().smtp_host else log_only_sender
     notified = 0
     with session_scope() as db:
         # ponytail: one pass over every user, fine until users number in the thousands.
@@ -139,6 +167,8 @@ def daily_digest_task(sender=log_only_sender) -> dict:
                                     template=TEMPLATE, payload=d)
             if sender(user.email, "Your ApplyScout daily digest", d["text"]):
                 n.status, n.sent_at = "sent", datetime.utcnow()
+            elif sender is smtp_sender:
+                n.status, n.error = "failed", "email send failed"
             else:
                 n.status, n.error = "skipped", "no email sender configured"
             db.add(n)
