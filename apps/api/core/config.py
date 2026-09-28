@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expires_minutes: int = 60 * 24 * 7  # 7 days
 
+    # Daily digest email (digest.smtp_sender). Unset SMTP_HOST = log-only, nothing sent.
+    smtp_host: str | None = None
+    smtp_port: int = 587  # 465 = implicit TLS, anything else = STARTTLS
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str | None = None  # defaults to smtp_user
+
     cors_origins: list[str] = ["http://localhost:3000"]
 
 
