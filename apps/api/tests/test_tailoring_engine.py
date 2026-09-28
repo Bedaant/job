@@ -46,7 +46,7 @@ def test_bullet_rejects_empty_source_fact_ids():
 
 @patch("tailoring.engine._get_instructor_client")
 def test_tailor_application_anthropic_path_returns_structured_bullets_with_fact_ids(mock_get_client):
-    from tailoring.engine import TruthCheckResult
+    from tailoring.engine import ClaimAudit
 
     bullet = Bullet.model_validate(
         {"text": "Led a team of 5 engineers", "source_fact_ids": ["f1"]},
@@ -60,7 +60,7 @@ def test_tailor_application_anthropic_path_returns_structured_bullets_with_fact_
             cover_letter="Dear hiring manager, ...",
             keywords_targeted=["python"],
         ),
-        TruthCheckResult(unsupported_claims=[]),
+        ClaimAudit(),
     ]
     mock_get_client.return_value = mock_instructor
 
@@ -100,7 +100,7 @@ GAP_JD = "Requirements: Kubernetes, Python, Terraform and Snowflake experience."
 
 
 def _run_with_captured_prompt(facts, jd):
-    from tailoring.engine import TruthCheckResult
+    from tailoring.engine import ClaimAudit
 
     bullet = Bullet.model_validate(
         {"text": "Deployed 12 services on Kubernetes", "source_fact_ids": ["k1"]},
@@ -109,7 +109,7 @@ def _run_with_captured_prompt(facts, jd):
     mock_instructor = MagicMock()
     mock_instructor.messages.create.side_effect = [
         TailoredDraft(summary="S.", bullets=[bullet], cover_letter="C."),
-        TruthCheckResult(unsupported_claims=[]),
+        ClaimAudit(),
     ]
     with patch("tailoring.engine._get_instructor_client", return_value=mock_instructor), \
             patch("tailoring.engine._settings") as mock_settings:
@@ -161,7 +161,7 @@ def test_nvidia_provider_uses_the_validated_path_on_the_nvidia_model():
     """"nvidia" is a production provider, not the smoke test: it must go through
     the same instructor-validated path as Claude (every bullet cites a real fact
     id, bounded retry), never the unvalidated raw-JSON smoke branch."""
-    from tailoring.engine import TruthCheckResult
+    from tailoring.engine import ClaimAudit
 
     bullet = Bullet.model_validate(
         {"text": "Led a team of 5 engineers", "source_fact_ids": ["f1"]},
@@ -170,7 +170,7 @@ def test_nvidia_provider_uses_the_validated_path_on_the_nvidia_model():
     nvidia_instructor = MagicMock()
     nvidia_instructor.chat.completions.create.side_effect = [
         TailoredDraft(summary="S.", bullets=[bullet], cover_letter="C."),
-        TruthCheckResult(unsupported_claims=[]),
+        ClaimAudit(),
     ]
     with patch("tailoring.engine._get_nvidia_instructor_client", return_value=nvidia_instructor), \
             patch("tailoring.engine._get_instructor_client") as anthropic_instructor, \
@@ -193,3 +193,82 @@ def test_nvidia_provider_uses_the_validated_path_on_the_nvidia_model():
     # JSON got cut off; thinking off answered the same in 0.7s vs 4.4s.
     assert first["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
     assert result["bullets"] == [{"text": "Led a team of 5 engineers", "source_fact_ids": ["f1"]}]
+
+
+# ---------- truth-check on NVIDIA: measured, then fixed (latest+44) ----------
+
+from tailoring.engine import (  # noqa: E402
+    NO_PADDING_RULE, STRICT_CHECK_SYSTEM, ClaimAudit, ClaimCheck, deterministic_unsupported, truth_check,
+)
+
+DET_FACTS = [
+    {"id": "d1", "category": "experience", "achievement": "Deployed 12 services on K8s", "proof": None,
+     "metric": None, "tags": []},
+    {"id": "d2", "category": "experience", "achievement": "Led a team of five engineers", "proof": None,
+     "metric": "cut deploy time from 40min to 4min", "tags": ["kafka"]},
+]
+
+
+def test_deterministic_check_flags_tools_and_numbers_no_fact_contains():
+    flags = deterministic_unsupported(DET_FACTS, [
+        "Built pipelines with Terraform",
+        "Cut p95 latency by 30%",
+        "Led a team of 9 engineers",
+    ])
+    assert flags == [
+        "Built pipelines with Terraform [not in facts: Terraform]",
+        "Cut p95 latency by 30% [not in facts: 30]",
+        "Led a team of 9 engineers [not in facts: 9]",
+    ]
+
+
+def test_deterministic_check_accepts_synonyms_number_words_tags_and_metrics():
+    assert deterministic_unsupported(DET_FACTS, [
+        "Deployed 12 services on Kubernetes",    # K8s alias
+        "Managed a team of 5 engineers",         # "five"
+        "Ran a Kafka pipeline",                  # tag
+        "Cut deploy time from 40 minutes to 4",  # metric field
+    ]) == []
+
+
+def test_fact_ids_are_not_evidence_for_numbers():
+    # The id "d1" must not make a "1" in the draft look supported.
+    assert deterministic_unsupported(DET_FACTS, ["Ranked 1 in the org"]) == ["Ranked 1 in the org [not in facts: 1]"]
+
+
+def test_claim_audit_flags_padding_phrases_uncited_claims_and_unknown_ids():
+    audit = ClaimAudit(claims=[
+        ClaimCheck(claim="Deployed 12 services on Kubernetes", fact_ids=["d1"]),
+        ClaimCheck(claim="Led five engineers, ensuring on-time delivery", fact_ids=["d2"],
+                   unsupported_phrases=["ensuring on-time delivery"]),
+        ClaimCheck(claim="Won an award", fact_ids=[]),
+        ClaimCheck(claim="Invented id", fact_ids=["zz"]),
+    ])
+    assert audit.unsupported({"d1", "d2"}) == [
+        "Led five engineers, ensuring on-time delivery [not in facts: ensuring on-time delivery]",
+        "Won an award",
+        "Invented id",
+    ]
+
+
+def test_truth_check_uses_strict_prompt_blind_to_the_jd_and_adds_deterministic_flags():
+    with patch("tailoring.engine._call_claude_structured", return_value=ClaimAudit()) as call:
+        flags = truth_check(DET_FACTS, "Platform engineer.", ["Deployed 12 services on K8s with Terraform"], "Hi.")
+    system, user, model = call.call_args.args[:3]
+    assert system == STRICT_CHECK_SYSTEM and model is ClaimAudit
+    assert "JOB DESCRIPTION" not in user  # ADR-006
+    assert flags == ["Deployed 12 services on K8s with Terraform [not in facts: Terraform]"]
+
+
+def test_tailor_prompt_forbids_padding():
+    bullet = Bullet.model_validate({"text": "Python", "source_fact_ids": ["f2"]}, context={"known_fact_ids": {"f1", "f2"}})
+    mock_instructor = MagicMock()
+    mock_instructor.messages.create.side_effect = [
+        TailoredDraft(summary="S.", bullets=[bullet], cover_letter="C."), ClaimAudit(),
+    ]
+    with patch("tailoring.engine._get_instructor_client", return_value=mock_instructor), \
+            patch("tailoring.engine._settings") as mock_settings:
+        mock_settings.llm_provider = "anthropic"
+        tailor_application({"title": "Backend Engineer", "company": "Acme"}, FACTS)
+    assert NO_PADDING_RULE in mock_instructor.messages.create.call_args_list[0].kwargs["system"]
+    assert "why it mattered" in NO_PADDING_RULE

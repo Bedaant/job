@@ -13,6 +13,7 @@ Two-pass tailoring:
 """
 import os
 import json
+import re
 from types import SimpleNamespace
 
 import anthropic
@@ -22,7 +23,8 @@ from instructor.v2.core.errors import InstructorRetryException
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from core.config import get_settings
 from core.grounding import validate_ids_against_known_set
-from matching.keyword_gap import compute_keyword_gap
+from matching.keyword_gap import _TOKEN_RE, _match_in_fact, compute_keyword_gap
+from matching.skills import skill_occurrences
 from langfuse import observe, get_client
 
 MODEL = "claude-sonnet-4-6"
@@ -117,6 +119,48 @@ class TruthCheckResult(BaseModel):
     unsupported_claims: list[str] = []
 
 
+class ClaimCheck(BaseModel):
+    claim: str
+    fact_ids: list[str] = []
+    unsupported_phrases: list[str] = []
+
+
+class ClaimAudit(BaseModel):
+    """Strict pass 2: every claim of the draft, each tied to fact ids or not."""
+    claims: list[ClaimCheck] = []
+
+    def unsupported(self, known_fact_ids: set[str]) -> list[str]:
+        out = []
+        for c in self.claims:
+            if c.unsupported_phrases:
+                out.append(f"{c.claim} [not in facts: {'; '.join(c.unsupported_phrases)}]")
+            elif not set(c.fact_ids) & known_fact_ids:
+                out.append(c.claim)
+        return out
+
+
+CHECK_SYSTEM = (
+    "You are a fact-checker. You will be given a candidate's facts KB and a "
+    "tailored resume/cover letter draft generated from it. List any specific "
+    "claim (achievement, metric, skill, or experience) in the draft that is NOT "
+    "clearly supported by the KB."
+)
+
+STRICT_CHECK_SYSTEM = (
+    "You are a strict fact-checker for a job application. You get a candidate's "
+    "facts KB (each fact has an 'id') and a draft written from it. Split the draft "
+    "(summary, every bullet, every cover-letter sentence) into its individual claims. "
+    "For EACH claim return: the claim text, the id(s) of the fact(s) that state it, "
+    "and unsupported_phrases: every word or phrase in the claim that no cited fact "
+    "states — added outcomes or purposes ('ensuring on-time delivery', 'improving "
+    "reliability'), scope or scale ('across microservices', 'high-throughput', "
+    "'enterprise'), domains, tools, numbers, titles, durations and praise adjectives. "
+    "Rewording the same meaning is fine; adding meaning is not. If no fact states "
+    "the claim, fact_ids is empty. Generic courtesy in the cover letter ('I am "
+    "excited to apply') is not a claim; skip it."
+)
+
+
 @observe(as_type="generation", name="claude-call")
 def call_llm(system: str, user: str) -> str:
     provider = _settings.llm_provider
@@ -168,7 +212,10 @@ def call_llm(system: str, user: str) -> str:
 
 
 @observe(as_type="generation", name="claude-call-structured")
-def _call_claude_structured(system: str, user: str, response_model: type, context: dict | None = None):
+def _call_claude_structured(
+    system: str, user: str, response_model: type, context: dict | None = None,
+    extra_body: dict | None = None, max_tokens: int = NVIDIA_STRUCTURED_MAX_TOKENS,
+):
     """The default (real Anthropic) provider's structured path — validates
     the response against response_model, retrying (bounded — ADR-011's same
     "bounded, not an open loop" philosophy) on a schema violation instead of
@@ -182,8 +229,8 @@ def _call_claude_structured(system: str, user: str, response_model: type, contex
         result = _get_nvidia_instructor_client().chat.completions.create(
             model=model_used,
             # Open models spend tokens before the JSON; 1500 truncated the draft live.
-            max_tokens=NVIDIA_STRUCTURED_MAX_TOKENS,
-            extra_body=_settings.nvidia_extra_body(),
+            max_tokens=max_tokens,
+            extra_body=_settings.nvidia_extra_body() if extra_body is None else extra_body,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             response_model=response_model,
             max_retries=2,
@@ -207,6 +254,14 @@ def _call_claude_structured(system: str, user: str, response_model: type, contex
 
 JD_TERMS_HEADER = "JD TERMS YOUR FACTS SUPPORT:"
 
+# Found live on NVIDIA (WORKLOG latest+34): bullets gained "ensuring on-time
+# delivery", "across microservices" — padding no fact states.
+NO_PADDING_RULE = (
+    "Say only what the cited fact says: do not add outcomes, purposes, benefits, "
+    "qualities, scope, scale, domains, team sizes, durations or numbers it does not "
+    "state — never add why it mattered unless the fact says so."
+)
+
 
 def _jd_terms_section(gap: dict) -> str:
     """The prompt's "use these terms" block. Built from `matched` only — the
@@ -221,6 +276,63 @@ def _jd_terms_section(gap: dict) -> str:
         for m in gap["matched"]
     ]
     return JD_TERMS_HEADER + "\n" + ("\n".join(lines) or "- (none)") + "\n\n"
+
+
+_NUMBER_RE = re.compile(r"(?<![\w.])\d+(?:[.,]\d+)*")
+_NUMBER_WORDS = {w: str(i) for i, w in enumerate(
+    "zero one two three four five six seven eight nine ten eleven twelve".split())}
+
+
+def _numbers(text: str) -> set[str]:
+    found = {n.replace(",", "") for n in _NUMBER_RE.findall(text)}
+    return found | {_NUMBER_WORDS[w] for w in re.findall(r"[a-z]+", text.lower()) if w in _NUMBER_WORDS}
+
+
+def deterministic_unsupported(facts: list[dict], draft_texts: list[str]) -> list[str]:
+    """Pass 2's model-free half: a tool/technology or a number the draft names
+    that no fact contains is flagged, whatever the model checker says. Same
+    vocabulary and matching (synonym + fuzzy) as the keyword-gap scorer, so
+    "K8s" in a fact backs "Kubernetes" in the draft.
+
+    ponytail: only names in matching/skills.py's vocabulary and digits are seen;
+    an invented domain or outcome in plain words ("financial transactions") is
+    left to the model checker."""
+    facts_text = " ".join(
+        " ".join(v) if isinstance(v, list) else str(v)
+        for f in facts for k, v in f.items() if k != "id" and v
+    )
+    tokens = [t.lower() for t in _TOKEN_RE.findall(facts_text)]
+    fact_numbers = _numbers(facts_text)
+    flags = []
+    for text in draft_texts:
+        # Vocabulary names only: the alias map has loose entries ("product
+        # manager" -> Product Strategy) that turn a job title into a false flag.
+        for name in sorted(skill_occurrences(text)):
+            if not _match_in_fact(name, facts_text, tokens):
+                flags.append(f"{text} [not in facts: {name}]")
+        for n in sorted(_numbers(text) - fact_numbers):
+            flags.append(f"{text} [not in facts: {n}]")
+    return flags
+
+
+def split_sentences(text: str) -> list[str]:
+    return [s for s in re.split(r"(?<=[.!?])\s+", text or "") if s.strip()]
+
+
+def truth_check(facts: list[dict], summary: str, bullet_texts: list[str], cover_letter: str) -> list[str]:
+    """Pass 2 (ADR-006: facts + draft only, never the JD)."""
+    known_fact_ids = {f["id"] for f in facts if f.get("id")}
+    draft = {"summary": summary, "bullets": bullet_texts, "cover_letter": cover_letter}
+    check_user = (
+        f"CANDIDATE FACTS KB:\n{json.dumps(facts, indent=2)}\n\n"
+        f"DRAFT:\n{json.dumps(draft, indent=2)}"
+    )
+    try:
+        audit = _call_claude_structured(STRICT_CHECK_SYSTEM, check_user, ClaimAudit)
+    except InstructorRetryException as exc:
+        raise RuntimeError(f"Truth-check pass could not produce a valid response: {exc}") from exc
+    sentences = split_sentences(summary) + list(bullet_texts) + split_sentences(cover_letter)
+    return audit.unsupported(known_fact_ids) + deterministic_unsupported(facts, sentences)
 
 
 def tailor_application(job: dict, facts: list[dict]) -> dict:
@@ -238,7 +350,7 @@ def tailor_application(job: dict, facts: list[dict]) -> dict:
         "2-sentence professional summary, 4-6 tailored bullet points ranked by "
         "relevance to this job, and a short (150-200 word) cover letter. Every bullet "
         "must cite the id(s) of the fact(s) it is directly backed by. Never invent "
-        "achievements, metrics, or experience not present in the KB. Reorder and "
+        "achievements, metrics, or experience not present in the KB. " + NO_PADDING_RULE + " Reorder and "
         "rewrite for relevance and ATS keyword match only. The '"
         + JD_TERMS_HEADER
         + "' list names the job's own keywords that a KB fact already backs, with "
@@ -286,24 +398,12 @@ def tailor_application(job: dict, facts: list[dict]) -> dict:
         cover_letter = draft.cover_letter
 
     # Pass 2: truth-check
-    check_system = (
-        "You are a fact-checker. You will be given a candidate's facts KB and a "
-        "tailored resume/cover letter draft generated from it. List any specific "
-        "claim (achievement, metric, skill, or experience) in the draft that is NOT "
-        "clearly supported by the KB."
-    )
-    tailored_summary_for_check = {
-        "summary": summary,
-        "bullets": [b["text"] for b in bullets],
-        "cover_letter": cover_letter,
-    }
-    check_user = (
-        f"CANDIDATE FACTS KB:\n{facts_json}\n\n"
-        f"DRAFT:\n{json.dumps(tailored_summary_for_check, indent=2)}"
-    )
-
     if _settings.llm_provider == "nvidia_smoke" or not known_fact_ids:
-        smoke_check_system = check_system + (
+        check_user = (
+            f"CANDIDATE FACTS KB:\n{facts_json}\n\n"
+            f"DRAFT:\n{json.dumps({'summary': summary, 'bullets': [b['text'] for b in bullets], 'cover_letter': cover_letter}, indent=2)}"
+        )
+        smoke_check_system = CHECK_SYSTEM + (
             ' Respond ONLY with valid JSON: {"unsupported_claims": ["...", "..."]} '
             "(empty array if none)."
         )
@@ -311,11 +411,7 @@ def tailor_application(job: dict, facts: list[dict]) -> dict:
         cleaned_check = raw_check.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         unsupported_claims = json.loads(cleaned_check).get("unsupported_claims", [])
     else:
-        try:
-            check_result = _call_claude_structured(check_system, check_user, TruthCheckResult)
-        except InstructorRetryException as exc:
-            raise RuntimeError(f"Truth-check pass could not produce a valid response: {exc}") from exc
-        unsupported_claims = check_result.unsupported_claims
+        unsupported_claims = truth_check(facts, summary, [b["text"] for b in bullets], cover_letter)
 
     return {
         "summary": summary,
