@@ -87,24 +87,40 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int]:
     return len(to_insert), skipped
 
 
+# ponytail: ~4 chars/token guess keeps one request under Voyage's free-tier
+# 10K TPM; use client.count_tokens (needs `tokenizers`) if descriptions skew dense.
+BACKFILL_REQUEST_CHARS = 24_000
+
+
 def backfill_job_embeddings(db, limit: int = 50) -> int:
     """Embed jobs saved without a vector (an embeddings outage during discovery).
-    Bounded per run and failure-tolerant, like the insert path. Returns how many
-    were embedded."""
+    Bounded per run and failure-tolerant, like the insert path. Requests are
+    sized to fit a 10K-tokens-per-minute cap; the first failure (a 429 once the
+    minute's budget is spent) ends the pass, keeping what was embedded — the
+    rest waits for the next discover run rather than sleeping in the worker.
+    Returns how many were embedded."""
     pending = db.query(models.Job).filter(models.Job.embedding.is_(None)).limit(limit).all()
-    if not pending:
-        return 0
-    try:
-        embeddings = embed_texts(
-            [f"{j.title} at {j.company}. {j.description or ''}" for j in pending],
-            input_type="document",
-        )
-    except Exception:
-        logging.getLogger(__name__).exception("embedding backfill of %d jobs failed", len(pending))
-        return 0
-    if not embeddings:
-        return 0
-    for job, embedding in zip(pending, embeddings):
-        job.embedding = embedding
-    db.commit()
-    return len(pending)
+    batches, size = [], BACKFILL_REQUEST_CHARS
+    for job in pending:
+        text = f"{job.title} at {job.company}. {job.description or ''}"[:BACKFILL_REQUEST_CHARS]
+        if size + len(text) > BACKFILL_REQUEST_CHARS:
+            batches.append(([], []))
+            size = 0
+        batches[-1][0].append(job)
+        batches[-1][1].append(text)
+        size += len(text)
+
+    done = 0
+    for jobs, texts in batches:
+        try:
+            embeddings = embed_texts(texts, input_type="document")
+        except Exception:
+            logging.getLogger(__name__).exception("embedding backfill stopped after %d of %d jobs", done, len(pending))
+            break
+        if not embeddings:
+            break
+        for job, embedding in zip(jobs, embeddings):
+            job.embedding = embedding
+        db.commit()
+        done += len(jobs)
+    return done

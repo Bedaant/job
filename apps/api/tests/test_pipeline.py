@@ -156,3 +156,35 @@ def test_backfill_embeds_jobs_saved_during_an_outage_and_tolerates_another():
     with patch("connectors.pipeline.embed_texts", return_value=[[0.1] * 512, [0.2] * 512]):
         assert backfill_job_embeddings(db) == 2
     assert all(j.embedding is not None for j in db.query(models.Job).all())
+
+
+def test_backfill_under_a_rate_limit_keeps_what_it_embedded_and_stops():
+    """Found live: Voyage's no-payment tier is 3 RPM / 10K TPM. The backfill sent
+    all 50 pending jobs (full descriptions) in one request, over 10K tokens, so
+    every run was rejected and embeddings never caught up. Batches must fit under
+    the token cap, and a 429 mid-pass keeps the earlier batches and stops."""
+    from voyageai.error import RateLimitError
+    from connectors.pipeline import backfill_job_embeddings
+
+    db = _db()
+    jobs = []
+    for i in range(3):
+        j = _job("remotive", str(i), title=f"Engineer {i}")
+        j["description"] = "word " * 6000  # ~30K chars: one job alone is at the cap
+        jobs.append(j)
+    with patch("connectors.pipeline.embed_texts", return_value=None):
+        upsert_jobs(db, jobs)
+
+    calls = []
+
+    def fake_embed(texts, input_type):
+        calls.append(texts)
+        if len(calls) == 2:
+            raise RateLimitError("reduced rate limits of 3 RPM and 10K TPM")
+        return [[0.1] * 512 for _ in texts]
+
+    with patch("connectors.pipeline.embed_texts", side_effect=fake_embed):
+        assert backfill_job_embeddings(db) == 1
+    assert len(calls) == 2  # stopped at the 429, didn't spend a request on the third
+    assert all(sum(len(t) for t in texts) <= 24_000 for texts in calls)  # ~<10K tokens/request
+    assert sum(j.embedding is not None for j in db.query(models.Job).all()) == 1
