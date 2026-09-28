@@ -15,6 +15,8 @@ const ROUTES = [
   // The ADR-001/015 claim that must succeed before the one native submit.
   { method: "POST", pattern: new RegExp(`^/applications/${UUID}/claim-submission$`, "i"), response: "json" },
   { method: "GET", pattern: new RegExp(`^/profiles/${UUID}/resume\\.docx$`, "i"), response: "bytes" },
+  // The user's own city, for a location typeahead that has no options until typed.
+  { method: "GET", pattern: new RegExp(`^/profiles/${UUID}/basics$`, "i"), response: "json" },
 ];
 
 // The route for an allow-listed (method, path), else null. Strings only: an object

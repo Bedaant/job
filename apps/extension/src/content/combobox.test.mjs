@@ -4,7 +4,10 @@ import assert from "node:assert/strict";
 import {
   COMBOBOX_MAX_WIDGETS,
   comboboxKind,
+  fillCityTypeahead,
   fillCombobox,
+  isCityQuestion,
+  matchCityOption,
   matchOption,
   optionLabels,
   readAllOptions,
@@ -107,6 +110,7 @@ function fillWidget({ rendered = ["Yes", "No"], afterType = null, canType = true
       state.calls.push(`click:${opt.label}`);
       if (clickWorks) { state.shown = opt.label; state.text = ""; }
     },
+    waitForOptions: async () => opts(),
     clear: async () => { state.calls.push("clear"); state.text = ""; },
     close: async () => state.calls.push("close"),
   });
@@ -184,5 +188,72 @@ test("fillCombobox: a typeahead showing our own typed text is NOT a selection", 
   const w = fillWidget({ rendered: [], afterType: [] });
   w.displayed = () => w.text;
   assert.equal(await fillCombobox(w, "Yes"), false);
+  assert.equal(w.text, "");
+});
+
+// --- a typeahead with no options until typed: the user's own city -------------
+// Options as Greenhouse's "Location (City)" returned them live for "San Francisco".
+const SF = [
+  "San Francisco, California, United States",
+  "San Francisco de Macorís, Duarte, Dominican Republic",
+  "San Francisco, Agusan del Sur, Philippines",
+  "San Francisco De Borja, Lima, Peru",
+  "San Francisco, Cebu, Philippines",
+  "South San Francisco, California, United States",
+];
+const HOME = { city: "San Francisco", region: "CA", country_code: "US" };
+
+test("isCityQuestion: a question that opens with location/city, not a preference", () => {
+  for (const l of ["Location (City)*", "City", "Current location", "Location"]) assert.ok(isCityQuestion(l), l);
+  for (const l of ["What is your preferred office location?*", "Which city would you like to work in?", "Country*", "", null]) {
+    assert.ok(!isCityQuestion(l), String(l));
+  }
+});
+
+test("matchCityOption: only the user's city in the user's region and country", () => {
+  assert.equal(matchCityOption(SF, HOME), 0);
+  assert.equal(matchCityOption(SF, { ...HOME, region: "California" }), 0);
+  assert.equal(matchCityOption(["San Francisco"], HOME), 0);
+  assert.equal(matchCityOption(SF, { ...HOME, country_code: "PH", region: "Cebu" }), 4);
+});
+
+test("matchCityOption: a different city, region or country is never picked", () => {
+  assert.equal(matchCityOption(SF.slice(1), HOME), -1); // only South SF and foreign ones
+  assert.equal(matchCityOption(["Springfield, Illinois, United States"], { city: "Springfield", region: "MO", country_code: "US" }), -1);
+  assert.equal(matchCityOption(["London, Canada"], { city: "London", region: "CA", country_code: "US" }), -1);
+  assert.equal(matchCityOption(SF, { city: "San Francisco", country_code: "PH" }), -1); // two in PH, no region
+  assert.equal(matchCityOption(SF, { city: "", region: "CA", country_code: "US" }), -1);
+  assert.equal(matchCityOption(SF, { city: "San Francisco" }), -1); // qualifiers can't be checked
+});
+
+test("fillCityTypeahead: types the city, clicks the one matching option, verifies", async () => {
+  const w = fillWidget({ rendered: [], afterType: SF });
+  assert.equal(await fillCityTypeahead(w, HOME), true);
+  assert.equal(w.shown, SF[0]);
+  assert.ok(w.calls.includes("type:San Francisco"));
+  assert.ok(w.calls.includes(`click:${SF[0]}`));
+  assert.ok(!w.calls.includes("clear"));
+  assert.equal(w.calls.at(-1), "close");
+});
+
+test("fillCityTypeahead: no unambiguous match -> nothing clicked, typed text cleared", async () => {
+  const w = fillWidget({ rendered: [], afterType: SF.slice(1) });
+  assert.equal(await fillCityTypeahead(w, HOME), false);
+  assert.ok(!w.calls.some((c) => c.startsWith("click")));
+  assert.equal(w.text, "");
+  assert.deepEqual(w.calls.slice(-2), ["clear", "close"]);
+});
+
+test("fillCityTypeahead: no city in the profile, or a read-only widget -> never typed into", async () => {
+  for (const [place, canType] of [[{ region: "CA", country_code: "US" }, true], [{}, true], [HOME, false]]) {
+    const w = fillWidget({ rendered: [], afterType: SF, canType });
+    assert.equal(await fillCityTypeahead(w, place), false);
+    assert.ok(!w.calls.some((c) => c.startsWith("type") || c.startsWith("click")));
+  }
+});
+
+test("fillCityTypeahead: the click didn't take -> false, typed text cleared", async () => {
+  const w = fillWidget({ rendered: [], afterType: SF, clickWorks: false });
+  assert.equal(await fillCityTypeahead(w, HOME), false);
   assert.equal(w.text, "");
 });
