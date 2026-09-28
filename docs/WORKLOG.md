@@ -102,6 +102,26 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-28 (latest+49) — Rejected resume files say why; 0020 applied to Neon
+
+**What changed.** Onboarding's resume Dropzone showed nothing when a file was too big,
+the wrong type, or more than one. `rejectedFileMessage()` (`lib/onboarding.ts`) turns
+react-dropzone's raw text into plain words; `StepResume` shows it in a `role=alert`, and
+the next good drop clears it. Migration **0020 applied to Neon** (0018 → 0020 head). Its
+docstring no longer asks for a 0019 rebase, because no 0019 exists. Removed the merged
+applications worktree.
+
+**Uncommitted work sitting in 4 old worktrees (all at f21a331, never merged):**
+`agent-a83ee6bd…` browser-use harness guard edits, `agent-a979c3d5…` tailoring engine +
+`eval/truth_check_bench.py`, `agent-aa64bf67…` answer_bank + extension driver/manifest,
+`agent-ab786fcd…` `digest.py` + scheduler. Left untouched until the owner decides.
+
+**Tests.** Red first (`rejectedFileMessage` missing) → web **137/137**, `tsc` clean.
+
+**Next.** New REDIS_URL. Decide on the 4 worktrees. Push.
+
+---
+
 ### 2026-09-28 (latest+48) — Post-merge check; match links skip the redirect
 
 **What changed.** Merged master (profile + onboarding + applications branches) verified

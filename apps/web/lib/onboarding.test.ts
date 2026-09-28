@@ -7,6 +7,7 @@ import {
   editFact,
   emptyCampaignDraft,
   emptyPreferences,
+  rejectedFileMessage,
   validateBasics,
   validateCampaign,
   validateFacts,
@@ -273,5 +274,17 @@ describe("sources come from GET /sources", () => {
       { id: "jobspy_google", label: "Google Jobs", note: "", enabled: false, reason: "Currently returns no results.", job_count: 0 },
     ];
     expect(defaultSources(list)).toEqual(["remoteok"]);
+  });
+});
+
+describe("rejectedFileMessage", () => {
+  it("turns react-dropzone's raw rejection into plain words", () => {
+    expect(rejectedFileMessage("File is larger than 5242880 bytes")).toBe(
+      "That file is over 5 MB. Try a smaller PDF or Word file.",
+    );
+    expect(rejectedFileMessage("File type must be application/pdf,.pdf")).toBe(
+      "That file isn't a PDF or Word (.docx) file.",
+    );
+    expect(rejectedFileMessage("Too many files")).toBe("Drop one file at a time.");
   });
 });

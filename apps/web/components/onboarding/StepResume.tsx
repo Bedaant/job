@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { FileTextIcon, Loader2Icon, PencilLineIcon, UploadIcon } from "lucide-react";
 import { Dropzone, DropzoneContent, DropzoneEmptyState } from "@/components/kibo-ui/dropzone";
 import type { FactDraft } from "@/lib/api";
+import { rejectedFileMessage } from "@/lib/onboarding";
 import { FailureNotice } from "./fields";
 
 const MAX_RESUME_BYTES = 5 * 1024 * 1024; // mirrors MAX_RESUME_UPLOAD_BYTES in apps/api/main.py
@@ -23,6 +25,7 @@ export function StepResume({
   /** The way forward when the parser can't help: the user writes the facts. */
   onByHand: () => void;
 }) {
+  const [rejected, setRejected] = useState<string | null>(null);
   return (
     <div className="space-y-5">
       <p className="text-sm text-muted-foreground">
@@ -41,8 +44,10 @@ export function StepResume({
         src={file ? [file] : undefined}
         disabled={isUploading}
         onDrop={(accepted) => {
+          setRejected(null);
           if (accepted[0]) onFile(accepted[0]);
         }}
+        onError={(e) => setRejected(rejectedFileMessage(e.message))}
       >
         {/* Own caption: the kit's default lists raw MIME types. */}
         <DropzoneEmptyState>
@@ -57,6 +62,12 @@ export function StepResume({
         </DropzoneEmptyState>
         <DropzoneContent />
       </Dropzone>
+
+      {rejected && (
+        <p role="alert" className="text-sm text-destructive">
+          {rejected}
+        </p>
+      )}
 
       {isUploading && (
         <p className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">

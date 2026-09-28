@@ -3,8 +3,8 @@
 `dismissed` means "declined before sending" and clears applied_at on undo; a
 withdrawal keeps the date it was sent. Same pattern as 0013/0017.
 
-Numbered 0020 because 0019 is reserved for the concurrent profile work. If that
-migration lands, set `down_revision = "0019"` here when merging so there is one head.
+Numbered 0020 because 0019 was reserved for concurrent profile work that ended up
+needing no migration; there is no 0019.
 
 Revision ID: 0020
 Revises: 0018
