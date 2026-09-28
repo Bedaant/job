@@ -96,3 +96,17 @@ def test_review_queue_exposes_needs_input_and_last_attempt():
     assert queue[app_id]["last_attempt"] == {"outcome": "needs_human", "message": "reCAPTCHA challenge detected"}
     assert queue[plain_id]["needs_input"] is None
     assert queue[plain_id]["last_attempt"] is None
+
+
+@pytest.mark.parametrize("reason,kind,demo", [
+    # Field labels sit inside the note; only the bracketed reason may decide the kind.
+    ("Needs you: Upload your portfolio link (not sure what to enter)", "question", False),
+    ("Needs you: Sign in email, Log in name (no saved answer)", "question", False),
+    ("Needs you: Demographic survey opt-in (not sure what to enter)", "question", False),
+    ("Needs you: Why us? (no saved answer); Portfolio (a file to upload)", "upload", False),
+    ("Needs you: Phone (optional) (not sure what to enter); Gender "
+     "(required demographic self-identification, only you can answer)", "question", True),
+])
+def test_labels_in_the_note_never_decide_the_kind(reason, kind, demo):
+    got = needs_input(f"[needs_human] {reason}", [])
+    assert (got["kind"], got["demographic_left_blank"]) == (kind, demo)

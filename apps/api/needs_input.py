@@ -45,7 +45,20 @@ def needs_input(notes: str | None, pending_questions: list[str]) -> dict | None:
     if not stamp or stamp[0] != "needs_human":
         return None
     reason = stamp[1]
-    kind = next((k for k, p in _KINDS if p.search(reason)), None)
+    scan = _reasons_only(reason)
+    kind = next((k for k, p in _KINDS if p.search(scan)), None)
     if kind is None:
         kind = "question" if pending_questions else "other"
-    return {"kind": kind, "message": reason, "demographic_left_blank": bool(_DEMOGRAPHIC.search(reason))}
+    return {"kind": kind, "message": reason, "demographic_left_blank": bool(_DEMOGRAPHIC.search(scan))}
+
+
+# "Needs you: <labels> (<reason>); ..." (fieldDecision.needsHumanReason) carries the
+# form's own labels: "Upload your portfolio link" must not make it an upload. Only
+# each group's trailing "(reason)" is read.
+_GROUP_REASON = re.compile(r"\(([^()]*)\)\s*(?=;|$)")
+
+
+def _reasons_only(reason: str) -> str:
+    if not reason.startswith("Needs you:"):
+        return reason
+    return " ".join(_GROUP_REASON.findall(reason))
