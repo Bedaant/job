@@ -102,6 +102,41 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-28 (latest+50) — Four stranded worktrees reviewed and merged
+
+The four worktrees left at f21a331 held finished-but-uncommitted work. Each one was
+reviewed, its own tests run in place, then committed and merged `--no-ff`. There were
+no conflicts.
+- **browser-use guard** (`tools/browser-use-harness`): one allowed remote POST,
+  Ashby's read-only GraphQL job-posting query. It must be exactly that https
+  host+path, a JSON object body, and query operations only; any `mutation`/
+  `subscription` in the body is refused, and the checked bytes are what gets
+  forwarded. 12/12.
+- **Truth check** (`tailoring/engine.py`, `eval/truth_check_bench.py` + cases): pass 2
+  is a per-claim audit (`ClaimAudit`: each claim → fact ids + unsupported phrases),
+  plus `deterministic_unsupported`, which flags vocabulary tools/numbers that no fact
+  contains, with no model call. Also a no-padding rule in the tailor prompt.
+  **Review fix:** "one"/"zero" were read as numbers, so "one of the roles I want most"
+  was flagged and would block ready-to-send. Now number words start at "two". Red test
+  first.
+- **Age is demographic + iframes** (`answer_bank.py`, extension): DOB/age questions
+  and age-bracket option sets are never filled or stored; 18/21 eligibility checks
+  still are. Server and extension share one spec and the same test cases. Content
+  scripts now run `all_frames`, and the driver gives the tab to the one claiming
+  frame with the most fields (≥4), so captcha/ad frames stay silent. **Not
+  live-browser-tested.**
+- **Daily digest** (`digest.py`, `GET /digest/preview`, scheduler at 00:05 UTC):
+  sent/unconfirmed/ready/needs-you/skips/replies per user. Idempotent per day. It only
+  logs (Notification `skipped`) until email credentials exist.
+
+**Tests (merged master).** api **659/659**, web 137/137, extension 94/94 + tsc,
+harness 12/12.
+
+**Next.** Load the extension and try an embedded Greenhouse board. Needs email
+credentials for the digest and a new REDIS_URL.
+
+---
+
 ### 2026-09-28 (latest+49) — Rejected resume files say why; 0020 applied to Neon
 
 **What changed.** Onboarding's resume Dropzone showed nothing when a file was too big,

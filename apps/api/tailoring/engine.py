@@ -279,8 +279,9 @@ def _jd_terms_section(gap: dict) -> str:
 
 
 _NUMBER_RE = re.compile(r"(?<![\w.])\d+(?:[.,]\d+)*")
+# From two: "one"/"zero" are ordinary prose ("one of the roles I want most"), not claims.
 _NUMBER_WORDS = {w: str(i) for i, w in enumerate(
-    "zero one two three four five six seven eight nine ten eleven twelve".split())}
+    "zero one two three four five six seven eight nine ten eleven twelve".split()) if i >= 2}
 
 
 def _numbers(text: str) -> set[str]:

@@ -272,3 +272,10 @@ def test_tailor_prompt_forbids_padding():
         tailor_application({"title": "Backend Engineer", "company": "Acme"}, FACTS)
     assert NO_PADDING_RULE in mock_instructor.messages.create.call_args_list[0].kwargs["system"]
     assert "why it mattered" in NO_PADDING_RULE
+
+
+def test_deterministic_check_ignores_one_in_ordinary_prose():
+    from tailoring.engine import deterministic_unsupported
+
+    facts = [{"id": "f1", "achievement": "Built the billing service in Python"}]
+    assert deterministic_unsupported(facts, ["This is one of the roles I want most."]) == []
