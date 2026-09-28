@@ -281,3 +281,20 @@ def test_redis_connection_is_one_shared_client_per_process():
 
     assert get_redis_connection() is get_redis_connection()
     assert get_queue().connection is get_redis_connection()
+
+
+def test_scheduler_survives_a_redis_blip():
+    # Live: a DNS blip (getaddrinfo failed) killed the scheduler for good; nothing
+    # was scheduled again until someone restarted it by hand.
+    from redis.exceptions import ConnectionError as RedisConnectionError
+
+    runs = MagicMock(side_effect=[RedisConnectionError("getaddrinfo failed"),
+                                  RedisConnectionError("getaddrinfo failed"), KeyboardInterrupt])
+    start = MagicMock(return_value=MagicMock(run=runs))
+    sleep = MagicMock()
+    try:
+        run_scheduler.run_forever(start=start, sleep=sleep)
+    except KeyboardInterrupt:
+        pass
+    assert start.call_count == 3  # re-registered after each blip
+    assert [c.args[0] for c in sleep.call_args_list] == [5, 10]

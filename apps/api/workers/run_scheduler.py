@@ -3,7 +3,11 @@ incremental"). rq-scheduler just enqueues on schedule — the enqueued job still
 runs on workers/run_worker.py, so no os.fork/SIGALRM concerns here.
 Run: python -m workers.run_scheduler
 """
+import logging
+import time
 from datetime import datetime, timedelta
+
+from redis.exceptions import ConnectionError as RedisConnectionError, TimeoutError as RedisTimeoutError
 
 from rq_scheduler import Scheduler
 
@@ -48,6 +52,19 @@ def start_scheduler() -> Scheduler:
     return scheduler
 
 
+def run_forever(start=start_scheduler, sleep=time.sleep) -> None:
+    """A Redis blip (live: DNS "getaddrinfo failed") used to kill the scheduler for
+    good. Retry with backoff (5 s doubling, 60 s cap) and re-register on reconnect."""
+    delay = 5
+    while True:
+        try:
+            start().run()
+            return
+        except (RedisConnectionError, RedisTimeoutError) as e:
+            logging.getLogger(__name__).warning("scheduler lost Redis (%s); retrying in %ss", e, delay)
+            sleep(delay)
+            delay = min(delay * 2, 60)
+
+
 if __name__ == "__main__":
-    scheduler = start_scheduler()
-    scheduler.run()
+    run_forever()
