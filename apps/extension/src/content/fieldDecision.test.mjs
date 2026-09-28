@@ -204,15 +204,39 @@ test("a radio group is required if any member is required", () => {
 
 test("the needs_human reason names a required demographic question as a whole word", () => {
   const reason = needsHumanReason([
-    { field_id: "a", reason: "demographic_required" },
-    { field_id: "b", reason: "low_confidence" },
+    { field_id: "a", reason: "demographic_required", label: "Gender" },
+    { field_id: "b", reason: "low_confidence", label: "First Name" },
   ]);
   // apps/api/needs_input.py keys demographic_left_blank on /\bdemographic\b/ ("_" is a word char).
   assert.match(reason, /\bdemographic\b/i);
   assert.match(reason, /required/i);
   assert.match(reason, /self-identification/i);
-  assert.match(reason, /^2 field\(s\)/);
-  assert.doesNotMatch(needsHumanReason([{ field_id: "b", reason: "low_confidence" }]), /demographic/i);
+  assert.doesNotMatch(needsHumanReason([{ field_id: "b", reason: "low_confidence", label: "X" }]), /demographic/i);
+});
+
+test("the needs_human reason names the fields in plain words, grouped, no codes", () => {
+  const reason = needsHumanReason([
+    { field_id: "a", reason: "low_confidence", label: "First Name" },
+    { field_id: "b", reason: "essay_no_stored_answer", label: "Why Anthropic?" },
+    { field_id: "c", reason: "low_confidence", label: "  Agreement to Arbitrate  " },
+    { field_id: "d", reason: "low_confidence", label: "First Name" },
+    { field_id: "e", reason: "file_upload", label: null },
+  ]);
+  assert.equal(
+    reason,
+    "Needs you: First Name, Agreement to Arbitrate (not sure what to enter); " +
+      "Why Anthropic? (no saved answer); an unlabeled field (a file to upload)",
+  );
+  assert.doesNotMatch(reason, /low_confidence|essay_no_stored_answer|file_upload|_/);
+});
+
+test("the needs_human reason stays well under the API's 2000-char cap", () => {
+  const blocking = Array.from({ length: 200 }, (_, i) => ({
+    field_id: `f${i}`, reason: "low_confidence", label: `Question ${i} ${"x".repeat(300)}`,
+  }));
+  const reason = needsHumanReason(blocking);
+  assert.ok(reason.length <= 2000, `length ${reason.length}`);
+  assert.match(reason, /and \d+ more/);
 });
 
 test("an essay field IS filled when the backend supplies a user-written answer", () => {

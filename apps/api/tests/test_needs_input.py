@@ -19,6 +19,10 @@ from tests.test_submission_loop import _auth, _bind, _client, _seed
     ("required file input could not be filled", "upload"),
     ("1 field(s) need your input and were not answered: file_upload", "upload"),
     ("something nobody predicted", "other"),
+    # The extension's plain-words note (fieldDecision.needsHumanReason).
+    ("Needs you: Portfolio (a file to upload)", "upload"),
+    ("Needs you: Why Anthropic? (no saved answer)", "question"),
+    ("Needs you: First Name (not sure what to enter)", "question"),
 ])
 def test_kind_follows_the_reason(reason, kind):
     assert needs_input(f"[needs_human] {reason}", [])["kind"] == kind

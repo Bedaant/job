@@ -3,7 +3,7 @@
 
 Derived, not stored: no migration, and the note line stays the single record.
 Patterns mirror apps/extension/src/background/driverCore.mjs NEEDS_HUMAN_PATTERNS
-and autoApply.content.ts's blocking flag reasons.
+and fieldDecision.mjs needsHumanReason (REASON_TEXT) for the blocking fields.
 """
 import re
 
@@ -15,7 +15,7 @@ _KINDS = [
     ("account", re.compile(r"\bsign ?in\b|\blog ?in\b|\blogged in\b|create an account|register.{0,20}to apply", re.I)),
     ("upload", re.compile(r"file_upload|file input|upload", re.I)),
     # Still a question once every one is answered (pending empty): retrying helps then.
-    ("question", re.compile(r"low_confidence|essay|unanswered|why do you want|why are you interested", re.I)),
+    ("question", re.compile(r"low_confidence|essay|unanswered|no saved answer|not sure what to enter|why do you want|why are you interested", re.I)),
 ]
 _DEMOGRAPHIC = re.compile(r"\bdemographic\b", re.I)
 
