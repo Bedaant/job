@@ -385,7 +385,8 @@ def write_report(r: dict, stamp: str, ats: str) -> None:
         f"# {ats} - {'PASS' if r['passed'] else 'FAIL'}", "", f"URL: {r['url']}", "",
         f"- Guard: installed={g.get('installed')}, canary blocked={g.get('canary_blocked', 0)}, "
         f"blocked non-GET requests={g.get('blocked_non_get_requests', 0)}, blocked websockets="
-        f"{g.get('blocked_websockets', 0)}, submit attempts blocked={g.get('submit_attempts_blocked', 0)}",
+        f"{g.get('blocked_websockets', 0)}, submit attempts blocked={g.get('submit_attempts_blocked', 0)}, "
+        f"read-only GraphQL queries allowed={g.get('allowed_readonly_graphql_queries', 0)}",
         f"- Extension response: `{json.dumps(r.get('extension_response'))[:400]}`",
         f"- Dialogs: {r['dialogs'] or 'none'}",
         f"- Fields: {dom.get('fields_total', '?')}, filled: {len(dom.get('filled', []))}, "

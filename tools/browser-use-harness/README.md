@@ -11,6 +11,7 @@ It automates the manual test in `docs/LIVE-FORM-TEST.md`.
 1. **Network.** `guard.py` puts a Playwright route on the whole browser context. It aborts every request that is not GET, HEAD or OPTIONS, unless the host is localhost or 127.0.0.1.
    - This kills native form POSTs, fetch/XHR submits, `sendBeacon`, and employer S3 resume uploads (intended).
    - WebSockets to non-local hosts are closed.
+   - One exception, because Ashby's form page loads its posting through a GraphQL POST: `is_readonly_ashby_query` lets through a POST to exactly `https://jobs.ashbyhq.com/api/non-user-graphql` whose body is a JSON object with a `query` document made only of `query` operations (plus fragments). The words `mutation`/`subscription` anywhere in the body refuse it; so do non-JSON, batched arrays and any other host, port, path or method. Ashby's submit and resume upload are mutations to that same URL, so they stay blocked. Allowed ones are counted in the report (`allowed_readonly_graphql_queries`).
    - Page service workers are blocked (`service_workers="block"`), so none can bypass the route.
 2. **DOM.** An init script runs in every frame, before page JS:
    - `HTMLFormElement.prototype.submit` and `requestSubmit` throw.
@@ -30,6 +31,7 @@ It automates the manual test in `docs/LIVE-FORM-TEST.md`.
 - `submit()` and `requestSubmit()` throw;
 - a submit-button click is prevented and the server gets no POST;
 - a POST to a remote host is aborted, while a POST to localhost passes;
+- the Ashby exception: a job-posting query is allowed; a mutation to the same URL, a query to another host, and the other shapes above are aborted;
 - the canary works under a strict CSP;
 - `verify_guard` raises on an unguarded context.
 

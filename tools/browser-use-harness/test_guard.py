@@ -5,12 +5,20 @@ Only 127.0.0.1 is loaded; the one "remote" request is aborted by the guard befor
 """
 
 import http.server
+import json
 import threading
 import unittest
 
 from playwright.async_api import async_playwright
 
-from guard import GuardMissing, install_guard, verify_guard
+from guard import GuardMissing, install_guard, is_readonly_ashby_query, verify_guard
+
+ASHBY = "https://jobs.ashbyhq.com/api/non-user-graphql?op=ApiJobPosting"
+POSTING = json.dumps({"operationName": "ApiJobPosting", "variables": {"jobPostingId": "x"},
+                      "query": "query ApiJobPosting($jobPostingId: String!) {\n  jobPosting(id: $jobPostingId) "
+                               "{ id title ...F }\n}\nfragment F on JobPosting { descriptionHtml }"})
+SUBMIT = json.dumps({"operationName": "ApiSubmitApplication",
+                     "query": "mutation ApiSubmitApplication($x: String!) { submit(x: $x) { id } }"})
 
 PAGE = b"""<!doctype html><title>t</title>
 <form id=f method=post action=/apply><input name=email><button id=go type=submit>Submit</button></form>"""
@@ -32,6 +40,48 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, *_):
         pass
+
+
+class AshbyReadOnlyQueryTest(unittest.TestCase):
+    """The one remote POST the guard lets through: an Ashby GraphQL QUERY (its form loads that way)."""
+
+    def test_job_posting_query_allowed(self):
+        self.assertTrue(is_readonly_ashby_query("POST", ASHBY, POSTING))
+        anon = json.dumps({"query": "# comment\n{ jobPosting(id: \"x\") { id } }"})
+        self.assertTrue(is_readonly_ashby_query("POST", ASHBY, anon))
+
+    def test_mutations_and_subscriptions_rejected(self):
+        for q in (
+            "mutation ApiSubmitApplication { submit { id } }",
+            "mutation { createFileUploadHandle { id } }",
+            "subscription S { x }",
+            "query A { a }\nmutation B { b }",  # multi-operation document including a mutation
+            "query A { a } subscription B { b }",
+            "  MUTATION X { x }",
+            "query A { a(s: \"mutation\") }",  # keyword anywhere is refused: conservative on purpose
+        ):
+            with self.subTest(q=q):
+                self.assertFalse(is_readonly_ashby_query("POST", ASHBY, json.dumps({"query": q})))
+        self.assertFalse(is_readonly_ashby_query("POST", ASHBY, SUBMIT))
+
+    def test_everything_else_rejected(self):
+        for method, url, body in (
+            ("POST", "https://employer.example.com/api/non-user-graphql", POSTING),  # other host
+            ("POST", "https://jobs.ashbyhq.com.evil.com/api/non-user-graphql", POSTING),
+            ("POST", "http://jobs.ashbyhq.com/api/non-user-graphql", POSTING),  # not https
+            ("POST", "https://jobs.ashbyhq.com:8443/api/non-user-graphql", POSTING),  # other port
+            ("POST", "https://jobs.ashbyhq.com/api/user-graphql", POSTING),  # other path
+            ("POST", "https://jobs.ashbyhq.com/api/non-user-graphql/x", POSTING),
+            ("PUT", ASHBY, POSTING),
+            ("POST", ASHBY, None),
+            ("POST", ASHBY, "query A { a }"),  # not JSON
+            ("POST", ASHBY, json.dumps([json.loads(POSTING)])),  # batched array
+            ("POST", ASHBY, json.dumps({"query": 1})),
+            ("POST", ASHBY, json.dumps({"query": ""})),
+            ("POST", ASHBY, json.dumps({"query": "fragment F on X { a }"})),  # no operation at all
+        ):
+            with self.subTest(method=method, url=url, body=body):
+                self.assertFalse(is_readonly_ashby_query(method, url, body))
 
 
 class GuardTest(unittest.IsolatedAsyncioTestCase):
@@ -84,6 +134,21 @@ class GuardTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(result, "sent")
         self.assertEqual([b["method"] for b in self.guard.blocked_requests], ["POST"])
         self.assertIn("employer.example.com", self.guard.blocked_requests[0]["url"])
+
+    async def _post(self, url, body):
+        # no-cors + text/plain: no preflight, so the POST itself (with its body) reaches the route.
+        return await self.page.evaluate(
+            "([u, b]) => fetch(u, {method: 'POST', body: b, mode: 'no-cors'}).then(() => 'sent', e => String(e))",
+            [url, body])
+
+    async def test_ashby_mutation_to_graphql_endpoint_is_aborted(self):
+        self.assertNotEqual(await self._post(ASHBY, SUBMIT), "sent")
+        self.assertEqual([b["url"] for b in self.guard.blocked_requests], [ASHBY])
+
+    async def test_ashby_style_query_to_other_host_is_aborted(self):
+        url = "https://employer.example.com/api/non-user-graphql"
+        self.assertNotEqual(await self._post(url, POSTING), "sent")
+        self.assertEqual([b["url"] for b in self.guard.blocked_requests], [url])
 
     async def test_non_get_to_localhost_passes(self):
         before = _Handler.posts
