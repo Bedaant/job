@@ -3,10 +3,11 @@ incremental"). rq-scheduler just enqueues on schedule — the enqueued job still
 runs on workers/run_worker.py, so no os.fork/SIGALRM concerns here.
 Run: python -m workers.run_scheduler
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from rq_scheduler import Scheduler
 
+from digest import daily_digest_task
 from workers.jobs import (
     CAMPAIGN_SWEEP_INTERVAL_SECONDS,
     discover_jobs_task,
@@ -15,6 +16,7 @@ from workers.jobs import (
 )
 
 DISCOVERY_INTERVAL_SECONDS = 4 * 60 * 60  # 4h incremental, ARCHITECTURE.md §4.1
+DIGEST_INTERVAL_SECONDS = 24 * 60 * 60
 
 
 def start_scheduler() -> Scheduler:
@@ -23,7 +25,12 @@ def start_scheduler() -> Scheduler:
         discover_jobs_task: DISCOVERY_INTERVAL_SECONDS,
         # ADR-015: every active campaign gets fresh matches + a run, unasked.
         sweep_campaigns_task: CAMPAIGN_SWEEP_INTERVAL_SECONDS,
+        # ADR-015 "a digest of what went out": yesterday's UTC day, just after it closes.
+        daily_digest_task: DIGEST_INTERVAL_SECONDS,
     }
+    now = datetime.utcnow()
+    digest_at = now.replace(hour=0, minute=5, second=0, microsecond=0)
+    first_run = {daily_digest_task: digest_at if digest_at > now else digest_at + timedelta(days=1)}
     names = {f"{func.__module__}.{func.__name__}" for func in recurring}
     # Clear any existing schedule for these jobs before re-registering, so restarting
     # the scheduler process doesn't pile up duplicate recurring jobs.
@@ -33,7 +40,7 @@ def start_scheduler() -> Scheduler:
 
     for func, interval in recurring.items():
         scheduler.schedule(
-            scheduled_time=datetime.utcnow(),
+            scheduled_time=first_run.get(func, now),
             func=func,
             interval=interval,
             repeat=None,  # repeat forever

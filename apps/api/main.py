@@ -1272,6 +1272,19 @@ def get_today(
     )
 
 
+@app.get("/digest/preview")
+def preview_digest(
+    tz: str | None = Query(None, max_length=64),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Today's digest so far, over the caller's local day (same `tz` rule as /today)."""
+    import digest
+
+    d = digest.build_digest(db, current_user, campaigns_service.local_day_start(tz), datetime.utcnow())
+    return {**d, "text": digest.render_text(d)}
+
+
 @app.get("/notifications", response_model=list[schemas.NotificationOut])
 def list_notifications(
     status: str | None = None,
