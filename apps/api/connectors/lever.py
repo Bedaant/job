@@ -4,6 +4,8 @@ Docs: https://github.com/lever/postings-api
 """
 import httpx
 
+from connectors.feeds import _epoch
+
 BASE_URL = "https://api.lever.co/v0/postings/{token}"
 
 
@@ -30,6 +32,6 @@ def fetch_lever_jobs(company_token: str):
             "description": j.get("descriptionPlain", j.get("description", "")),
             "apply_url": j.get("applyUrl") or j.get("hostedUrl", ""),
             "tags": categories.get("tags", []) if isinstance(categories.get("tags"), list) else [],
-            "posted_at": j.get("createdAt"),
+            "posted_at": _epoch(j["createdAt"] // 1000) if isinstance(j.get("createdAt"), int) else None,  # epoch ms
         })
     return jobs
