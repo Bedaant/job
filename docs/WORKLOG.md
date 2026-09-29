@@ -102,6 +102,22 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-29 (latest+59) — Lever and Ashby re-measured with the plan: no gain on required fields; routing stays Greenhouse-only
+
+**What changed.** `formplans.ROUTED_ATS` now reads `FORM_PLAN_ROUTED_ATS` (default `greenhouse`), so a measurement
+can turn routing on without a code change. Lever and Ashby were re-run with it set to all three
+(`docs/harness-reports/plan-vs-extension.md`, top section).
+- Lever: required fields filled 16/36 in both runs. The plan added 2 optional fills, both correct. Last run's −4 was the flaky
+  location typeahead.
+- Ashby: identical on the 3 postings that ran both ways. Linear's plan timed out (300 s, NIM), and OpenAI's plan.mjs
+  hit ENOENT writing into its temp dir (happened once). Both failed safe to today's filler.
+- There were no wrong values, 0 demographic violations and 0 submits.
+
+**Decision.** Keep Greenhouse-only. The ADR-016 "revisit" condition (routing beats today's filler) is not met on Lever or Ashby.
+The API on :8000 is back on the default.
+
+**Next.** Re-measure if the planner or the Lever location typeahead changes. Watch for the temp dir ENOENT in the worker logs.
+
 ### 2026-09-29 (latest+58) — "How did you hear about us?" is answered only from the answer bank
 
 **What changed.** The Zoox risk from latest+57 is fixed. It was not a lone checkbox. The options share a name, so the

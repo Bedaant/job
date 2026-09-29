@@ -13,6 +13,7 @@ Run: python -m formplans --job-id <id>
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -32,7 +33,8 @@ PLANNER = Path(__file__).resolve().parents[2] / "tools" / "stagehand-harness" / 
 FETCHERS = {"greenhouse": fetch_greenhouse_jobs, "lever": fetch_lever_jobs, "ashby": fetch_ashby_jobs}
 # Where a plan reaches the fill. docs/harness-reports/plan-vs-extension.md (2026-09-29):
 # required fields filled Greenhouse +2, Lever -4, Ashby 0. The CLI still plans all three.
-ROUTED_ATS = {"greenhouse"}
+# FORM_PLAN_ROUTED_ATS=greenhouse,lever,ashby turns routing on for a re-measurement (measure.py).
+ROUTED_ATS = set(os.environ.get("FORM_PLAN_ROUTED_ATS", "greenhouse").split(","))
 _TOKEN = re.compile(r"[\w\-\[\]\.:]+")  # selector_hint may be "#id", a name, or an a11y ref
 
 

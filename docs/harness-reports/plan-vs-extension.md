@@ -1,6 +1,21 @@
 # Server plan vs extension alone
 
-## Verdict (2026-09-29): no overall gain; the plan stays on for Greenhouse only
+## Re-measure of Lever and Ashby (2026-09-29, latest+59): still Greenhouse only
+
+The tables below hold the Greenhouse rows from the first run and new Lever/Ashby rows. The re-run used
+`FORM_PLAN_ROUTED_ATS=greenhouse,lever,ashby` on the API and included the "How did you hear" fix (latest+58).
+- **Lever: 0 on required fields** (16/36 in both runs), +2 optional fills. Both are correct: Palantir's preferred-name
+  card got `Morgan`, and Ro's location got `San Francisco, CA`. The first run's −4 was the flaky location typeahead, not the plan.
+- **Ashby: 0.** The 3 postings with both runs came out identical. Two plans failed safely, so today's filler ran:
+  - Linear: the planner hit its 300 s timeout (NIM was slow).
+  - OpenAI: `plan.mjs` could not write its output because the temp dir was gone. This happened once and was not reproduced.
+- There were no wrong values, 0 demographic violations and 0 submits. The only submit attempts were Lever's own page script
+  (Outreach, Ro), and the guard blocked them.
+
+**Decision:** routing stays Greenhouse-only. On Lever and Ashby the plan fills no extra required field, which doesn't pay
+for ~7–9k tokens of planning per job. The first run is below, unchanged.
+
+## Verdict, first run (2026-09-29): no overall gain; the plan stays on for Greenhouse only
 
 Required fields filled on 13 postings with both runs: 62 without a plan, 60 with one.
 - **Greenhouse: +2** (Anthropic's relocation question, Figma's "where will you work"). There were no wrong values.
@@ -23,14 +38,14 @@ plans only Greenhouse jobs. Lever and Ashby keep today's filler. The CLI still p
   ran for minutes. `plan_job` now commits before starting the planner.
 - Notion's plan failed because NIM was overloaded (3 attempts). That is the provider, not the code.
 
-## Totals (15 postings, 13 with both runs)
+## Totals (15 postings, 12 with both runs)
 
 | | baseline / with plan |
 |---|---|
-| Plans ok | 13/15 |
-| Required filled | 62 / 60 of 106 |
-| Required filled or flagged | 89 / 87 of 106 |
-| Filled fields | 89 / 89 |
+| Plans ok | 12/15 |
+| Required filled | 55 / 57 of 96 |
+| Required filled or flagged | 77 / 77 of 96 |
+| Filled fields | 79 / 84 |
 | Demographic violations | 0 / 0 |
 | Submit attempts (all blocked) | 2 / 2 |
 
@@ -42,11 +57,6 @@ Cells are baseline / with plan.
 
 | posting | plan | plan fields | required filled | required filled or flagged | filled fields | fill s | demographic violations | guard canary/blocked/submits | error |
 |---|---|---|---|---|---|---|---|---|---|
-| [ashby ashby](https://jobs.ashbyhq.com/ashby/7458d4e9-da2e-47bd-98cb-adfda43d42b2/application) | ok | 8 | 3/6 / 3/6 | 6/6 / 6/6 | 4 / 4 | 21.0 / 11.6 | 0 / 0 | 2/4/0 / 2/4/0 | - |
-| [ashby linear](https://jobs.ashbyhq.com/linear/d3bc1ced-3ce4-4086-a050-555055dbb1ff/application) | ok | 11 | 5/10 / 5/10 | 10/10 / 10/10 | 6 / 6 | 17.4 / 15.6 | 0 / 0 | 2/7/0 / 2/6/0 | - |
-| [ashby notion](https://jobs.ashbyhq.com/notion/1fc309c8-da20-4ff2-84c7-8b863ece2b0a/application) | failed | 0 | 5/5 / - | 5/5 / - | 6 / - | 10.2 / - | 0 / - | 2/6/0 / - | Failed after 3 attempts. Last error: Service temporarily overloaded |
-| [ashby openai](https://jobs.ashbyhq.com/openai/8fb1615c-34bf-47c4-a1d1-b7b2f836bbd3/application) | ok | 11 | 4/5 / 4/5 | 5/5 / 5/5 | 5 / 5 | 15.7 / 14.2 | 0 / 0 | 2/5/0 / 2/5/0 | - |
-| [ashby ramp](https://jobs.ashbyhq.com/ramp/34413f8d-26bf-4bbc-8ade-eb309a0e2245/application) | ok | 9 | 5/8 / 5/8 | 6/8 / 6/8 | 5 / 5 | 11.0 / 12.2 | 0 / 0 | 2/5/0 / 2/5/0 | - |
 | [greenhouse anthropic](https://job-boards.greenhouse.io/anthropic/jobs/4461450008) | ok | 22 | 5/13 / 6/13 | 13/13 / 13/13 | 6 / 7 | 40.2 / 14.5 | 0 / 0 | 2/2/0 / 2/2/0 | - |
 | [greenhouse cloudflare](https://job-boards.greenhouse.io/cloudflare/jobs/7695702) | ok | 13 | 6/8 / 6/8 | 8/8 / 8/8 | 7 / 8 | 13.3 / 11.7 | 0 / 0 | 2/2/0 / 2/2/0 | - |
 | [greenhouse discord](https://job-boards.greenhouse.io/discord/jobs/8806482002) | ok | 19 | 9/10 / 9/10 | 10/10 / 10/10 | 11 / 11 | 14.0 / 17.4 | 0 / 0 | 2/2/0 / 2/2/0 | - |
@@ -57,38 +67,31 @@ WHERE form_plans.job_id = %(job_id_1)s::UUID
  LIMIT %(param_1)s]
 [parameters: {'job_id_1': 'a2f7c457-b2ac-44b6-b1d0-c394d00a0b54', 'param_1': 1}]
 (Background on this error at: https://sqlalche.me/e/20/e3q8) |
-| [lever outreach](https://jobs.lever.co/outreach/5becd4e1-3474-4f36-b5dd-4b2cd0eb1179/apply) | ok | 13 | 6/6 / 4/6 | 6/6 / 4/6 | 9 / 7 | 10.3 / 11.3 | 0 / 0 | 2/12/1 / 2/12/1 | - |
-| [lever palantir](https://jobs.lever.co/palantir/6ed76ce8-4156-4b60-b120-403538bd66cd/apply) | ok | 10 | 3/10 / 2/10 | 3/10 / 3/10 | 8 / 6 | 24.3 / 14.1 | 0 / 0 | 2/13/0 / 2/13/0 | - |
-| [lever ro](https://jobs.lever.co/ro/3910baa9-f961-4380-ad0a-01deec07f7a2/apply) | ok | 12 | 3/7 / 3/7 | 4/7 / 4/7 | 7 / 7 | 11.4 / 12.0 | 0 / 0 | 2/12/1 / 2/12/1 | - |
-| [lever spotify](https://jobs.lever.co/spotify/2193db3f-77c5-43b8-b030-8f92c9882bf1/apply) | ok | 11 | 4/7 / 3/7 | 5/7 / 5/7 | 7 / 6 | 11.0 / 11.5 | 0 / 0 | 2/12/0 / 2/12/0 | - |
-| [lever zoox](https://jobs.lever.co/zoox/f4746da4-8eb8-43e2-b7ce-bf3c7cf9640d/apply) | ok | 10 | 3/6 / 3/5 | 3/6 / 3/5 | 6 / 8 | 13.4 / 12.1 | 0 / 0 | 2/12/0 / 2/12/0 | - |
+| [lever outreach](https://jobs.lever.co/outreach/5becd4e1-3474-4f36-b5dd-4b2cd0eb1179/apply) | ok | 13 | 4/6 / 4/6 | 4/6 / 4/6 | 7 / 7 | 11.5 / 11.2 | 0 / 0 | 2/12/1 / 2/12/1 | - |
+| [lever palantir](https://jobs.lever.co/palantir/6ed76ce8-4156-4b60-b120-403538bd66cd/apply) | ok | 9 | 2/10 / 2/10 | 3/10 / 3/10 | 6 / 7 | 19.3 / 17.1 | 0 / 0 | 2/13/0 / 2/13/0 | - |
+| [lever ro](https://jobs.lever.co/ro/3910baa9-f961-4380-ad0a-01deec07f7a2/apply) | ok | 12 | 3/7 / 3/7 | 4/7 / 4/7 | 6 / 7 | 15.4 / 10.9 | 0 / 0 | 2/12/1 / 2/12/1 | - |
+| [lever spotify](https://jobs.lever.co/spotify/2193db3f-77c5-43b8-b030-8f92c9882bf1/apply) | ok | 10 | 4/7 / 4/7 | 5/7 / 5/7 | 7 / 7 | 16.0 / 12.0 | 0 / 0 | 2/12/0 / 2/12/0 | - |
+| [lever zoox](https://jobs.lever.co/zoox/f4746da4-8eb8-43e2-b7ce-bf3c7cf9640d/apply) | ok | 10 | 3/6 / 3/6 | 3/6 / 3/6 | 6 / 6 | 11.2 / 11.3 | 0 / 0 | 2/12/0 / 2/12/0 | - |
+| [ashby ashby](https://jobs.ashbyhq.com/ashby/7458d4e9-da2e-47bd-98cb-adfda43d42b2/application) | ok | 12 | 3/6 / 3/6 | 6/6 / 6/6 | 4 / 4 | 12.4 / 10.4 | 0 / 0 | 2/4/0 / 2/5/0 | - |
+| [ashby linear](https://jobs.ashbyhq.com/linear/d3bc1ced-3ce4-4086-a050-555055dbb1ff/application) | failed | 0 | 5/10 / - | 10/10 / - | 6 / - | 16.1 / - | 0 / - | 2/6/0 / - | TimeoutExpired: Command '['node', 'D:\\job-copilot\\tools\\stagehand-harness\\plan.mjs', 'https://jobs.ashbyhq.com/linear/d3bc1ced-3ce4-4086-a050-555055dbb1ff/application', 'C:\\Users\\Admin\\AppData\\Local\\Temp\\tmp9kjdk3vu\\plan.json']' timed out after 300 seconds |
+| [ashby notion](https://jobs.ashbyhq.com/notion/1fc309c8-da20-4ff2-84c7-8b863ece2b0a/application) | ok | 10 | 5/5 / 5/5 | 5/5 / 5/5 | 6 / 6 | 11.8 / 10.6 | 0 / 0 | 2/6/0 / 2/6/0 | - |
+| [ashby openai](https://jobs.ashbyhq.com/openai/8fb1615c-34bf-47c4-a1d1-b7b2f836bbd3/application) | failed | 0 | 4/5 / - | 5/5 / - | 5 / - | 10.3 / - | 0 / - | 2/5/0 / - | OSError: planner wrote no output:         ^
+
+Error: ENOENT: no such file or directory, open 'C:\Users\Admin\AppData\Local\Temp\tmpmv421hbh\plan.json'
+    at writeFileSync (node:fs:2426:20)
+    at file:///D:/job-copilot/tools/stagehand-harness/plan.mjs:147:3 {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Users\\Admin\\AppData\\Local\\Temp\\tmpmv421hbh\\plan.json'
+}
+
+Node.js v22.14.0
+[shutdown-supervisor] Shutting down Chrome pid=32308 (reason=Stagehand process completed, deletingUserDataDir=true)
+ |
+| [ashby ramp](https://jobs.ashbyhq.com/ramp/34413f8d-26bf-4bbc-8ade-eb309a0e2245/application) | ok | 9 | 5/8 / 5/8 | 6/8 / 6/8 | 5 / 5 | 14.7 / 11.4 | 0 / 0 | 2/5/0 / 2/8/0 | - |
 
 ## Fields filled in only one run (check the values by hand; target 0 wrong)
-
-### ashby ashby 7458d4e9-da2e-47bd-98cb-adfda43d42b2
-
-- Only baseline filled: none
-- Only with plan filled: none
-
-### ashby linear d3bc1ced-3ce4-4086-a050-555055dbb1ff
-
-- Only baseline filled: none
-- Only with plan filled: none
-
-### ashby notion 1fc309c8-da20-4ff2-84c7-8b863ece2b0a
-
-- Only baseline filled: Full Name = `Morgan Ellery`, Email = `bu-harness-20260929T133319Z-069c65@example.com`, Phone = `+1 415 867 2931`, Start typing... = `San Francisco, California, United States`, Resume = `resume.docx`, LinkedIn Profile = `https://www.linkedin.com/in/morgan-ellery-example`
-- Only with plan filled: none
-
-### ashby openai 8fb1615c-34bf-47c4-a1d1-b7b2f836bbd3
-
-- Only baseline filled: none
-- Only with plan filled: none
-
-### ashby ramp 34413f8d-26bf-4bbc-8ade-eb309a0e2245
-
-- Only baseline filled: none
-- Only with plan filled: none
 
 ### greenhouse anthropic 4461450008
 
@@ -117,26 +120,51 @@ WHERE form_plans.job_id = %(job_id_1)s::UUID
 
 ### lever outreach 5becd4e1-3474-4f36-b5dd-4b2cd0eb1179
 
-- Only baseline filled: Yes = `Yes`, No = `No`
+- Only baseline filled: none
 - Only with plan filled: none
 
 ### lever palantir 6ed76ce8-4156-4b60-b120-403538bd66cd
 
-- Only baseline filled: Current location ✱No location found. Try entering a different locationLoading = `San Francisco`, Type your response = `Morgan`
-- Only with plan filled: none
+- Only baseline filled: none
+- Only with plan filled: Type your response = `Morgan`
 
 ### lever ro 3910baa9-f961-4380-ad0a-01deec07f7a2
 
 - Only baseline filled: none
-- Only with plan filled: none
+- Only with plan filled: Current location No location found. Try entering a different locationLoading = `San Francisco, CA`
 
 ### lever spotify 2193db3f-77c5-43b8-b030-8f92c9882bf1
 
-- Only baseline filled: Current location ✱No location found. Try entering a different locationLoading = `San Francisco`
+- Only baseline filled: none
 - Only with plan filled: none
 
 ### lever zoox f4746da4-8eb8-43e2-b7ce-bf3c7cf9640d
 
 - Only baseline filled: none
-- Only with plan filled: Current location No location found. Try entering a different locationLoading = `San Francisco`, LinkedIn = `LinkedIn`
+- Only with plan filled: none
+
+### ashby ashby 7458d4e9-da2e-47bd-98cb-adfda43d42b2
+
+- Only baseline filled: none
+- Only with plan filled: none
+
+### ashby linear d3bc1ced-3ce4-4086-a050-555055dbb1ff
+
+- Only baseline filled: Name = `Morgan Ellery`, Email = `bu-harness-20260929T155017Z-f52b25@example.com`, Resume = `resume.docx`, Github = `https://github.com/morgan-ellery-example`, LinkedIn = `https://www.linkedin.com/in/morgan-ellery-example`, What country are you based in? = `US`
+- Only with plan filled: none
+
+### ashby notion 1fc309c8-da20-4ff2-84c7-8b863ece2b0a
+
+- Only baseline filled: none
+- Only with plan filled: none
+
+### ashby openai 8fb1615c-34bf-47c4-a1d1-b7b2f836bbd3
+
+- Only baseline filled: Legal Name = `Morgan Ellery`, Preferred Name (if applicable) = `Morgan`, Email = `bu-harness-20260929T155327Z-48d9f4@example.com`, Resume = `resume.docx`, Phone Number = `+1 415 867 2931`
+- Only with plan filled: none
+
+### ashby ramp 34413f8d-26bf-4bbc-8ade-eb309a0e2245
+
+- Only baseline filled: none
+- Only with plan filled: none
 
