@@ -100,12 +100,14 @@ def test_full_upload_review_confirm_flow(client):
     resp = test_client.get(f"/resume-facts?profile_id={profile_id}", headers=headers)
     assert resp.json() == []
 
-    # confirm via facts:bulk
-    resp = test_client.post(
-        f"/profiles/{profile_id}/facts:bulk",
-        headers=headers,
-        json={"facts": body["facts"]},
-    )
+    # confirm via facts:bulk. Voyage is mocked (this test used to call it for real) and
+    # rate-limited: on the free tier a 429 here failed the owner's resume confirm with a 500.
+    with patch("main.embed_texts", side_effect=RuntimeError("429 reduced rate limits of 3 RPM")):
+        resp = test_client.post(
+            f"/profiles/{profile_id}/facts:bulk",
+            headers=headers,
+            json={"facts": body["facts"]},
+        )
     assert resp.status_code == 200
     confirmed = resp.json()
     assert len(confirmed) == 1

@@ -971,17 +971,10 @@ def confirm_facts_bulk(
         return []
     db.commit()
 
-    embeddings = embed_texts([f.achievement for f in created], input_type="document")
-    if embeddings:
-        for fact, embedding in zip(created, embeddings):
-            fact.embedding = embedding
-        all_embeddings = [
-            list(f.embedding)
-            for f in db.query(models.ResumeFact).filter(models.ResumeFact.profile_id == profile.id).all()
-            if f.embedding is not None
-        ]
-        profile.fact_centroid = compute_centroid(all_embeddings)
-        db.commit()
+    # A Voyage failure (the free tier's 429) must not fail the confirm: the facts are
+    # saved, and stay unembedded until the next edit re-embeds them.
+    _refresh_fact_vectors(db, profile)
+    db.commit()
 
     for fact in created:
         db.refresh(fact)
