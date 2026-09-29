@@ -90,6 +90,27 @@ def test_build_plan_on_real_lever_output():
     assert all(f["fill_from"] != "resume" for f in plan["fields"])
 
 
+def test_build_plan_falls_back_to_the_label_when_the_hint_is_an_a11y_ref():
+    # Stagehand's selector_hint is usually "[frame-node] role: name", not an id.
+    fields = [{"label": "Full name", "selector_hint": "[2-53] textbox: Full name*", "fill_from": "full_name"},
+              {"label": "Email", "selector_hint": "[2-54] textbox: Email*", "fill_from": "email"}]
+    snap = [_entry("text", name="name", label="Full name✱"), _entry("email", id_="email-input", label="Email ✱"),
+            _entry("checkbox", name="optin", label="Email me about new jobs")]
+    plan, error = formplans.build_plan(_report(fields, snap))
+    assert error is None
+    assert [(f["key"], f["fill_from"]) for f in plan["fields"]] == [("name", "full_name"), ("email-input", "email")]
+
+
+def test_build_plan_matches_most_fields_on_every_real_lever_and_ashby_output():
+    for path in sorted(FIXTURE.parent.glob("*.json")):
+        if not path.name.startswith(("lever-", "ashby-")):
+            continue
+        report = json.loads(path.read_text(encoding="utf-8"))
+        plan, error = formplans.build_plan(report)
+        assert error is None, path.name
+        assert len(plan["fields"]) >= 3, (path.name, len(plan["fields"]))
+
+
 # ---- plan_job: subprocess mocked -------------------------------------------
 
 def _job(db, apply_url=GH_URL, n=1):

@@ -53,11 +53,16 @@ const Field = z.object({
     .describe("select = native <select>; react_select = custom dropdown / combobox"),
   required: z.boolean().describe("true if marked required (asterisk, 'required', aria-required)"),
   options: z.array(z.string()).describe("visible choices for select/radio/checkbox, at most 20; [] if hidden"),
-  fill_from: z.string().describe(`one of ${PROFILE_KEYS.join(", ")}; or resume; or answer_bank_question; or never; or unknown`),
+  // An enum, not a described string: with a string NIM tagged Name/Email/Phone "answer_bank_question".
+  fill_from: z.enum([...PROFILE_KEYS, "resume", "answer_bank_question", "never", "unknown"])
+    .describe("profile key for contact/identity fields; resume only for the resume/CV upload"),
 });
 const Plan = z.object({ fields: z.array(Field) });
 const INSTRUCTION = `List EVERY field of the job application form on this page, top to bottom, including the
-demographic / EEO questions at the bottom. fill_from: "resume" for resume/CV upload; "answer_bank_question" for
+demographic / EEO questions at the bottom. fill_from: the candidate's profile key for identity and contact
+fields (Name/Full name -> full_name, First name -> given_name, Last name -> family_name, Email -> email,
+Phone -> phone, City/Location -> location, LinkedIn -> linkedin, GitHub -> github, Portfolio/Website -> website,
+Current company -> current_company, Current title -> current_title); "resume" for resume/CV upload; "answer_bank_question" for
 job-specific questions (sponsorship, work authorization, how did you hear, salary, why us, free text, yes/no);
 "never" for EVERY consent, acknowledgement, agreement, privacy/terms, certification, arbitration and EVERY
 demographic / EEO question (gender, race, ethnicity, veteran, disability, sexual orientation, pronouns, age).`;

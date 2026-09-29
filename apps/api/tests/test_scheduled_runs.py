@@ -240,6 +240,7 @@ def test_scheduler_registers_discovery_and_campaign_sweep(mock_scheduler_cls, _r
     assert registered == {
         jobs.discover_jobs_task: run_scheduler.DISCOVERY_INTERVAL_SECONDS,
         jobs.sweep_campaigns_task: jobs.CAMPAIGN_SWEEP_INTERVAL_SECONDS,
+        jobs.sweep_form_plans_task: 3600,
         run_scheduler.daily_digest_task: run_scheduler.DIGEST_INTERVAL_SECONDS,
     }
 

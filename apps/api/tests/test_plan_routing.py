@@ -28,24 +28,29 @@ def test_plan_routes_profile_key_without_llm(llm):
     llm.assert_not_called()
 
 
-@patch("formfill.map_fields.call_llm")
-def test_plan_never_flags_field(llm):
-    fields = [{"field_id": "f1", "label_text": "Years of experience", "input_type": "text", "dom_id": "yoe"}]
-    assert map_form_fields(fields, PROFILE, plan=_plan("yoe", "never")) == [FLAGGED]
-    llm.assert_not_called()
+@patch("formfill.map_fields.call_llm", return_value=LLM_UNKNOWN)
+def test_plan_never_is_not_trusted(llm):
+    # ADR-016 amendment: the plan's "never" is unreliable both ways (it tagged LinkedIn
+    # and website fields "never"); the consent/EEO rail decides, so "never" routes nothing.
+    fields = [{"field_id": "f1", "label_text": "LinkedIn profile", "input_type": "text", "dom_id": "li"}]
+    assert map_form_fields(fields, PROFILE, plan=_plan("li", "never")) == map_form_fields(fields, PROFILE)
 
 
 @patch("formfill.map_fields.call_llm")
-def test_plan_answer_bank_hit_bound_and_miss_flagged(llm):
+def test_plan_answer_bank_hit_bound_and_miss_takes_todays_path(llm):
+    # The measured planner tags most fields answer_bank_question (even Name/Email),
+    # so a bank miss must not beat today's path: it falls through, it isn't flagged.
     fields = [{"field_id": "f1", "label_text": "Do you have a notice period?", "input_type": "select",
                "options": ["Yes", "No"], "name": "notice"}]
     hit = map_form_fields(fields, PROFILE, answer_lookup=lambda q: "no",
                           plan=_plan("notice", "answer_bank_question"))
     assert hit == [{"field_id": "f1", "maps_to": "plan:answer_bank", "confidence": 1.0, "value": "No"}]
+    llm.assert_not_called()
+    llm.return_value = LLM_UNKNOWN
     miss = map_form_fields(fields, PROFILE, answer_lookup=lambda q: None,
                            plan=_plan("notice", "answer_bank_question"))
-    assert miss == [FLAGGED]
-    llm.assert_not_called()
+    llm.assert_called_once()
+    assert miss == map_form_fields(fields, PROFILE, answer_lookup=lambda q: None)
 
 
 @patch("formfill.map_fields.call_llm", return_value=LLM_UNKNOWN)

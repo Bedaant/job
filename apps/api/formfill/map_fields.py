@@ -179,7 +179,8 @@ def _from_answer_bank(field_id: str, value: str) -> dict:
 
 
 # ADR-016 plan `fill_from` -> profile_summary key (or network). Anything else
-# (resume, cover_letter, location, current_*, unknown) takes today's path.
+# (resume, cover_letter, location, current_*, unknown, and "never": the plan's
+# consent/EEO tagging is untrusted, the rail decides) takes today's path.
 _PLAN_PROFILE_KEYS = {
     **{k: k for k in ("full_name", "given_name", "family_name", "email", "phone", "city", "region", "country_code")},
     "website": "website_url", "linkedin": "network:linkedin", "github": "network:github",
@@ -189,14 +190,14 @@ _PLAN_PROFILE_KEYS = {
 def _plan_mapping(field: dict, fill_from: str, profile_summary: dict, answer_lookup) -> dict | None:
     """ADR-016: the plan routes a field, it never supplies a value. A value comes
     only from the profile or the bank, bound to the live options; a routed field
-    with no value is flagged, never sent to the model. None = not routed."""
+    with no value is flagged, never sent to the model (except an answer-bank miss).
+    None = not routed."""
     field_id = field["field_id"]
-    if fill_from == "never":
-        return _flagged(field_id)
     if fill_from == "answer_bank_question":
         answer = answer_lookup(field.get("label_text")) if answer_lookup else None
         bound = bind_to_options(answer, field.get("options")) if answer else None
-        return {"field_id": field_id, "maps_to": "plan:answer_bank", "confidence": 1.0, "value": bound} if bound else _flagged(field_id)
+        # A miss takes today's path: the measured planner tags most fields this way (even Name/Email).
+        return {"field_id": field_id, "maps_to": "plan:answer_bank", "confidence": 1.0, "value": bound} if bound else None
     key = _PLAN_PROFILE_KEYS.get(fill_from)
     if (
         key is None

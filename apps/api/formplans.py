@@ -45,6 +45,24 @@ def _key(entry: dict) -> str:
     return entry.get("id") or entry["name"]
 
 
+def _norm(s: str | None) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
+
+
+def _match(field: dict, live: list[dict]) -> dict | None:
+    """The live entry a plan field names: an id/name in selector_hint first, else
+    the label. Stagehand's hint is usually an a11y ref ("[2-53] textbox: Full name*"),
+    so the label (or a radio group's question) is the common path: exact, then one
+    containing the other."""
+    tokens = set(_TOKEN.findall(field.get("selector_hint") or ""))
+    hit = next((e for e in live if e.get("id") in tokens or e.get("name") in tokens), None)
+    label = _norm(field.get("label"))
+    if hit or len(label) < 3:
+        return hit
+    labelled = [(e, _norm(e.get("label")), _norm(e.get("group"))) for e in live]
+    return next((e for e, l, g in labelled if label in (l, g)), None) or         next((e for e, l, _ in labelled if len(l) >= 3 and (label in l or l in label)), None)
+
+
 def build_plan(report: dict) -> tuple[dict | None, str | None]:
     """plan.mjs report -> ({"fields": [{key, label, fill_from}]}, None) or (None, error).
     Values, options and `required` are never kept: the plan is shared, the page
@@ -60,9 +78,8 @@ def build_plan(report: dict) -> tuple[dict | None, str | None]:
     for f in (planner.get("plan") or {}).get("fields") or []:
         if f.get("fill_from") == "resume":
             continue
-        tokens = set(_TOKEN.findall(f.get("selector_hint") or ""))
-        entry = next((e for e in live if e.get("id") in tokens or e.get("name") in tokens), None)
-        if entry is None or _key(entry) in seen:
+        entry = _match(f, [e for e in live if _key(e) not in seen])
+        if entry is None:
             continue
         seen.add(_key(entry))
         fields.append({"key": _key(entry), "label": f.get("label") or "", "fill_from": f.get("fill_from") or "unknown"})
