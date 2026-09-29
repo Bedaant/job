@@ -102,6 +102,20 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-29 (latest+61) — Discovery set up for the owner: PM roles, remote or India
+
+**What changed.** `connectors/config.py`: `FEED_KEYWORDS` = product manager, product owner, product lead and head of product.
+The same filter now applies to the Greenhouse/Lever/Ashby boards (`workers/jobs.py`), because a board returns every opening.
+15 board tokens were each checked live against the ATS's public API for PM roles in India or globally remote. Boards whose
+remote PM roles were US-only were left out. The first live run fetched 274 and inserted 100, giving 199 PM jobs, 65 of them in India or remote.
+
+**Blocked.** Voyage embeddings are rate-limited (3 RPM, no payment method on the account). Matching scores only jobs with an embedding,
+and 196 of the 199 PM jobs have none yet. The owner adds a payment method, then discovery is re-run.
+
+**Owner's campaign.** Roles `product manager` and `product owner`. **remote_only off**, because `campaigns._in_bounds` ANDs it with
+locations. Locations are India, Bengaluru, Bangalore, Pune, Gurugram, Hyderabad, Mumbai and Remote. auto_submit is off. "Remote" also matches
+US-only remote roles from feeds, so skip those in Review.
+
 ### 2026-09-29 (latest+60) — Planner report comes back on stdout, so there is no temp file to lose
 
 **What changed.** The OpenAI plan in latest+59 failed with ENOENT: Python's temp dir for `plan.json` disappeared while
