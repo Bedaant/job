@@ -558,33 +558,45 @@ connector not worth it — drop that connector, not the architecture.
 
 ---
 
-## ADR-016 — Auto-apply engine: the extension first, an in-extension agent loop as fallback
+## ADR-016 — Auto-apply engine: browser-use on our server first, the extension as fallback
 
 **Date:** 2026-09-29 · **Status:** Accepted · **Decided by:** product owner
+**Partly reverses ADR-015 §3** ("never a shared server bot").
 
-**Context.** Live testing on one Greenhouse posting (WORKLOG latest+50…55) found ~12 bugs.
-Most were in the shared engine (frames, re-rendered forms, widget types, timeouts), not
-Greenhouse itself. Per-ATS hand-written adapters don't scale to Lever, Ashby, Workable,
-SmartRecruiters, Workday… ADR-015 §3 left "extension / browser-use / workflow-use" open.
+**Context.** Live testing on one Greenhouse posting (WORKLOG latest+50…55) found ~12 bugs
+in the extension's hand-written filler, mostly in the shared engine (frames, re-rendered
+forms, widget types, timeouts). Hand-written per-ATS support doesn't scale to Lever, Ashby,
+Workable, SmartRecruiters, Workday… browser-use (MIT, installed, 0.13.10) is a generic
+look → act → re-look agent that already handles iframes, dropdowns and file uploads.
 
 **Decision.**
-1. **Primary:** the extension's deterministic filler, in the user's own browser (as today).
-2. **Fallback:** an **agent loop inside the extension**. For fields still unresolved, the
-   extension sends a compact snapshot of them to the API; the LLM returns one action from
-   an allowlist (type, choose option, check, upload resume, click a non-submit button,
-   stop); the extension executes it and re-reads to verify. It is bounded per page.
-3. **browser-use is a test and discovery tool, not the product runtime:** the harness
-   grader, the pass-rate benchmark, and exploring a new ATS's flow.
-4. Rejected: browser-use on our server (not the user's session, datacenter-IP captchas,
-   contradicts ADR-015 §3); browser-use on the user's PC via CDP (Chrome debug flag and a
-   Python install per user) is kept only as a possible later opt-in "desktop mode".
+1. **Primary: browser-use on our server.** A worker opens the apply page in a
+   server-side Chromium and fills it with a restricted browser-use agent.
+2. **Fallback: the extension in the user's own browser.** It is used when the server
+   run stops: captcha, login or account wall, or a form it could not complete.
+3. The extension's existing filler, Review queue and needs-input flow stay. They become
+   the fallback path instead of the main one.
 
-**Rails.** Enforced in the extension's executor, not the prompt: no submit click in the
-loop; consent/demographic never answered; values only from profile/facts/answer bank
-(ADR-006/009); every harness run behind `guard.py`.
+**Rails (unchanged, enforced in code, not in the prompt).**
+- browser-use gets an action allowlist; every value comes from profile/facts/answer bank
+  (ADR-006/009, no fabrication); consent and demographic questions are never answered.
+- Submit happens only in Automatic mode, within daily caps (ADR-015). In **Assisted mode
+  (the default)** the server fills and stops before Submit, and the user sends it from
+  the extension: the server run prepares the answers, and the extension does the final
+  fill in the user's browser.
+- `ANONYMIZED_TELEMETRY=false`; no browser-use cloud features. Application data is PII.
+- Every test run is behind the no-submit guard (`guard.py`).
 
-**Consequences.** New `POST /extension/next-action` plus widget executors with verify.
-Order of work and success metrics: `docs/PLAN-MULTI-ATS.md` (measure first).
+**Consequences (accepted by the owner).**
+- Applications go out from our servers' IPs, not the user's: more captchas, and ToS/ban
+  exposure now sits on our infrastructure, not only on the user's account.
+- The server is not logged in as the user, so account-gated ATSs (Workday, iCIMS, Taleo)
+  always fall back to the extension.
+- Each application costs LLM steps and time (the harness grader took 10–160 s per form on
+  NIM nemotron). Worker capacity and cost scale with volume.
+- New: a server apply worker (browser-use + Chromium, isolated venv like
+  `tools/.venv-browser-use`), hand-off from a server stop to the extension, and
+  pass-rate measurement per ATS (`docs/PLAN-MULTI-ATS.md`, Phase 0 first).
 
-**Revisit when.** The in-extension loop plateaus below the plan's targets on a
-platform that matters. Then consider the desktop mode.
+**Revisit when.** Captcha/ban rates from server IPs or per-application cost make the
+server path worse than the extension for a given ATS. Then flip that ATS to extension-first.
