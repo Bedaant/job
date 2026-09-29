@@ -26,7 +26,7 @@ import models
 from batch_prep import prepare_application_for_review
 from campaigns import run_campaign
 from events.outbox import write_event
-from formplans import FETCHERS as PLANNED_ATS, plan_job
+from formplans import ROUTED_ATS, plan_job
 from matching.service import build_matches
 
 logger = logging.getLogger(__name__)
@@ -213,7 +213,7 @@ def sweep_form_plans_task() -> dict:
     role, no tenant, like sweep_campaigns_task: jobs and form_plans are global and
     the application join only reads status. A failed row is not retried here.
 
-    ponytail: only jobs whose source is a planned ATS, so non-ATS jobs (which never
+    ponytail: only jobs whose source is a routed ATS (formplans.ROUTED_ATS), so others (which never
     get a row) can't fill the 10 slots every hour. A feed job that resolves to an
     ATS is missed; plan it with `python -m formplans --job-id` if that matters.
     """
@@ -223,7 +223,7 @@ def sweep_form_plans_task() -> dict:
                    .outerjoin(models.FormPlan, models.FormPlan.job_id == models.Job.id)
                    .filter(models.Application.status.in_([models.ApplicationStatus.ready_for_review,
                                                           models.ApplicationStatus.approved]),
-                           models.Job.source.in_(list(PLANNED_ATS)),
+                           models.Job.source.in_(list(ROUTED_ATS)),
                            models.FormPlan.id.is_(None))
                    .distinct().limit(10)]
 

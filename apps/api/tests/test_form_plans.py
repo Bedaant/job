@@ -171,6 +171,21 @@ def test_current_plan_serves_ok_row_and_tolerates_bad_ids(mock_run, db_session):
     assert formplans.current_plan(db_session, "not-a-uuid") is None
 
 
+def test_current_plan_serves_only_ats_where_routing_helped(db_session):
+    # plan-vs-extension (2026-09-29): Greenhouse +2 required fields, Lever -4, Ashby 0.
+    job = _job(db_session, n=7)
+    db_session.add(models.FormPlan(job_id=job.id, url=GH_URL, ats="lever", status="ok", plan=EXPECTED))
+    db_session.commit()
+    assert formplans.current_plan(db_session, job.id) is None
+
+
+def test_build_plan_never_matches_a_checkbox_option_by_label():
+    # Zoox: plan field "LinkedIn" vs a "How did you hear?" checkbox option labelled "LinkedIn".
+    fields = [{"label": "LinkedIn", "selector_hint": "[2-9] textbox: LinkedIn", "fill_from": "linkedin"}]
+    snap = [dict(_entry("checkbox", name="cards[x][field3]", label="LinkedIn"), group="Zoox Ads / Social Media")]
+    assert formplans.build_plan(_report(fields, snap)) == (None, "no plan field matched the page")
+
+
 # ---- CLI --ats path: fetch + upsert only the matching job ------------------
 
 @patch("formplans.plan_job", return_value=None)
@@ -246,9 +261,11 @@ def test_sweep_enqueues_unplanned_jobs_only(mock_scope, mock_queue, mock_redis, 
     db_session.add(profile)
     db_session.commit()
     unplanned, planned, idle = _job(db_session, n=1), _job(db_session, n=2), _job(db_session, n=3)
+    lever = _job(db_session, n=4)
+    lever.source = "lever"  # routing is Greenhouse-only, so Lever jobs aren't planned
     for job, status in [(unplanned, models.ApplicationStatus.approved),
                         (planned, models.ApplicationStatus.ready_for_review),
-                        (idle, models.ApplicationStatus.saved)]:
+                        (idle, models.ApplicationStatus.saved), (lever, models.ApplicationStatus.approved)]:
         db_session.add(models.Application(profile_id=profile.id, job_id=job.id, status=status))
     db_session.add(models.FormPlan(job_id=planned.id, url=GH_URL, status="failed", error="x"))
     db_session.commit()

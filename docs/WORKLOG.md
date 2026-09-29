@@ -102,6 +102,40 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-29 (latest+57) — ADR-016 built: form_plans, planner worker, plan routing; on for Greenhouse only
+
+**What changed.** One agent planned and four agents built the parts in parallel worktrees. The pieces were then merged, and fixed when they met real planner output.
+- `form_plans` table (migration 0021, applied on Neon, no RLS). `apps/api/formplans.py` runs `plan.mjs` as a subprocess,
+  keeps only the plan fields that exist on the page, and stores one row per job. CLI: `python -m formplans`.
+  An hourly `sweep_form_plans_task` plans jobs that have an Application ready_for_review or approved.
+- `map_form_fields(..., plan=)`: after the consent/EEO rail and the deterministic matcher, the plan routes a field to a
+  profile key or an answer-bank hit bound to the options. Everything else takes today's path. A stale plan
+  (a key missing from the page) is dropped.
+- The extension sends `job_id` to map-fields (work-queue items carry it). `check_form.py --job-id`, and the new
+  `tools/stagehand-harness/measure.py`.
+- Scorer: radio/checkbox groups are matched by their question. Lever recall went 65% → 84%, Ashby 74% → 96%.
+
+**Result.** `docs/harness-reports/plan-vs-extension.md`, 13 postings with both runs: required fields filled
+62 without a plan, 60 with one (Greenhouse +2, Lever −4, Ashby 0). There were 0 demographic violations and 0 submits.
+Decision: routing is on for **Greenhouse only** (`formplans.ROUTED_ATS`). ADR-016 amendment 2.
+
+**Problems hit.**
+- Stagehand's `selector_hint` is an accessibility ref, not an id, so plans matched almost nothing on the page. `build_plan` now falls back to
+  the label (or the radio group's question), never a radio/checkbox *option* label.
+- NIM tagged Name, Email and Phone as `answer_bank_question`. `plan.mjs`'s `fill_from` is now an enum, and the instruction names the profile keys.
+- The plan's "never" hit LinkedIn and website fields, and an answer-bank miss flagged fields today's path fills. Both now
+  take today's path.
+- The Lever connector passed `createdAt` (epoch ms) as `posted_at`, and Postgres rejected it. Discovery had the same bug,
+  hidden because no Lever tokens are configured. Fixed, with a test.
+- The Neon connection dropped while the planner ran for minutes. `plan_job` now commits before the subprocess.
+  Robinhood re-planned OK (23 fields).
+- The running API had no `--reload`, so it served old code. It was restarted before the measurement.
+- **Open risk, not caused by the plan:** on Zoox, today's LLM path ticked a lone "LinkedIn" checkbox under "How did you
+  hear?" in one run and not in the other. That is a made-up answer. Next: flag a lone checkbox whose label is
+  an option of a group question, instead of asking the model.
+
+**Next.** Fix the lone-checkbox risk. Re-measure Lever and Ashby when the planner or the typeahead changes.
+
 ### 2026-09-29 (latest+56) — Stagehand measured on Lever and Ashby; ADR-016 amended: Stagehand is the planner
 
 **What changed.** The owner asked engineering to decide. The Stagehand harness was run on 5 live

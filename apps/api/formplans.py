@@ -30,6 +30,9 @@ from connectors.pipeline import upsert_jobs
 
 PLANNER = Path(__file__).resolve().parents[2] / "tools" / "stagehand-harness" / "plan.mjs"
 FETCHERS = {"greenhouse": fetch_greenhouse_jobs, "lever": fetch_lever_jobs, "ashby": fetch_ashby_jobs}
+# Where a plan reaches the fill. docs/harness-reports/plan-vs-extension.md (2026-09-29):
+# required fields filled Greenhouse +2, Lever -4, Ashby 0. The CLI still plans all three.
+ROUTED_ATS = {"greenhouse"}
 _TOKEN = re.compile(r"[\w\-\[\]\.:]+")  # selector_hint may be "#id", a name, or an a11y ref
 
 
@@ -59,7 +62,9 @@ def _match(field: dict, live: list[dict]) -> dict | None:
     label = _norm(field.get("label"))
     if hit or len(label) < 3:
         return hit
-    labelled = [(e, _norm(e.get("label")), _norm(e.get("group"))) for e in live]
+    # A radio/checkbox label is an option ("LinkedIn" under "How did you hear?"): match its question only.
+    labelled = [(e, "" if e.get("type") in ("radio", "checkbox") else _norm(e.get("label")), _norm(e.get("group")))
+                for e in live]
     return next((e for e, l, g in labelled if label in (l, g)), None) or         next((e for e, l, _ in labelled if len(l) >= 3 and (label in l or l in label)), None)
 
 
@@ -96,6 +101,8 @@ def plan_job(db, job, url: str | None = None):
         return None
     url = target["final_url"]
 
+    job_id = job.id
+    db.commit()  # release the connection: Neon drops it while the planner runs for minutes
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "plan.json"
         try:
@@ -106,7 +113,7 @@ def plan_job(db, job, url: str | None = None):
         except (subprocess.TimeoutExpired, OSError, ValueError) as exc:
             plan, error = None, f"{type(exc).__name__}: {exc}"
 
-    row = db.query(models.FormPlan).filter(models.FormPlan.job_id == job.id).first() or models.FormPlan(job_id=job.id)
+    row = db.query(models.FormPlan).filter(models.FormPlan.job_id == job_id).first() or models.FormPlan(job_id=job_id)
     row.url, row.ats, row.status = url, target["ats_type"], "ok" if plan else "failed"
     row.plan, row.error, row.created_at = plan, error, datetime.utcnow()
     row.fingerprint = fingerprint(f["key"] for f in plan["fields"]) if plan else None
@@ -121,7 +128,7 @@ def current_plan(db, job_id: str) -> dict | None:
     except ValueError:
         return None
     row = db.query(models.FormPlan).filter(
-        models.FormPlan.job_id == job_id, models.FormPlan.status == "ok"
+        models.FormPlan.job_id == job_id, models.FormPlan.status == "ok", models.FormPlan.ats.in_(ROUTED_ATS)
     ).first()
     return row.plan if row else None
 

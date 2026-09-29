@@ -626,3 +626,16 @@ What the plan is **not** trusted for, measured:
   fields on pages with no inputs. A plan whose fields don't match the live DOM is discarded (step 4's
   fingerprint check), never executed.
 Stagehand 3.7.3 (MIT) pinned; 4.x needs Node ≥ 22.18.
+The scorer was fixed to match radio/checkbox groups by their question. Re-scored recall: Lever 84%, Ashby 96%.
+
+**Amendment 2 (2026-09-29, built and measured; owner approved the step-2 change).**
+- **Step 2:** there is no guarded test fill per plan. Every fill checks the plan against the live form instead:
+  if any plan key is missing from the page, the whole plan is dropped. The server's consent/EEO rail, the
+  deterministic matcher and option binding all run before the plan and still decide.
+- **What the plan does:** it routes a field to a profile key, or to an answer-bank hit bound to the live
+  options. Everything else takes today's path. That includes the plan's "never", which is untrusted and
+  was seen tagging LinkedIn and website fields, and an answer-bank miss.
+- **Where it runs:** Greenhouse only (`formplans.ROUTED_ATS`). Measured on the same 15 postings
+  (`docs/harness-reports/plan-vs-extension.md`), required fields filled went Greenhouse +2, Lever −4, Ashby 0,
+  with no wrong values from the plan.
+- **Revisit:** Lever and Ashby, once the planner's routing beats today's filler there.
