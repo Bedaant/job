@@ -188,3 +188,21 @@ def test_backfill_under_a_rate_limit_keeps_what_it_embedded_and_stops():
     assert len(calls) == 2  # stopped at the 429, didn't spend a request on the third
     assert all(sum(len(t) for t in texts) <= 24_000 for texts in calls)  # ~<10K tokens/request
     assert sum(j.embedding is not None for j in db.query(models.Job).all()) == 1
+
+
+def test_backfill_embeds_the_newest_jobs_first():
+    """Found live: 1,743 jobs waited for a vector on the 3 RPM free tier, picked in no
+    order, so the fresh India PM postings from today's boards never got one."""
+    from datetime import datetime, timedelta
+    from connectors.pipeline import backfill_job_embeddings
+
+    db = _db()
+    with patch("connectors.pipeline.embed_texts", return_value=None):
+        upsert_jobs(db, [_job("remotive", "old", title="Old Role"), _job("greenhouse", "new", title="Product Manager")])
+    old = db.query(models.Job).filter(models.Job.external_id == "old").one()
+    old.fetched_at = datetime.utcnow() - timedelta(days=30)
+    db.commit()
+
+    with patch("connectors.pipeline.embed_texts", side_effect=lambda texts, input_type: [[0.1] * 512 for _ in texts]):
+        assert backfill_job_embeddings(db, limit=1) == 1
+    assert db.query(models.Job).filter(models.Job.embedding.isnot(None)).one().title == "Product Manager"

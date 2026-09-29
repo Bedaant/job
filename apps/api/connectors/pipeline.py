@@ -99,7 +99,9 @@ def backfill_job_embeddings(db, limit: int = 50) -> int:
     minute's budget is spent) ends the pass, keeping what was embedded — the
     rest waits for the next discover run rather than sleeping in the worker.
     Returns how many were embedded."""
-    pending = db.query(models.Job).filter(models.Job.embedding.is_(None)).limit(limit).all()
+    # Newest first: on a 3 RPM free tier the backlog clears slowly, and fresh postings matter most.
+    pending = (db.query(models.Job).filter(models.Job.embedding.is_(None))
+               .order_by(models.Job.fetched_at.desc().nullslast()).limit(limit).all())
     batches, size = [], BACKFILL_REQUEST_CHARS
     for job in pending:
         text = f"{job.title} at {job.company}. {job.description or ''}"[:BACKFILL_REQUEST_CHARS]
