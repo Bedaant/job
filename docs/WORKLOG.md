@@ -102,6 +102,19 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-29 (latest+60) — Planner report comes back on stdout, so there is no temp file to lose
+
+**What changed.** The OpenAI plan in latest+59 failed with ENOENT: Python's temp dir for `plan.json` disappeared while
+`plan.mjs` was running. Neither Stagehand nor chrome-launcher deletes it; they each remove only their own Chrome profile.
+The cause wasn't proven; one candidate is the Chrome and supervisor processes orphaned by Linear's timeout just before. Instead of
+guessing, the temp file is gone. `plan.mjs <url> -` prints the report as one JSON line on stdout, and
+`formplans.plan_job` parses the last JSON line. `plan.mjs` exits only after stdout drains, because a piped write can be
+cut off by `process.exit`. The human summary line moved to stderr. Harness use with a file path is unchanged.
+
+**How tested.** Red → green in `tests/test_form_plans.py` (the stdout report, and a failed row when there's no report).
+The API suite passes. Live: Cloudflare planned OK (12 fields). OpenAI returned its report and failed only because NIM was
+overloaded.
+
 ### 2026-09-29 (latest+59) — Lever and Ashby re-measured with the plan: no gain on required fields; routing stays Greenhouse-only
 
 **What changed.** `formplans.ROUTED_ATS` now reads `FORM_PLAN_ROUTED_ATS` (default `greenhouse`), so a measurement

@@ -1,7 +1,7 @@
 // Stagehand vs extension (PLAN-MULTI-ATS Phase 0b): read a job form with ONE Stagehand extract()
 // call (no clicks, no typing) and write a plan in phase0.py's format for score.py.
 //
-//   node plan.mjs <url> <out.json>
+//   node plan.mjs <url> <out.json | ->   ("-": the report as one JSON line on stdout)
 //
 // Guard (same rules as browser-use-harness/guard.py): CDP Fetch fails every non-GET/HEAD/OPTIONS
 // request, and an init script makes form.submit()/requestSubmit() throw and cancels submit events.
@@ -14,7 +14,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { z } from "zod";
 
 const [url, out] = process.argv.slice(2);
-if (!url || !out) throw new Error("usage: node plan.mjs <url> <out.json>");
+if (!url || !out) throw new Error("usage: node plan.mjs <url> <out.json | ->");
 
 const env = Object.fromEntries(
   readFileSync(new URL("../../apps/api/.env", import.meta.url), "utf8")
@@ -144,9 +144,11 @@ try {
 } finally {
   report.guard = guard;
   report.total_s = (Date.now() - t0) / 1000;
-  writeFileSync(out, JSON.stringify(report, null, 1));
+  // "-": one JSON line on stdout (formplans.py reads it); no temp file for the caller to lose.
+  if (out === "-") process.stdout.write(JSON.stringify(report) + "\n");
+  else writeFileSync(out, JSON.stringify(report, null, 1));
   await sh.close().catch(() => {});
 }
 const p = report.planner;
-console.log(`fields=${p.plan?.fields?.length ?? 0} llm_calls=${p.llm_calls} s=${p.agent_s} error=${p.error} guard=${JSON.stringify(guard)}`);
-process.exit(0);
+console.error(`fields=${p.plan?.fields?.length ?? 0} llm_calls=${p.llm_calls} s=${p.agent_s} error=${p.error} guard=${JSON.stringify(guard)}`);
+process.stdout.write("", () => process.exit(0)); // exit once a piped report has drained

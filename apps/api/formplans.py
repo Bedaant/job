@@ -16,7 +16,6 @@ import json
 import os
 import re
 import subprocess
-import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -105,15 +104,16 @@ def plan_job(db, job, url: str | None = None):
 
     job_id = job.id
     db.commit()  # release the connection: Neon drops it while the planner runs for minutes
-    with tempfile.TemporaryDirectory() as tmp:
-        out = Path(tmp) / "plan.json"
-        try:
-            proc = subprocess.run(["node", str(PLANNER), url, str(out)], timeout=300, capture_output=True)
-            if not out.exists():
-                raise OSError(f"planner wrote no output: {(proc.stderr or b'')[-500:].decode(errors='replace')}")
-            plan, error = build_plan(json.loads(out.read_text(encoding="utf-8")))
-        except (subprocess.TimeoutExpired, OSError, ValueError) as exc:
-            plan, error = None, f"{type(exc).__name__}: {exc}"
+    try:
+        # "-": the report comes back as the last JSON line on stdout. A temp file once
+        # vanished while the planner ran (ENOENT, WORKLOG latest+59); stdout can't.
+        proc = subprocess.run(["node", str(PLANNER), url, "-"], timeout=300, capture_output=True)
+        lines = [ln for ln in (proc.stdout or b"").decode("utf-8", "replace").splitlines() if ln.startswith("{")]
+        if not lines:
+            raise OSError(f"planner wrote no report: {(proc.stderr or b'')[-500:].decode(errors='replace')}")
+        plan, error = build_plan(json.loads(lines[-1]))
+    except (subprocess.TimeoutExpired, OSError, ValueError) as exc:
+        plan, error = None, f"{type(exc).__name__}: {exc}"
 
     row = db.query(models.FormPlan).filter(models.FormPlan.job_id == job_id).first() or models.FormPlan(job_id=job_id)
     row.url, row.ats, row.status = url, target["ats_type"], "ok" if plan else "failed"

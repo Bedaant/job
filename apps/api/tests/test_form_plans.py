@@ -122,10 +122,18 @@ def _job(db, apply_url=GH_URL, n=1):
 
 
 def _writes(report):
+    # plan.mjs "-" prints the report as one JSON line on stdout: no temp file to lose
+    # (a temp dir vanished mid-run once, ENOENT, latest+59). Other lines may precede it.
     def run(cmd, **kwargs):
-        Path(cmd[3]).write_text(json.dumps(report), encoding="utf-8")
-        return MagicMock(returncode=0, stderr=b"")
+        assert cmd[3] == "-"
+        return MagicMock(returncode=0, stdout=b"some log line\n" + json.dumps(report).encode() + b"\n", stderr=b"")
     return run
+
+
+@patch("formplans.subprocess.run", return_value=MagicMock(returncode=1, stdout=b"", stderr=b"Error: boom"))
+def test_plan_job_without_a_report_is_a_failed_row(_run, db_session):
+    row = formplans.plan_job(db_session, _job(db_session, n=9))
+    assert row.status == "failed" and "Error: boom" in row.error
 
 
 @patch("formplans.subprocess.run")
