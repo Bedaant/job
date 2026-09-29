@@ -12,7 +12,7 @@ from rq.exceptions import DuplicateJobError
 
 from connectors import config as conn_config
 from connectors.ashby import fetch_ashby_jobs
-from connectors.feeds import fetch_enabled_feeds
+from connectors.feeds import fetch_enabled_feeds, filter_by_keywords
 from connectors.greenhouse import fetch_greenhouse_jobs
 from connectors.lever import fetch_lever_jobs
 from connectors.normalize import canonical_hash
@@ -73,12 +73,14 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
         all_jobs.extend(fetch_remotive_jobs(kw))
     for kw in conn_config.REED_KEYWORDS:
         all_jobs.extend(fetch_reed_jobs(kw))
+    # A company board returns every opening; keep the target titles only (FEED_KEYWORDS).
+    kw = conn_config.FEED_KEYWORDS
     for token in conn_config.GREENHOUSE_BOARD_TOKENS:
-        all_jobs.extend(fetch_greenhouse_jobs(token))
+        all_jobs.extend(filter_by_keywords(fetch_greenhouse_jobs(token), kw))
     for token in conn_config.LEVER_COMPANY_TOKENS:
-        all_jobs.extend(fetch_lever_jobs(token))
+        all_jobs.extend(filter_by_keywords(fetch_lever_jobs(token), kw))
     for token in conn_config.ASHBY_ORG_TOKENS:
-        all_jobs.extend(fetch_ashby_jobs(token))
+        all_jobs.extend(filter_by_keywords(fetch_ashby_jobs(token), kw))
 
     # ADR-015 multi-source: the keyless public feeds. Reported per source rather
     # than merged into one count — with six boards, "0 inserted" has to be

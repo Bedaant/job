@@ -67,3 +67,25 @@ def test_discover_without_job_id_runs_unguarded(mock_session_scope):
             p.stop()
 
     assert result["fetched"] == 0
+
+
+@patch("workers.jobs.upsert_jobs", return_value=(1, 0))
+@patch("workers.jobs.backfill_job_embeddings")
+@patch("workers.jobs.session_scope")
+def test_ats_boards_keep_only_titles_matching_the_keywords(mock_scope, _embed, mock_upsert):
+    """A company board returns every opening (Databricks: 879). Only the target
+    titles are stored, by the same keyword filter the feeds use."""
+    mock_scope.return_value.__enter__.return_value = MagicMock()
+    board = [{"company": "acme", "title": t, "location": "Bengaluru"} for t in ("Senior Product Manager", "Staff Engineer")]
+    patches = _patch_connectors()
+    for p in patches:
+        p.start()
+    try:
+        with patch("workers.jobs.conn_config.GREENHOUSE_BOARD_TOKENS", ["acme"]), \
+             patch("workers.jobs.conn_config.FEED_KEYWORDS", ["product manager"]), \
+             patch("workers.jobs.fetch_greenhouse_jobs", return_value=board):
+            discover_jobs_task()
+    finally:
+        for p in patches:
+            p.stop()
+    assert [j["title"] for j in mock_upsert.call_args.args[1]] == ["Senior Product Manager"]

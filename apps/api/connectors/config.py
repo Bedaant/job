@@ -7,7 +7,8 @@ REMOTIVE_KEYWORDS = ["product manager", "associate product manager", "APM"]
 # FEED_KEYWORDS filters client-side. Empty list = keep everything the feeds
 # return (feeds.filter_by_keywords treats "no keywords" as "no filter", never
 # as "no results").
-FEED_KEYWORDS: list[str] = []
+# Also filters the ATS boards below (workers/jobs.py): a board returns every opening.
+FEED_KEYWORDS: list[str] = ["product manager", "product owner", "product lead", "head of product"]
 
 # Which feeds run. Comment a line out to drop that source without touching code.
 ENABLED_FEEDS = [
@@ -31,14 +32,17 @@ REED_KEYWORDS = ["product manager", "associate product manager"]
 # Greenhouse and Lever require a company's "board token" — find it by visiting
 # https://boards.greenhouse.io/<token> or https://jobs.lever.co/<token>
 # Add the startups you're targeting here (seed-Series B companies you like).
+# 2026-09-29: PM roles in India or globally remote, each token checked live against
+# the ATS's public API (boards whose "remote" PM roles were US-only were left out).
 GREENHOUSE_BOARD_TOKENS = [
-    # "notion", "ramp", "ashbyhq"   <- examples, replace with real tokens
+    "okta", "druva", "mongodb", "rubrik", "inmobi", "databricks", "twilio",  # India offices
+    "gitlab", "grafanalabs",  # remote across countries
 ]
 
 LEVER_COMPANY_TOKENS = [
-    # "netlify", "attentive"   <- examples, replace with real tokens
+    "meesho", "zeta", "fampay", "mindtickle",
 ]
 
 ASHBY_ORG_TOKENS = [
-    # "linear", "vercel"   <- examples, replace with real tokens
+    "sarvam", "supabase",
 ]
