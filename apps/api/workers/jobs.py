@@ -26,6 +26,7 @@ import models
 from batch_prep import prepare_application_for_review
 from campaigns import run_campaign
 from events.outbox import write_event
+from formplans import FETCHERS as PLANNED_ATS, plan_job
 from matching.service import build_matches
 
 logger = logging.getLogger(__name__)
@@ -196,3 +197,42 @@ def sweep_campaigns_task() -> dict:
             logger.exception("scheduled sweep failed for campaign %s", campaign_id)
             failed.append(campaign_id)
     return {"enqueued": enqueued, "failed": failed}
+
+
+def plan_form_task(job_id: str) -> dict:
+    """ADR-016: run the read-only Stagehand planner on one job's form and store the plan."""
+    with session_scope() as db:
+        job = db.query(models.Job).filter(models.Job.id == job_id).first()
+        row = plan_job(db, job) if job else None
+        return {"job_id": job_id, "status": row.status if row else "skipped"}
+
+
+def sweep_form_plans_task() -> dict:
+    """Scheduled (workers/run_scheduler.py): plan up to 10 jobs someone is about to
+    apply to (ready_for_review / approved) that have no form_plans row yet. Owner
+    role, no tenant, like sweep_campaigns_task: jobs and form_plans are global and
+    the application join only reads status. A failed row is not retried here.
+
+    ponytail: only jobs whose source is a planned ATS, so non-ATS jobs (which never
+    get a row) can't fill the 10 slots every hour. A feed job that resolves to an
+    ATS is missed; plan it with `python -m formplans --job-id` if that matters.
+    """
+    with session_scope() as db:
+        job_ids = [jid for (jid,) in db.query(models.Job.id)
+                   .join(models.Application, models.Application.job_id == models.Job.id)
+                   .outerjoin(models.FormPlan, models.FormPlan.job_id == models.Job.id)
+                   .filter(models.Application.status.in_([models.ApplicationStatus.ready_for_review,
+                                                          models.ApplicationStatus.approved]),
+                           models.Job.source.in_(list(PLANNED_ATS)),
+                           models.FormPlan.id.is_(None))
+                   .distinct().limit(10)]
+
+    for job_id in job_ids:
+        try:
+            get_queue().enqueue(
+                plan_form_task, job_id=f"plan-{job_id}", unique=True, job_timeout=600,
+                kwargs={"job_id": job_id},
+            )
+        except DuplicateJobError:
+            pass  # already queued
+    return {"enqueued": job_ids}

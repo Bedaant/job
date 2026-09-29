@@ -392,3 +392,25 @@ class AnswerBank(Base):
     __table_args__ = (
         UniqueConstraint("profile_id", "question_normalized", name="uq_answer_bank_profile_question"),
     )
+
+
+class FormPlan(Base):
+    """ADR-016 (2026-09-29 amendment): the read-only Stagehand planner's plan for
+    one job's application form, shared by every user who applies to it. Global
+    like `jobs` and holds no user data (labels and fill sources only, never a
+    value), so no RLS. Unique on job_id: a re-plan replaces the row.
+    """
+    __tablename__ = "form_plans"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    job_id = Column(UUID(as_uuid=False), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    url = Column(String, nullable=False)
+    ats = Column(String, nullable=True)
+    status = Column(String, nullable=False)  # ok | failed
+    # sha256 of the sorted live-DOM keys, first 16 hex: tells a changed form apart.
+    fingerprint = Column(String(16), nullable=True)
+    plan = Column(JSON, nullable=True)  # {"fields": [{"key", "label", "fill_from"}]}
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("job_id", name="uq_form_plans_job_id"),)
