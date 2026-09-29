@@ -10,6 +10,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from rq.exceptions import DuplicateJobError
 from rq.job import Job as RQJob
+from rq.worker import Worker as RQWorker
 
 import answer_bank as answer_bank_service
 from needs_input import attempt_history, last_attempt, needs_input
@@ -62,6 +63,14 @@ app.include_router(auth_router)
 
 # ---------- Job discovery ----------
 
+def _workers_online() -> bool:
+    return RQWorker.count(connection=get_redis_connection()) > 0
+
+
+NO_WORKER = ("The background worker isn't running, so this can't start. "
+             "Start it with: python -m workers.run_worker (in apps/api).")
+
+
 @app.post("/discover/run")
 def run_discovery(_user: models.User = Depends(get_current_user)):
     """Enqueues onto RQ instead of running inline — fixes CODE-REVIEW.md B6.
@@ -74,6 +83,8 @@ def run_discovery(_user: models.User = Depends(get_current_user)):
     same minute returns the existing task_id instead of double-enqueuing.
     Layer 2 (the execution claim) lives in discover_jobs_task itself.
     """
+    if not _workers_online():  # queued with no worker = silently never runs (found live)
+        raise HTTPException(503, NO_WORKER)
     job_id = f"discover-{int(time.time() // 60)}"  # rq: [A-Za-z0-9_-] only
     try:
         job = get_queue().enqueue(discover_jobs_task, job_id=job_id, unique=True, kwargs={"job_id": job_id})
@@ -655,6 +666,8 @@ def run_campaign_endpoint(
     Redis claim inside the task (layer 2).
     """
     campaign = campaigns_service.resolve_campaign_ownership(db, current_user, campaign_id)
+    if not _workers_online():  # found live: a run sat in Redis for hours, reported as started
+        raise HTTPException(503, NO_WORKER)
     # rq 2.x only accepts [A-Za-z0-9_-] in job ids (a ":" 500s the enqueue).
     run_id = f"campaign-{campaign.id}-{int(time.time() // 60)}"
     try:

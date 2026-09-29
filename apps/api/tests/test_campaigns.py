@@ -580,7 +580,7 @@ def test_run_campaign_endpoint_enqueues_and_returns_a_job_id():
     fake_job = MagicMock()
     fake_job.id = "rq-job-1"
     fake_job.get_status.return_value = "queued"
-    with patch("main.get_queue") as mock_queue:
+    with patch("main.get_queue") as mock_queue, patch("main._workers_online", return_value=True):
         mock_queue.return_value.enqueue.return_value = fake_job
         response = client.post(f"/campaigns/{campaign_id}/run", headers=headers)
 
@@ -617,7 +617,7 @@ def test_enqueued_job_ids_are_valid_rq_ids():
     fake_job = MagicMock()
     fake_job.id = "x"
     fake_job.get_status.return_value = "queued"
-    with patch("main.get_queue") as mock_queue:
+    with patch("main.get_queue") as mock_queue, patch("main._workers_online", return_value=True):
         mock_queue.return_value.enqueue.return_value = fake_job
         client.post(f"/campaigns/{campaign_id}/run", headers=headers)
         client.post("/discover/run", headers=headers)
@@ -626,3 +626,19 @@ def test_enqueued_job_ids_are_valid_rq_ids():
     assert len(job_ids) == 2
     for job_id in job_ids:
         validate_job_id(job_id)  # raises ValueError on an id rq would refuse
+
+
+def test_run_says_so_when_no_worker_is_listening():
+    """Live (2026-09-29): no worker was running; Run returned 200 and the job sat in
+    Redis for hours. The user is told instead, and nothing is enqueued."""
+    client, _ = _client()
+    headers = _auth(client, "noworker@example.com")
+    profile = client.post("/profiles", headers=headers, json={"persona": "developer"}).json()
+    campaign_id = client.post("/campaigns", headers=headers,
+                              json={"profile_id": profile["id"], "name": "PM"}).json()["id"]
+    with patch("main.get_queue") as mock_queue, patch("main._workers_online", return_value=False):
+        for path in (f"/campaigns/{campaign_id}/run", "/discover/run"):
+            response = client.post(path, headers=headers)
+            assert response.status_code == 503
+            assert "background worker" in response.json()["detail"]
+    mock_queue.return_value.enqueue.assert_not_called()
