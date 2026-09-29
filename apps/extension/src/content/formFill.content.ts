@@ -376,7 +376,7 @@ function attachFile(el: HTMLInputElement, file: File): void {
  * the driver's per-item timeout. The interactive path below catches and alerts,
  * so nothing changes for a user who triggered the fill themselves.
  */
-export async function fillForm(profileId: string, atsType?: string | null): Promise<FillOutcome> {
+export async function fillForm(profileId: string, atsType?: string | null, jobId?: string | null): Promise<FillOutcome> {
   // Read again if the form was replaced mid-read (relink.mjs readLive).
   const { controls, raws, comboKinds } = await readLive(
     async () => {
@@ -403,6 +403,7 @@ export async function fillForm(profileId: string, atsType?: string | null): Prom
         url: location.href,
         fields: descriptors,
         ats_type: atsType ?? null,
+        job_id: jobId ?? null,
       });
       mappings = resp.json as FieldMapping[];
     } catch (error) {
@@ -519,7 +520,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "jc:fill-form" && fillsOnPopup(frame)) {
     // The interactive path keeps its alert — a user who clicked "fill" is present
     // to read it. The automated path (autoApply.content.ts) handles the throw.
-    fillForm(message.profileId)
+    fillForm(message.profileId, null, message.jobId)
       .then((outcome) => sendResponse({ ok: true, ...outcome }))
       .catch((error) => {
         alert(`ApplyScout: ${error instanceof Error ? error.message : String(error)}`);

@@ -292,10 +292,11 @@ async def form_frame(page):
     return best
 
 
-async def check(url: str, ats: str, headed: bool, audit: bool) -> dict:
+async def check(url: str, ats: str, headed: bool, audit: bool, job_id: str | None = None) -> dict:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     timings: dict = {}
-    report: dict = {"url": url, "ats": ats, "started_at": stamp, "timings_s": timings, "dialogs": []}
+    report: dict = {"url": url, "ats": ats, "started_at": stamp, "timings_s": timings, "dialogs": [],
+                    "job_id": job_id}
     if not (EXT_DIST / "manifest.json").exists():
         sys.exit(f"{EXT_DIST} missing - build it: cd {MAIN / 'apps/extension'} && npm run build")
 
@@ -339,13 +340,13 @@ async def check(url: str, ats: str, headed: bool, audit: bool) -> dict:
             t = time.monotonic()
             try:
                 report["extension_response"] = await asyncio.wait_for(sw.evaluate(
-                    """async ({url, profileId}) => {
+                    """async ({url, profileId, jobId}) => {
                       const tabs = await chrome.tabs.query({});
                       const tab = tabs.find((t) => t.url === url) || tabs.find((t) => (t.url || '').startsWith('http'));
                       if (!tab) return {ok: false, error: 'tab not found'};
-                      try { return await chrome.tabs.sendMessage(tab.id, {type: 'jc:fill-form', profileId}); }
+                      try { return await chrome.tabs.sendMessage(tab.id, {type: 'jc:fill-form', profileId, jobId}); }
                       catch (e) { return {ok: false, error: String(e)}; }
-                    }""", {"url": page.url, "profileId": acct["profile_id"]}), FILL_TIMEOUT_S)
+                    }""", {"url": page.url, "profileId": acct["profile_id"], "jobId": job_id}), FILL_TIMEOUT_S)
             except asyncio.TimeoutError:
                 report["extension_response"] = {"ok": False, "error": f"no answer in {FILL_TIMEOUT_S}s"}
             await page.wait_for_timeout(1500)  # let React settle / re-render after the fill
@@ -439,11 +440,12 @@ def main() -> int:
     ap.add_argument("--ats", choices=["greenhouse", "lever", "ashby", "other"])
     ap.add_argument("--headed", action="store_true")
     ap.add_argument("--no-audit", action="store_true", help="skip the browser-use LLM auditor")
+    ap.add_argument("--job-id", help="server form plan to fill with (map-fields job_id); default none")
     ap.add_argument("--ext-dist", type=Path, help=f"built extension to load (default {EXT_DIST}), e.g. a worktree's")
     a = ap.parse_args()
     if a.ext_dist:
         EXT_DIST = a.ext_dist.resolve()
-    r = asyncio.run(check(a.url, a.ats or detect_ats(a.url), a.headed, not a.no_audit))
+    r = asyncio.run(check(a.url, a.ats or detect_ats(a.url), a.headed, not a.no_audit, a.job_id))
     print("PASS" if r["passed"] else "FAIL: " + "; ".join(r["failures"]))
     return 0 if r["passed"] else 1
 

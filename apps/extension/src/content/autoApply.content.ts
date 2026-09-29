@@ -47,6 +47,7 @@ type WorkItem = {
   company: string;
   title: string;
   ats_type?: string | null;
+  job_id?: string | null;
   // Set by the driver once the submit was sent: this page only verifies.
   verify?: Verify;
 };
@@ -190,7 +191,7 @@ async function run(): Promise<void> {
   // to `approved` and a retry could apply twice.
   let sent = false;
   try {
-    const { flagged, questions } = await fillForm(item.profile_id, item.ats_type);
+    const { flagged, questions } = await fillForm(item.profile_id, item.ats_type, item.job_id);
 
     const blocking = flagged.filter((f) => NEEDS_USER_REASONS.has(f.reason));
     if (blocking.length > 0) {

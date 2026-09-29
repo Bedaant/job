@@ -36,6 +36,7 @@ export type WorkItem = {
   company: string;
   title: string;
   ats_type?: string | null;
+  job_id?: string | null;
 };
 
 type Outcome = "submitted" | "unconfirmed" | "failed" | "needs_human";
