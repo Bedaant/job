@@ -8,7 +8,10 @@ import re
 
 from answer_bank import DEMOGRAPHIC_LABEL_KEYWORDS, is_consent_field, is_demographic_field, is_demographic_label  # noqa: F401
 from core.grounding import validate_ids_against_known_set
-from formfill.deterministic import bind_to_options, match_field_deterministic, recognised_profile_key
+from formfill.deterministic import (
+    _NO_PROFILE_VALUE_TYPES, _NOT_A_PROFILE_QUESTION, _country_option, _find_network_url,
+    bind_to_options, match_field_deterministic, recognised_profile_key,
+)
 from tailoring.engine import call_llm
 
 CONFIDENCE_THRESHOLD = 0.75
@@ -175,15 +178,62 @@ def _from_answer_bank(field_id: str, value: str) -> dict:
     return {"field_id": field_id, "maps_to": "answer_bank", "confidence": 1.0, "value": value}
 
 
+# ADR-016 plan `fill_from` -> profile_summary key (or network). Anything else
+# (resume, cover_letter, location, current_*, unknown) takes today's path.
+_PLAN_PROFILE_KEYS = {
+    **{k: k for k in ("full_name", "given_name", "family_name", "email", "phone", "city", "region", "country_code")},
+    "website": "website_url", "linkedin": "network:linkedin", "github": "network:github",
+}
+
+
+def _plan_mapping(field: dict, fill_from: str, profile_summary: dict, answer_lookup) -> dict | None:
+    """ADR-016: the plan routes a field, it never supplies a value. A value comes
+    only from the profile or the bank, bound to the live options; a routed field
+    with no value is flagged, never sent to the model. None = not routed."""
+    field_id = field["field_id"]
+    if fill_from == "never":
+        return _flagged(field_id)
+    if fill_from == "answer_bank_question":
+        answer = answer_lookup(field.get("label_text")) if answer_lookup else None
+        bound = bind_to_options(answer, field.get("options")) if answer else None
+        return {"field_id": field_id, "maps_to": "plan:answer_bank", "confidence": 1.0, "value": bound} if bound else _flagged(field_id)
+    key = _PLAN_PROFILE_KEYS.get(fill_from)
+    if (
+        key is None
+        or (field.get("input_type") or "").lower() in _NO_PROFILE_VALUE_TYPES
+        or _NOT_A_PROFILE_QUESTION.search((field.get("label_text") or "").lower())
+    ):
+        return None  # deterministic.py's guards: a choice or yes/no field never takes a profile string
+    if key.startswith("network:"):
+        name = key.split(":", 1)[1]
+        value = bind_to_options(_find_network_url(profile_summary, name), field.get("options"))
+        maps_to = f"plan:network_profile:{name}"
+    else:
+        value = bind_to_options(profile_summary.get(key) or None, field.get("options"))
+        if not value and key == "country_code":
+            value = _country_option(profile_summary.get(key), field.get("options"))
+        maps_to = f"plan:profile.{key}"
+    return {"field_id": field_id, "maps_to": maps_to, "confidence": 1.0, "value": value} if value else _flagged(field_id)
+
+
 def map_form_fields(
-    fields: list[dict], profile_summary: dict, answer_lookup=None, ats_type: str | None = None
+    fields: list[dict], profile_summary: dict, answer_lookup=None, ats_type: str | None = None, plan: dict | None = None
 ) -> list[dict]:
     """`answer_lookup(question_text) -> str | None` is the answer bank, injected
     rather than imported so this module stays free of a DB session and its tests
     stay free of a database. main.py passes
     `answer_bank.serve_answer`-bound-to-this-profile; None means "no bank", which
     reproduces the pre-bank behaviour exactly.
+
+    `plan` is the job's stored Stagehand plan (ADR-016). If any plan key is not
+    on the live form, the form changed since planning: the whole plan is dropped.
     """
+    live = ({f.get("name") for f in fields} | {f.get("dom_id") for f in fields}) - {None, ""}
+    plan_fields = (plan or {}).get("fields") or []
+    route = (
+        {p.get("key"): p.get("fill_from") for p in plan_fields}
+        if all(p.get("key") in live for p in plan_fields) else {}
+    )
     # Demographic first and unconditionally: these fields are excluded before
     # the deterministic matcher, before the bank, and before the model. Nothing
     # downstream gets the chance to resolve one. Today's extension sends one
@@ -225,6 +275,11 @@ def map_form_fields(
         match = match_field_deterministic(field, profile_summary, ats_type)
         if match is not None:
             deterministic_results[field_id] = match
+            continue
+        fill_from = route.get(field.get("name")) or route.get(field.get("dom_id"))
+        planned = _plan_mapping(field, fill_from, profile_summary, answer_lookup) if fill_from else None
+        if planned is not None:
+            deterministic_results[field_id] = planned
             continue
         if recognised_profile_key(field, ats_type) is not None:
             # A known profile field whose data the profile lacks (e.g. First Name
