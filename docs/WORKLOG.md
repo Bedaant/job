@@ -102,6 +102,19 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-29 (latest+62) — Matches page respects the campaign; the campaign was missing boards and Indian cities
+
+**What happened.** The owner's campaign said India, but the Matches page showed US, UK and Europe roles. There were three causes:
+- `GET /matches` listed every scored match. Only campaign runs applied `campaigns._in_bounds`. It now shows matches
+  that fit any **active** campaign, using the same filter, and everything when no campaign is active. There is a test, and the suite has 724 passing.
+- The API had been started before the ATS boards were configured and had no `--reload`, so `/sources` still said
+  "No company boards added" and the campaign was created without greenhouse/lever/ashby. The API was restarted with `--reload`
+  and the three sources were added to the campaign.
+- Location "India" misses "Bangalore, Karnataka" and "Gurugram". The campaign's locations now also list the main Indian cities.
+  Future users will hit the same problem: consider making "India" match Indian cities.
+
+**Still blocked.** None of the India PM jobs has an embedding (Voyage 3 RPM limit), so 0 matches are in bounds until the owner adds a payment method.
+
 ### 2026-09-29 (latest+61) — Discovery set up for the owner: PM roles, remote or India
 
 **What changed.** `connectors/config.py`: `FEED_KEYWORDS` = product manager, product owner, product lead and head of product.
