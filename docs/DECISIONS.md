@@ -558,45 +558,53 @@ connector not worth it — drop that connector, not the architecture.
 
 ---
 
-## ADR-016 — Auto-apply engine: browser-use on our server first, the extension as fallback
+## ADR-016 — Auto-apply: browser-use plans each job on the server; the extension submits in the user's browser
 
 **Date:** 2026-09-29 · **Status:** Accepted · **Decided by:** product owner
-**Partly reverses ADR-015 §3** ("never a shared server bot").
+(Final after three rounds the same day: extension-first → server-submits-first → this.)
 
 **Context.** Live testing on one Greenhouse posting (WORKLOG latest+50…55) found ~12 bugs
 in the extension's hand-written filler, mostly in the shared engine (frames, re-rendered
-forms, widget types, timeouts). Hand-written per-ATS support doesn't scale to Lever, Ashby,
-Workable, SmartRecruiters, Workday… browser-use (MIT, installed, 0.13.10) is a generic
-look → act → re-look agent that already handles iframes, dropdowns and file uploads.
+forms, widget types, timeouts). Hand-written per-ATS support doesn't scale. browser-use
+(MIT, 0.13.10, installed) is a generic look → act → re-look agent. Letting it *submit* from
+our server had real costs: datacenter-IP captchas and ban exposure on our infrastructure,
+no user login, no way for a user to press Send in Assisted mode, per-application AI cost,
+and PII inside server browsers. Splitting "understand the form" from "submit it" removes
+each of them.
 
 **Decision.**
-1. **Primary: browser-use on our server.** A worker opens the apply page in a
-   server-side Chromium and fills it with a restricted browser-use agent.
-2. **Fallback: the extension in the user's own browser.** It is used when the server
-   run stops: captcha, login or account wall, or a form it could not complete.
-3. The extension's existing filler, Review queue and needs-input flow stay. They become
-   the fallback path instead of the main one.
+1. **browser-use first, on our server, read-only: it plans.** When a job is discovered,
+   a server worker opens its apply page with browser-use behind the no-submit guard
+   (only GET/HEAD/OPTIONS leave; `guard.py` layers) using a **synthetic profile**, never
+   user data. It walks the whole form, including multi-page steps, dropdown options,
+   typeahead behaviour and required markers, and saves a **fill plan**: per field, the
+   widget type, how to fill and verify it, and the *profile key or answer-bank question*
+   it takes. Values are never stored in the plan. Consent/demographic fields are marked
+   "never fill".
+2. **One plan per job, shared by every user**, with a fingerprint of the form's field set.
+   It is built at discovery time, off the user's critical path. A plan is trusted only
+   after a guarded test fill of it passes.
+3. **The extension executes the plan in the user's browser**: their IP, their logins,
+   real values from profile/facts/answer bank, write-then-verify per field. Assisted
+   mode: the user presses Send. Automatic mode: the extension sends within the daily cap.
+4. **Fallback:** the extension's own filler (today's code), used when there is no plan
+   or the live form's fingerprint doesn't match (then a re-plan is queued).
+5. The server never submits an application.
 
-**Rails (unchanged, enforced in code, not in the prompt).**
-- browser-use gets an action allowlist; every value comes from profile/facts/answer bank
-  (ADR-006/009, no fabrication); consent and demographic questions are never answered.
-- Submit happens only in Automatic mode, within daily caps (ADR-015). In **Assisted mode
-  (the default)** the server fills and stops before Submit, and the user sends it from
-  the extension: the server run prepares the answers, and the extension does the final
-  fill in the user's browser.
-- `ANONYMIZED_TELEMETRY=false`; no browser-use cloud features. Application data is PII.
-- Every test run is behind the no-submit guard (`guard.py`).
+**Rails.** No fabrication (ADR-006/009): the plan says where, the user's data says what.
+Consent/demographic never answered. Daily caps and digest (ADR-015). Planning runs
+behind the full no-submit guard. browser-use: `ANONYMIZED_TELEMETRY=false`, no cloud
+features.
 
-**Consequences (accepted by the owner).**
-- Applications go out from our servers' IPs, not the user's: more captchas, and ToS/ban
-  exposure now sits on our infrastructure, not only on the user's account.
-- The server is not logged in as the user, so account-gated ATSs (Workday, iCIMS, Taleo)
-  always fall back to the extension.
-- Each application costs LLM steps and time (the harness grader took 10–160 s per form on
-  NIM nemotron). Worker capacity and cost scale with volume.
-- New: a server apply worker (browser-use + Chromium, isolated venv like
-  `tools/.venv-browser-use`), hand-off from a server stop to the extension, and
-  pass-rate measurement per ATS (`docs/PLAN-MULTI-ATS.md`, Phase 0 first).
+**Consequences.**
+- Fixed vs a server-submit design: no applications from server IPs, logins available,
+  Send stays with the user, one AI run per job instead of per application, no PII in
+  server browsers.
+- Remaining: Automatic mode needs the user's Chrome running; plans go stale when forms
+  change (fingerprint → extension fallback + re-plan); a page that challenges even
+  read-only loads can't be planned (extension fallback).
+- New: a planner worker (isolated venv), a `form_plans` store keyed by job, a plan
+  executor in the extension. Order and targets: `docs/PLAN-MULTI-ATS.md`.
 
-**Revisit when.** Captcha/ban rates from server IPs or per-application cost make the
-server path worse than the extension for a given ATS. Then flip that ATS to extension-first.
+**Revisit when.** Plans are wrong or stale often enough on an ATS that the extension's own
+filler does better there. Then that ATS goes extension-only.

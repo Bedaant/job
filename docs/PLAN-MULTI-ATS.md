@@ -1,6 +1,6 @@
 # Plan: auto-apply beyond Greenhouse
 
-**Status:** accepted 2026-09-29 (ADR-016): **browser-use on our server first, the extension as fallback.**
+**Status:** accepted 2026-09-29 (ADR-016): **browser-use plans each job on the server (read-only, synthetic profile); the extension executes the plan and submits in the user's browser; the extension's own filler is the fallback.**
 **Context:** WORKLOG latest+50…55. One Greenhouse posting produced ~12 bugs. Most were
 in the shared engine, not Greenhouse: frames, re-rendered forms, timeouts, optional
 fields, Review gaps. The question is how to reach Lever, Ashby, Workable,
@@ -24,49 +24,44 @@ select, react-select, async typeahead, radio group, checkbox, date, file) and **
 (multi-page, "add another", account walls). Build those once, well, and every ATS
 benefits.
 
-## 2. Decided: browser-use on our server first, the extension as fallback
+## 2. Decided: plan on the server, submit in the user's browser
 
-Owner's decision (ADR-016). browser-use 0.13.10 (installed, MIT) runs in a server worker
-with its own Chromium and fills the form. The extension, in the user's own browser, takes
-over when the server run stops (captcha, login/account wall, a form it couldn't finish).
-Assisted mode (default): the server fills and stops before Submit, and the user sends it
-through the extension. Automatic mode: the server submits within daily caps.
+| Step | Where | What |
+|---|---|---|
+| Plan | Server, browser-use, behind the no-submit guard, synthetic profile | Walk the form; save per field: widget, how to fill/verify, which profile key / bank question. No values. |
+| Validate | Server, harness | A guarded test fill of the plan must pass before it's trusted |
+| Execute | User's browser, extension | Real values in, verify each field; user presses Send (Assisted) or extension sends within cap (Automatic) |
+| Fallback | User's browser, extension | Today's filler when there's no plan or the form's fingerprint changed (re-plan queued) |
+
+One plan per job, shared by all users, built at discovery time.
 
 ## 3. Phases
 
-### Phase 0: measure first (1–2 days)
-- Run the harness with browser-use **filling** (not only grading) over ~10 real postings
-  each on Greenhouse, Lever and Ashby (5 each on Workable/SmartRecruiters), guard on.
-- Per posting: required fields filled correctly, wrong values (must be 0), stops and why,
-  captcha hits, time and LLM cost per form, submit blocked.
-- Same postings through the extension, for a side-by-side comparison. **This decides,
-  per ATS, whether server-first actually beats the extension.**
+### Phase 0: measure first
+Answer three questions on ~10 real postings each on Greenhouse, Lever and Ashby, guard on:
+1. **Can browser-use produce an accurate plan?** Compare its field list (type, required,
+   options, multi-page) with the DOM ground truth the harness already snapshots.
+2. **What does a plan cost?** Time and LLM calls per job, on NIM.
+3. **Baseline:** the extension's own fill rate on the same postings (`check_form.py`).
+Output: `docs/harness-reports/phase0-*.md`, per ATS.
 
-### Phase 1: the server apply worker
-- New RQ job `apply_via_browser_use(application_id)` in an isolated venv (browser-use pins
-  its own starlette/openai/anthropic, like `tools/.venv-browser-use`), invoked as a
-  subprocess the same way as JobSpy/agent-reach.
-- Agent restricted to fill actions: `input`, `select_dropdown`, `dropdown_options`,
-  `click`, `upload_file` (the tailored resume only), `scroll`, `done`. No `navigate`
-  off the job's domain (`allowed_domains`), no `evaluate`.
-- **Submit guard in code**: in Assisted mode the network layer blocks the final submit,
-  as `guard.py` does; in Automatic mode it is lifted only within the daily cap.
-- Values come only from a server-built answer sheet (profile, facts, answer bank,
-  tailored resume). The agent may choose where to put them, never what they are.
-  Consent/demographic fields are left blank.
-- `ANONYMIZED_TELEMETRY=false`, no cloud features, no screenshots kept beyond the run.
+### Phase 1: planner worker + `form_plans`
+- RQ job `plan_form(job_id)` → subprocess into an isolated browser-use venv (the
+  JobSpy/agent-reach pattern). Guard on, synthetic profile, allowlisted actions, allowed
+  domains = the ATS host. `ANONYMIZED_TELEMETRY=false`.
+- `form_plans` table: job_id, ats, fingerprint, plan JSON, validated_at, status.
+- Triggered after discovery for jobs that pass hard filters; re-plan on mismatch.
 
-### Phase 2: hand-off to the extension
-- A server stop becomes `needs_human` with its reason (captcha / login / field list) and
-  queues the application for the extension (the existing driver path, frame choice and
-  Review flow).
-- Assisted mode: the extension does the final fill in the user's browser and the user
-  presses Send.
+### Phase 2: plan executor in the extension
+- Fetch the job's plan; compare fingerprints; fill each field through the widget
+  executors (write → re-read → verify); plan steps like "Next" are allowed clicks,
+  never Submit.
+- Mismatch or missing plan → today's filler (fallback). Unresolved fields → Review.
 
-### Phase 3: add platforms by data
-- Greenhouse, Lever and Ashby first (no login needed). Workable and SmartRecruiters next.
-- **Workday / iCIMS / Taleo:** extension only (they need an account per employer;
-  account creation is never automated).
+### Phase 3: platforms by data
+Greenhouse, Lever, Ashby first; Workable and SmartRecruiters next. Workday/iCIMS/Taleo:
+plans are possible when the page loads without login; otherwise extension only.
+Account creation is never automated.
 
 ## 4. Rails that do not change
 - Assisted mode stays the default; auto-submit is opt-in within daily caps (ADR-015).
