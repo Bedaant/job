@@ -35,7 +35,7 @@ from workers.jobs import (
     discover_jobs_task, get_queue, get_redis_connection, prepare_applications_task, run_campaign_task,
 )
 import campaigns as campaigns_service
-from matching.embeddings import embed_texts, compute_centroid
+from matching.service import refresh_fact_vectors
 from matching.keyword_gap import compute_keyword_gap
 from matching.service import build_matches
 from parsing.jsonresume_export import facts_to_jsonresume
@@ -719,24 +719,6 @@ def _owned_fact(db: Session, user: models.User, fact_id: str) -> models.ResumeFa
     return fact
 
 
-def _refresh_fact_vectors(db: Session, profile: models.Profile) -> None:
-    """Embed every fact still missing a vector (an edit, or an earlier Voyage
-    outage), then recompute the centroid from the facts that have one. Voyage
-    failing never blocks the edit: the fact stays unembedded until next time."""
-    facts = db.query(models.ResumeFact).filter(models.ResumeFact.profile_id == profile.id).all()
-    pending = [f for f in facts if f.embedding is None]
-    if pending:
-        try:
-            vectors = embed_texts([f.achievement for f in pending], input_type="document")
-        except Exception:
-            logging.getLogger(__name__).exception("re-embedding %d facts failed", len(pending))
-            vectors = None
-        for fact, vector in zip(pending, vectors or []):
-            fact.embedding = vector
-    embedded = [[float(x) for x in f.embedding] for f in facts if f.embedding is not None]
-    profile.fact_centroid = compute_centroid(embedded) if embedded else None
-
-
 @app.patch("/resume-facts/{fact_id}", response_model=schemas.ResumeFactOut)
 def update_resume_fact(
     fact_id: str,
@@ -754,7 +736,7 @@ def update_resume_fact(
         setattr(fact, key, value)
     if fact.embedding is None:
         db.flush()
-        _refresh_fact_vectors(db, fact.profile)
+        refresh_fact_vectors(db, fact.profile)
     db.commit()
     db.refresh(fact)
     return fact
@@ -770,7 +752,7 @@ def delete_resume_fact(
     profile = fact.profile
     db.delete(fact)
     db.flush()
-    _refresh_fact_vectors(db, profile)
+    refresh_fact_vectors(db, profile)
     db.commit()
     return Response(status_code=204)
 
@@ -973,7 +955,7 @@ def confirm_facts_bulk(
 
     # A Voyage failure (the free tier's 429) must not fail the confirm: the facts are
     # saved, and stay unembedded until the next edit re-embeds them.
-    _refresh_fact_vectors(db, profile)
+    refresh_fact_vectors(db, profile)
     db.commit()
 
     for fact in created:

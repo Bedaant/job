@@ -43,7 +43,7 @@ def _login(c, email):
 FACT = {"category": "experience", "achievement": "Cut p99 latency 40%", "metric": "40%", "proof": None, "tags": []}
 
 
-@patch("main.embed_texts", return_value=None)
+@patch("matching.service.embed_texts", return_value=None)
 def test_reposting_the_same_facts_does_not_duplicate_them(_embed, client):
     c, _ = client
     headers, pid = _login(c, "dupe@example.com")
@@ -63,7 +63,7 @@ def test_reposting_the_same_facts_does_not_duplicate_them(_embed, client):
     assert sorted(f["achievement"] for f in saved) == ["Cut p99 latency 40%", "Shipped the billing rewrite"]
 
 
-@patch("main.embed_texts", return_value=None)
+@patch("matching.service.embed_texts", return_value=None)
 def test_duplicates_inside_one_post_are_saved_once(_embed, client):
     c, _ = client
     headers, pid = _login(c, "dupe2@example.com")
@@ -72,7 +72,7 @@ def test_duplicates_inside_one_post_are_saved_once(_embed, client):
     assert resp.headers["X-Skipped-Facts"] == "1"
 
 
-@patch("main.embed_texts", return_value=None)
+@patch("matching.service.embed_texts", return_value=None)
 def test_same_text_with_a_different_metric_is_a_different_fact(_embed, client):
     c, _ = client
     headers, pid = _login(c, "dupe3@example.com")

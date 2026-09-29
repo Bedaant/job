@@ -51,7 +51,7 @@ def _seed(client, headers, pid):
         {"category": "experience", "achievement": "Cut deploy time by 40%"},
         {"category": "skill", "achievement": "Python"},
     ]
-    with patch("main.embed_texts", return_value=[A, B]):
+    with patch("matching.service.embed_texts", return_value=[A, B]):
         return client.post(f"/profiles/{pid}/facts:bulk", headers=headers, json={"facts": facts}).json()
 
 
@@ -71,7 +71,7 @@ def test_patch_updates_fields_and_reembeds_the_new_text():
     headers, pid = _user(client, "fe-1@example.com")
     fact = _seed(client, headers, pid)[0]
 
-    with patch("main.embed_texts", return_value=[C]) as embed:
+    with patch("matching.service.embed_texts", return_value=[C]) as embed:
         resp = client.patch(
             f"/resume-facts/{fact['id']}", headers=headers,
             json={"achievement": "Cut deploy time by 45%", "metric": "45%"},
@@ -92,7 +92,7 @@ def test_patch_when_voyage_fails_clears_the_vector_and_still_saves():
     headers, pid = _user(client, "fe-2@example.com")
     fact = _seed(client, headers, pid)[0]
 
-    with patch("main.embed_texts", side_effect=RuntimeError("voyage down")):
+    with patch("matching.service.embed_texts", side_effect=RuntimeError("voyage down")):
         resp = client.patch(f"/resume-facts/{fact['id']}", headers=headers, json={"achievement": "New words"})
     assert resp.status_code == 200
     assert _row(Session, fact["id"]).achievement == "New words"
@@ -104,11 +104,11 @@ def test_a_fact_left_unembedded_is_embedded_on_the_next_edit():
     client, Session = _client()
     headers, pid = _user(client, "fe-3@example.com")
     first, second = _seed(client, headers, pid)
-    with patch("main.embed_texts", return_value=None):  # no key configured
+    with patch("matching.service.embed_texts", return_value=None):  # no key configured
         client.patch(f"/resume-facts/{first['id']}", headers=headers, json={"achievement": "Later"})
     assert _row(Session, first["id"]).embedding is None
 
-    with patch("main.embed_texts", return_value=[C, A]) as embed:
+    with patch("matching.service.embed_texts", return_value=[C, A]) as embed:
         client.patch(f"/resume-facts/{second['id']}", headers=headers, json={"achievement": "Go"})
     texts = embed.call_args.args[0]
     assert sorted(texts) == ["Go", "Later"]
@@ -119,7 +119,7 @@ def test_patch_without_text_change_does_not_call_voyage():
     client, Session = _client()
     headers, pid = _user(client, "fe-4@example.com")
     fact = _seed(client, headers, pid)[0]
-    with patch("main.embed_texts") as embed:
+    with patch("matching.service.embed_texts") as embed:
         resp = client.patch(f"/resume-facts/{fact['id']}", headers=headers, json={"proof": "Acme"})
     assert resp.status_code == 200
     embed.assert_not_called()
@@ -140,7 +140,7 @@ def test_delete_removes_the_fact_and_recomputes_the_centroid():
     client, Session = _client()
     headers, pid = _user(client, "fe-6@example.com")
     fact = _seed(client, headers, pid)[0]
-    with patch("main.embed_texts") as embed:
+    with patch("matching.service.embed_texts") as embed:
         resp = client.delete(f"/resume-facts/{fact['id']}", headers=headers)
     assert resp.status_code == 204
     embed.assert_not_called()

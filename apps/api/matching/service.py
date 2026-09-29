@@ -7,16 +7,40 @@ ponytail: cosine similarity is computed in-process over every embedded job
 `ORDER BY embedding <=> centroid` query when job count makes an in-process
 scan too slow.
 """
+import logging
+
 from sqlalchemy.orm import Session
 
 import models
 from events.outbox import write_event
-from matching.embeddings import cosine_similarity
+from matching.embeddings import compute_centroid, cosine_similarity, embed_texts
 from matching.filters import passes_hard_filters
 from matching.scoring import compute_match_score
 
 
+def refresh_fact_vectors(db: Session, profile: models.Profile) -> None:
+    """Embed every fact still missing a vector (an edit, or an earlier Voyage
+    outage), then recompute the centroid from the facts that have one. Voyage
+    failing never blocks the edit: the fact stays unembedded until next time."""
+    facts = db.query(models.ResumeFact).filter(models.ResumeFact.profile_id == profile.id).all()
+    pending = [f for f in facts if f.embedding is None]
+    if pending:
+        try:
+            vectors = embed_texts([f.achievement for f in pending], input_type="document")
+        except Exception:
+            logging.getLogger(__name__).exception("re-embedding %d facts failed", len(pending))
+            vectors = None
+        for fact, vector in zip(pending, vectors or []):
+            fact.embedding = vector
+    embedded = [[float(x) for x in f.embedding] for f in facts if f.embedding is not None]
+    profile.fact_centroid = compute_centroid(embedded) if embedded else None
+
+
 def build_matches(db: Session, profile: models.Profile, limit: int = 20) -> list[models.Match]:
+    if profile.fact_centroid is None or any(f.embedding is None for f in profile.resume_facts):
+        # Facts a Voyage outage left unembedded (the free tier's 429 at resume confirm).
+        refresh_fact_vectors(db, profile)
+        db.commit()
     if profile.fact_centroid is None:
         return []
 

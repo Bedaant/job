@@ -145,3 +145,18 @@ def test_build_matches_takes_its_top_n_inside_the_active_campaigns_bounds():
     db.commit()
 
     assert [m.job.title for m in build_matches(db, profile, limit=1)] == ["India PM"]
+
+
+def test_build_matches_embeds_facts_a_voyage_outage_left_without_a_vector():
+    """On the free tier a 429 at resume confirm saved the facts unembedded; only an edit
+    re-embedded them, so a new account could have no centroid and zero matches for good."""
+    from unittest.mock import patch
+
+    db = _db()
+    profile = _profile(db)
+    db.add(models.ResumeFact(profile_id=profile.id, category="experience", achievement="Shipped a payments app", tags=[]))
+    _job(db, "PM", embedding=[1.0] + [0.0] * 511)
+    db.commit()
+    with patch("matching.service.embed_texts", return_value=[[1.0] + [0.0] * 511]):
+        assert [m.job.title for m in build_matches(db, profile)] == ["PM"]
+    assert profile.fact_centroid is not None

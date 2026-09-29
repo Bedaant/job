@@ -102,7 +102,7 @@ def test_full_upload_review_confirm_flow(client):
 
     # confirm via facts:bulk. Voyage is mocked (this test used to call it for real) and
     # rate-limited: on the free tier a 429 here failed the owner's resume confirm with a 500.
-    with patch("main.embed_texts", side_effect=RuntimeError("429 reduced rate limits of 3 RPM")):
+    with patch("matching.service.embed_texts", side_effect=RuntimeError("429 reduced rate limits of 3 RPM")):
         resp = test_client.post(
             f"/profiles/{profile_id}/facts:bulk",
             headers=headers,
