@@ -28,6 +28,7 @@ from events.outbox import write_event
 from events.sse import event_stream
 from formfill.deterministic import bind_to_options
 from formfill.map_fields import build_profile_summary, map_form_fields
+from formplans import current_plan
 from parsing.extract import extract_text_from_docx, extract_text_from_pdf
 from parsing.llm_extract import extract_basics, extract_facts_from_text
 from workers.jobs import (
@@ -410,6 +411,7 @@ def extension_work_queue(
             original_apply_url=original,
             ats_type=target["ats_type"],
             board_token=target["board_token"],
+            job_id=row.job_id,
         ))
     return items
 
@@ -1239,7 +1241,11 @@ def extension_map_fields(
             return None
         return answer_bank_service.serve_answer(db, profile.id, question_text)
 
-    return map_form_fields(fields, profile_summary, answer_lookup=answer_lookup, ats_type=payload.ats_type)
+    # ADR-016: the job's shared form plan (no PII, so no ownership check). None = fill as before.
+    plan = current_plan(db, payload.job_id) if payload.job_id else None
+    return map_form_fields(
+        fields, profile_summary, answer_lookup=answer_lookup, ats_type=payload.ats_type, plan=plan
+    )
 
 
 # ---------- Answer bank (ADR-015): answer once, reuse on every later form ----

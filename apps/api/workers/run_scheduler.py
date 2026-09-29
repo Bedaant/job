@@ -17,6 +17,7 @@ from workers.jobs import (
     discover_jobs_task,
     get_redis_connection,
     sweep_campaigns_task,
+    sweep_form_plans_task,
 )
 
 DISCOVERY_INTERVAL_SECONDS = 4 * 60 * 60  # 4h incremental, ARCHITECTURE.md §4.1
@@ -31,6 +32,8 @@ def start_scheduler() -> Scheduler:
         sweep_campaigns_task: CAMPAIGN_SWEEP_INTERVAL_SECONDS,
         # ADR-015 "a digest of what went out": yesterday's UTC day, just after it closes.
         daily_digest_task: DIGEST_INTERVAL_SECONDS,
+        # ADR-016: plan the forms of jobs about to be applied to, before the fill needs them.
+        sweep_form_plans_task: 60 * 60,
     }
     now = datetime.utcnow()
     digest_at = now.replace(hour=0, minute=5, second=0, microsecond=0)

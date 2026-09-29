@@ -362,6 +362,8 @@ class MapFieldsRequest(BaseModel):
     # Literal: the resolver can return an LLM-classified type, and an unknown
     # one must fall through to generic matching, not 422 the whole fill.
     ats_type: Optional[str] = Field(None, max_length=32)
+    # ADR-016: the work item's job, so the fill can use that job's stored form plan.
+    job_id: Optional[str] = None
 
 
 class FieldMappingOut(BaseModel):
@@ -570,6 +572,8 @@ class WorkQueueItemOut(BaseModel):
     original_apply_url: Optional[str] = None
     ats_type: Optional[str] = None
     board_token: Optional[str] = None
+    # ADR-016: echoed back on /extension/map-fields to pick up the job's form plan.
+    job_id: Optional[str] = None
 
 
 class UnansweredQuestionIn(BaseModel):
