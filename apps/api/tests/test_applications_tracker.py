@@ -235,26 +235,3 @@ def test_prepare_is_owner_scoped():
     with patch("main.get_queue"):
         assert client.post(f"/matches/{match_id}/prepare", headers=other).status_code == 404
 
-
-def test_list_matches_applies_the_active_campaigns_bounds():
-    # Live (2026-09-29): the campaign said India, the Matches page showed US/UK roles.
-    client, SessionLocal, headers, profile_id, _ = _setup("match-bounds@example.com", ())
-    india_id, india_job = _match(SessionLocal, profile_id, n=1)
-    us_id, us_job = _match(SessionLocal, profile_id, n=2)
-    _update(SessionLocal, models.Job, india_job, location="Bengaluru, India")
-    _update(SessionLocal, models.Job, us_job, location="Remote - US")
-
-    def fake_build(db, profile):
-        return db.query(models.Match).filter(models.Match.profile_id == profile.id).all()
-
-    def ids():
-        with patch("main.build_matches", side_effect=fake_build):
-            return sorted(r["id"] for r in client.get(f"/matches?profile_id={profile_id}", headers=headers).json())
-
-    assert ids() == sorted([india_id, us_id]), "no campaign yet: every match"
-    campaign_id = _add(SessionLocal, models.Campaign(profile_id=profile_id, name="PM India", roles=[],
-                                                     locations=["India"], remote_only=False, sources=[],
-                                                     status=models.CampaignStatus.draft))
-    assert ids() == sorted([india_id, us_id]), "a draft campaign doesn't filter"
-    _update(SessionLocal, models.Campaign, campaign_id, status=models.CampaignStatus.active)
-    assert ids() == [india_id]

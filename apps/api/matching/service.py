@@ -21,10 +21,15 @@ def build_matches(db: Session, profile: models.Profile, limit: int = 20) -> list
         return []
 
     prefs = profile.prefs or {}
-    jobs = [
-        job for job in db.query(models.Job).filter(models.Job.embedding.isnot(None)).all()
-        if passes_hard_filters(prefs, job)
-    ]
+    embedded = db.query(models.Job).filter(models.Job.embedding.isnot(None))
+    # The top N is taken inside what the user's active campaigns ask for (roles, places,
+    # sources); filtering after would let better-scoring out-of-bounds jobs starve them.
+    from campaigns import _in_bounds  # campaigns imports this module's callers
+    active = db.query(models.Campaign).filter(
+        models.Campaign.profile_id == profile.id, models.Campaign.status == models.CampaignStatus.active
+    ).all()
+    candidates = {j.id: j for c in active for j in _in_bounds(embedded, c)}.values() if active else embedded.all()
+    jobs = [job for job in candidates if passes_hard_filters(prefs, job)]
     if not jobs:
         return []
 

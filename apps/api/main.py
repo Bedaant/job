@@ -1533,20 +1533,9 @@ def list_matches(profile: models.Profile = Depends(get_owned_profile), db: Sessi
         a.job_id: a
         for a in db.query(models.Application).filter(models.Application.profile_id == profile.id)
     }
-    # The user's active campaigns say which roles/places they want; show what fits any
-    # of them (the same filter a campaign run uses). No active campaign: everything.
-    active = db.query(models.Campaign).filter(
-        models.Campaign.profile_id == profile.id, models.Campaign.status == models.CampaignStatus.active
-    ).all()
-    matches = build_matches(db, profile)
-    in_bounds = {
-        m.id for c in active for m in campaigns_service._in_bounds(
-            db.query(models.Match).join(models.Job, models.Match.job_id == models.Job.id)
-            .filter(models.Match.profile_id == profile.id), c)
-    } if active else None
     result = []
-    for m in matches:
-        if m.state == "dismissed" or (in_bounds is not None and m.id not in in_bounds):
+    for m in build_matches(db, profile):  # already within the active campaigns' bounds
+        if m.state == "dismissed":
             continue
         a = apps.get(m.job_id)
         result.append(schemas.MatchListOut(

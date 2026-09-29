@@ -124,3 +124,24 @@ def test_build_matches_breakdown_is_json_serializable_with_numpy_input():
     matches = build_matches(db, profile)
 
     json.dumps(matches[0].breakdown)  # raises if any value is still numpy
+
+
+def test_build_matches_takes_its_top_n_inside_the_active_campaigns_bounds():
+    """Live (2026-09-29): the global top 20 was picked first, then the Matches page kept
+    the India ones. US jobs scoring higher starve the India ones out entirely."""
+    db = _db()
+    profile = _profile(db, fact_centroid=[1.0] + [0.0] * 511)
+    us = [_job(db, f"US PM {i}", embedding=[1.0] + [0.0] * 511) for i in range(3)]  # best score
+    for j in us:
+        j.location = "Remote - US"
+    india = _job(db, "India PM", embedding=[0.6, 0.8] + [0.0] * 510)
+    india.location = "Bengaluru, India"
+    campaign = models.Campaign(profile_id=profile.id, name="India", roles=[], locations=["India"],
+                               remote_only=False, sources=[], status=models.CampaignStatus.draft)
+    db.add(campaign)
+    db.commit()
+    assert [m.job.title for m in build_matches(db, profile, limit=1)] == ["US PM 0"], "a draft doesn't bound"
+    campaign.status = models.CampaignStatus.active
+    db.commit()
+
+    assert [m.job.title for m in build_matches(db, profile, limit=1)] == ["India PM"]
