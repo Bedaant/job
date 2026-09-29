@@ -1,0 +1,204 @@
+{
+ "url": "https://job-boards.greenhouse.io/anthropic/jobs/4461450008",
+ "model": "nvidia/nemotron-3-super-120b-a12b",
+ "started_at": "2026-09-29T11:02:11.401Z",
+ "load_s": 3.145,
+ "planner": {
+  "model": "nvidia/nemotron-3-super-120b-a12b",
+  "agent_s": 13.622,
+  "steps": 1,
+  "llm_calls": 2,
+  "prompt_tokens": 9990,
+  "completion_tokens": 1392,
+  "done": true,
+  "error": null,
+  "errors": [],
+  "plan": {
+   "fields": [
+    {
+     "label": "First Name",
+     "selector_hint": "[5-93] LabelText",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Last Name",
+     "selector_hint": "[5-94] LabelText",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Email",
+     "selector_hint": "[5-95] LabelText",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Phone",
+     "selector_hint": "[5-331] group",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Resume/CV",
+     "selector_hint": "[5-2126] group",
+     "widget": "file",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "LinkedIn Profile",
+     "selector_hint": "[5-110] LabelText",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Are you currently located in SF/NYC or open to relocation, if not?",
+     "selector_hint": "[5-2150] LabelText",
+     "widget": "select",
+     "required": true,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Our Account Executive team is in office 4 days/week. Are you open to working in our office 4 days/week?",
+     "selector_hint": "[5-2164] LabelText",
+     "widget": "select",
+     "required": true,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "When is the earliest you would want to start working with us?",
+     "selector_hint": "[5-121] LabelText",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Do you have any deadlines or timeline considerations we should be aware of?",
+     "selector_hint": "[5-123] LabelText",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Do you have experience selling API or technical products to engineering teams? If yes, please describe in a few sentences.",
+     "selector_hint": "[5-125] LabelText",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Why Anthropic?",
+     "selector_hint": "[5-2191] LabelText",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "AI Policy for Application",
+     "selector_hint": "[5-2198] LabelText",
+     "widget": "select",
+     "required": false,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Have you ever interviewed at Anthropic before?",
+     "selector_hint": "[5-2213] LabelText",
+     "widget": "select",
+     "required": false,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Will you now or will you in the future require employment visa sponsorship to work in the country in which the job you're applying for is located?",
+     "selector_hint": "[5-2227] LabelText",
+     "widget": "select",
+     "required": true,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "(Optional) Personal Preferences",
+     "selector_hint": "[5-2240] LabelText",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Additional Information",
+     "selector_hint": "[5-2245] LabelText",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Please read the arbitration agreement below",
+     "selector_hint": "[5-2251] LabelText",
+     "widget": "select",
+     "required": true,
+     "options": [],
+     "fill_from": "never"
+    },
+    {
+     "label": "Agreement to Arbitrate",
+     "selector_hint": "[5-2278] LabelText",
+     "widget": "select",
+     "required": true,
+     "options": [],
+     "fill_from": "never"
+    },
+    {
+     "label": "Gender",
+     "selector_hint": "[5-2295] LabelText",
+     "widget": "select",
+     "required": false,
+     "options": [],
+     "fill_from": "never"
+    },
+    {
+     "label": "Are you Hispanic/Latino?",
+     "selector_hint": "[5-2307] LabelText",
+     "widget": "select",
+     "required": false,
+     "options": [],
+     "fill_from": "never"
+    },
+    {
+     "label": "Veteran Status",
+     "selector_hint": "[5-2319] LabelText",
+     "widget": "select",
+     "required": false,
+     "options": [],
+     "fill_from": "never"
+    }
+   ],
+   "steps": []
+  }
+ },
+ "guard": {
+  "blocked_non_get_requests": 2,
+  "canary_blocked": 1,
+  "submit_attempts_blocked": 0
+ },
+ "total_s": 17.53
+}

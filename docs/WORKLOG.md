@@ -102,6 +102,46 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-29 (latest+55) — Phase 0 (ADR-016): browser-use planner fails; Stagehand extract() works
+
+**What changed.** Phase 0 was measured on 5 live Greenhouse postings. The run was stopped
+before Lever/Ashby because the result was already clear. Full numbers:
+`docs/harness-reports/phase0-greenhouse.md` (browser-use) and
+`docs/harness-reports/stagehand-greenhouse.md` (Stagehand).
+- browser-use planner: 7% field recall, 0% dropdown options, ~8 min, 30 LLM calls, ~417k tokens
+  per job. It loops re-clicking comboboxes until the 30-step cap.
+- Stagehand 3.7.3 `extract()` (one read-only call, same NIM model): 85% recall, 99% precision,
+  median 17 s, 2 calls, ~9k tokens. Gaps: dropdown options 13% (react-select options are hidden
+  until opened), consent/EEO tagged "never" only 59%.
+- Recommendation: Stagehand replaces browser-use as ADR-016's server planner. The extension
+  still fills and submits, and keeps its own consent/EEO and required checks. ADR-016 is not
+  yet edited.
+
+**Why.** Owner: test Stagehand/Browserbase (real sites) vs the extension. Local Chrome for now,
+Browserbase later. Rule: filling real forms with the synthetic identity is fine; a real submit
+never is.
+
+**Files.** New `tools/stagehand-harness/` (`plan.mjs`, `score.py`, `package.json`, `out/`).
+Both new reports. Phase 0 harness (`phase0.py`, `plan_form.py`, `test_phase0.py`) merged
+from the agent worktree.
+
+**Dependencies added.** `@browserbasehq/stagehand@3.7.3`, `@ai-sdk/openai-compatible@1.0.57`,
+`zod@4.4.3`, isolated in `tools/stagehand-harness` (owner-approved). Pinned to 3.7.3 because
+Stagehand 4.x needs Node >= 22.18 and this machine has 22.14.
+
+**Problems hit.**
+- Stagehand's `openai/<model>` route uses OpenAI's Responses API, which NIM lacks. Fixed by
+  using `AISdkClient` + `createOpenAICompatible` (chat completions). A custom `fetch` injects
+  `chat_template_kwargs.enable_thinking=false` and counts calls.
+- Without `supportsStructuredOutputs: true`, NIM's JSON didn't match the schema ("No object
+  generated"). With it, it works.
+- The guard is CDP `Fetch` (non-GET requests failed) plus a DOM init script; a canary POST is
+  checked before the real page loads.
+- NIM returned a 504 on Robinhood, and the retry made it 328 s.
+
+**Next.** Owner decision: edit ADR-016 to use Stagehand as the planner. Run Lever and Ashby with
+the Stagehand harness. Test whether a plan improves the extension's fill rate.
+
 ### 2026-09-28 (latest+54) — Auto-apply driven live on embedded Greenhouse: five fixes; Redis password rotated
 
 **How tested.** New `tools/browser-use-harness/auto_apply.py`: a harness job (local

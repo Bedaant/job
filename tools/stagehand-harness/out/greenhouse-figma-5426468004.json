@@ -1,0 +1,164 @@
+{
+ "url": "https://job-boards.greenhouse.io/figma/jobs/5426468004",
+ "model": "nvidia/nemotron-3-super-120b-a12b",
+ "started_at": "2026-09-29T11:01:40.111Z",
+ "load_s": 3.103,
+ "planner": {
+  "model": "nvidia/nemotron-3-super-120b-a12b",
+  "agent_s": 16.79,
+  "steps": 1,
+  "llm_calls": 2,
+  "prompt_tokens": 7383,
+  "completion_tokens": 926,
+  "done": true,
+  "error": null,
+  "errors": [],
+  "plan": {
+   "fields": [
+    {
+     "label": "First Name",
+     "selector_hint": "[3-64] textbox: First Name",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Last Name",
+     "selector_hint": "[3-65] textbox: Last Name",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Email",
+     "selector_hint": "[3-66] textbox: Email",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Phone",
+     "selector_hint": "[3-69] textbox: Phone",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "LinkedIn Profile",
+     "selector_hint": "[3-72] textbox: LinkedIn Profile",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Other Website",
+     "selector_hint": "[3-73] textbox: Other Website",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Why do you want to join Figma?",
+     "selector_hint": "[3-74] textbox: Why do you want to join Figma?",
+     "widget": "textarea",
+     "required": false,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Additional Information",
+     "selector_hint": "[3-76] textbox: Additional Information",
+     "widget": "textarea",
+     "required": false,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "From where do you intend to work?",
+     "selector_hint": "[3-77] textbox: From where do you intend to work?",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Preferred First Name",
+     "selector_hint": "[3-78] textbox: Preferred First Name",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Resume/CV",
+     "selector_hint": "[3-86] input, file: Attach",
+     "widget": "file",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Pronouns",
+     "selector_hint": "[3-75] combobox: Pronouns",
+     "widget": "select",
+     "required": false,
+     "options": [],
+     "fill_from": "never"
+    },
+    {
+     "label": "Are you authorized to work in the country for which you applied?",
+     "selector_hint": "[3-79] combobox: Are you authorized to work in the country for which you applied?",
+     "widget": "select",
+     "required": true,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Have you ever worked for Figma before, as an employee or a contractor/consultant?",
+     "selector_hint": "[3-81] combobox: Have you ever worked for Figma before, as an employee or a contractor/consultant?",
+     "widget": "select",
+     "required": false,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Gender",
+     "selector_hint": "[3-83] combobox: Gender",
+     "widget": "select",
+     "required": false,
+     "options": [],
+     "fill_from": "never"
+    },
+    {
+     "label": "Are you Hispanic/Latino?",
+     "selector_hint": "[3-84] combobox: Are you Hispanic/Latino?",
+     "widget": "select",
+     "required": false,
+     "options": [],
+     "fill_from": "never"
+    },
+    {
+     "label": "Veteran Status",
+     "selector_hint": "[3-85] combobox: Veteran Status",
+     "widget": "select",
+     "required": false,
+     "options": [],
+     "fill_from": "never"
+    }
+   ],
+   "steps": []
+  }
+ },
+ "guard": {
+  "blocked_non_get_requests": 2,
+  "canary_blocked": 1,
+  "submit_attempts_blocked": 0
+ },
+ "total_s": 20.704
+}

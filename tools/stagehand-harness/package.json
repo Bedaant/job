@@ -1,0 +1,10 @@
+{
+  "name": "stagehand-harness",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "1.0.57",
+    "@browserbasehq/stagehand": "3.7.3",
+    "zod": "4.4.3"
+  }
+}

@@ -1,0 +1,146 @@
+{
+ "url": "https://job-boards.greenhouse.io/discord/jobs/8806482002",
+ "model": "nvidia/nemotron-3-super-120b-a12b",
+ "started_at": "2026-09-29T11:08:04.154Z",
+ "load_s": 7.036,
+ "planner": {
+  "model": "nvidia/nemotron-3-super-120b-a12b",
+  "agent_s": 8.565,
+  "steps": 1,
+  "llm_calls": 2,
+  "prompt_tokens": 7616,
+  "completion_tokens": 962,
+  "done": true,
+  "error": null,
+  "errors": [],
+  "plan": {
+   "fields": [
+    {
+     "label": "First Name",
+     "selector_hint": "textbox: First Name",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Last Name",
+     "selector_hint": "textbox: Last Name",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Preferred First Name",
+     "selector_hint": "textbox: Preferred First Name",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Email",
+     "selector_hint": "textbox: Email",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Phone",
+     "selector_hint": "group: Phone",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Location (City)",
+     "selector_hint": "combobox: Location (City)",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Resume/CV",
+     "selector_hint": "input, file: Attach",
+     "widget": "file",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Cover Letter",
+     "selector_hint": "input, file: Attach",
+     "widget": "file",
+     "required": false,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Why do you want to work at Discord?",
+     "selector_hint": "textbox: Why do you want to work at Discord?",
+     "widget": "textarea",
+     "required": true,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "LinkedIn Profile",
+     "selector_hint": "textbox: LinkedIn Profile",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "How did you hear about this job?",
+     "selector_hint": "textbox: How did you hear about this job?",
+     "widget": "textarea",
+     "required": false,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Are you legally authorized to work in the United States for our Company?",
+     "selector_hint": "combobox: Are you legally authorized to work in the United States for our Company?",
+     "widget": "select",
+     "required": true,
+     "options": [
+      "Select..."
+     ],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Are you currently located in the US?",
+     "selector_hint": "combobox: Are you currently located in the US?",
+     "widget": "select",
+     "required": true,
+     "options": [
+      "Select..."
+     ],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Are you currently based in or willing to relocate to the Bay Area for this position?",
+     "selector_hint": "combobox: Are you currently based in or willing to relocate to the Bay Area for this position?",
+     "widget": "select",
+     "required": true,
+     "options": [
+      "Select..."
+     ],
+     "fill_from": "answer_bank_question"
+    }
+   ],
+   "steps": []
+  }
+ },
+ "guard": {
+  "blocked_non_get_requests": 2,
+  "canary_blocked": 1,
+  "submit_attempts_blocked": 0
+ },
+ "total_s": 16.302
+}

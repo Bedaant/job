@@ -1,0 +1,164 @@
+{
+ "url": "https://job-boards.greenhouse.io/cloudflare/jobs/7695702",
+ "model": "nvidia/nemotron-3-super-120b-a12b",
+ "started_at": "2026-09-29T11:08:22.014Z",
+ "load_s": 3.143,
+ "planner": {
+  "model": "nvidia/nemotron-3-super-120b-a12b",
+  "agent_s": 44.044,
+  "steps": 1,
+  "llm_calls": 2,
+  "prompt_tokens": 7764,
+  "completion_tokens": 1108,
+  "done": true,
+  "error": null,
+  "errors": [],
+  "plan": {
+   "fields": [
+    {
+     "label": "First Name",
+     "selector_hint": "[5-5] textbox: First Name",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Last Name",
+     "selector_hint": "[5-6] textbox: Last Name",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Email",
+     "selector_hint": "[5-7] textbox: Email",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Country",
+     "selector_hint": "[5-8] combobox: Country",
+     "widget": "select",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Phone",
+     "selector_hint": "[5-10] textbox: Phone",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Location (City)",
+     "selector_hint": "[5-11] combobox: Location (City)",
+     "widget": "select",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Resume/CV",
+     "selector_hint": "[5-21] input, file: Attach",
+     "widget": "file",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Cover Letter",
+     "selector_hint": "[5-22] input, file: Attach",
+     "widget": "file",
+     "required": false,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Legal Name (if different than above)",
+     "selector_hint": "[5-13] textbox: Legal Name (if different than above)",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "How did you hear about this job?",
+     "selector_hint": "[5-14] textbox: How did you hear about this job?",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Would you like to include your LinkedIn profile, personal website or blog?",
+     "selector_hint": "[5-15] textbox: Would you like to include your LinkedIn profile, personal website or blog?",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Do you now or will you in the future require immigration sponsorship to work at Cloudflare?",
+     "selector_hint": "[5-16] combobox: Do you now or will you in the future require immigration sponsorship to work at Cloudflare?",
+     "widget": "select",
+     "required": false,
+     "options": [
+      "Select..."
+     ],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Please review and acknowledge Cloudflare's Candidate Privacy Policy (cloudflare.com/candidate-privacy-notice/).",
+     "selector_hint": "[5-23] checkbox: Acknowledge/Confirm",
+     "widget": "checkbox",
+     "required": true,
+     "options": [],
+     "fill_from": "never"
+    },
+    {
+     "label": "Gender",
+     "selector_hint": "[5-18] combobox: Gender",
+     "widget": "select",
+     "required": false,
+     "options": [
+      "Select..."
+     ],
+     "fill_from": "never"
+    },
+    {
+     "label": "Are you Hispanic/Latino?",
+     "selector_hint": "[5-19] combobox: Are you Hispanic/Latino?",
+     "widget": "select",
+     "required": false,
+     "options": [
+      "Select..."
+     ],
+     "fill_from": "never"
+    },
+    {
+     "label": "Veteran Status",
+     "selector_hint": "[5-20] combobox: Veteran Status",
+     "widget": "select",
+     "required": false,
+     "options": [
+      "Select..."
+     ],
+     "fill_from": "never"
+    }
+   ],
+   "steps": []
+  }
+ },
+ "guard": {
+  "blocked_non_get_requests": 2,
+  "canary_blocked": 1,
+  "submit_attempts_blocked": 0
+ },
+ "total_s": 47.815
+}
