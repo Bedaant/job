@@ -55,31 +55,44 @@ def _norm(s: str) -> str:
 def dom_fields(snapshot: list[dict]) -> list[dict]:
     """Ground-truth fields: visible controls (+ file inputs, usually hidden behind a button), a
     radio/checkbox group as one field. A control with no id, name or label of its own is dropped:
-    that is react-select's required-validation twin, not a question."""
+    that is react-select's required-validation twin, not a question. A group is keyed by its name,
+    or by its group text when the name is just the option's label (Ashby multi-select; the same name
+    recurs across questions). A nameless option (Lever's "Custom" pronoun) joins the group listing
+    its group text as an option. The label is the first group text that is not one of its options
+    (Lever's `group` is the first option's label). A hidden checkbox with only group text is Ashby's
+    Yes/No buttons."""
     out, groups = [], {}
     for f in snapshot:
-        if not f["visible"] and f["type"] != "file":
+        yes_no = f["type"] == "checkbox" and not f["label"] and f["group"]
+        if not f["visible"] and f["type"] != "file" and not yes_no:
             continue
         if not (f["id"] or f["name"] or f["label"]):
             continue
         kind = "combobox" if f["role"] == "combobox" else f["type"]
-        if f["type"] in ("radio", "checkbox") and f["name"]:
-            g = groups.get(f["name"])
+        key = f["name"] if f["name"] != f["label"] else ("g", f["group"]) if f["group"] else ""
+        if not f["name"]:
+            key = next((k for k, g in groups.items() if _norm(f["group"]) in g["options"]), key)
+        if f["type"] in ("radio", "checkbox") and key:
+            g = groups.get(key)
             if g:
                 g["keys"] |= {f["id"]} - {""}
                 g["required"] |= f["required"]
                 g["filled"] |= bool(f["value"])
-                continue
-            g = groups[f["name"]] = {"label": f["group"] or f["label"], "keys": {f["id"], f["name"]} - {""},
-                                     "required": f["required"], "kind": kind, "text": f["group"] + " " + f["label"],
-                                     "filled": bool(f["value"]),
-                                     "names": {_norm(f["group"] or f["label"])} - {""}}
-            out.append(g)
+            else:
+                g = groups[key] = {"label": f["group"] or f["label"], "keys": {f["id"], f["name"]} - {""},
+                                   "required": f["required"], "kind": kind, "text": f["group"] + " " + f["label"],
+                                   "filled": bool(f["value"]), "options": set(), "qs": []}
+                out.append(g)
+            g["options"] |= {_norm(f["label"])} - {""}
+            g["qs"].append(f["group"])
             continue
         out.append({"label": f["label"] or f["group"] or f["id"] or f["name"], "keys": {f["id"], f["name"]} - {""},
                     "required": f["required"], "kind": kind, "text": f["label"] + " " + f["group"],
                     "filled": bool(f["display"] or f["value"]),
                     "names": {_norm(f["label"]), _norm(f["group"])} - {""}})
+    for g in groups.values():
+        g["label"] = next((q for q in g.pop("qs") if q and _norm(q) not in g["options"]), g["label"])
+        g["names"] = {_norm(g["label"])} - {""}
     for d in out:
         d["sensitive"] = bool(DEMOGRAPHIC.search(d["text"] + " " + " ".join(d["keys"])) or CONSENT.search(d["text"]))
     return out
@@ -112,6 +125,12 @@ def score(plan: dict | None, snapshot: list[dict]) -> dict:
         a = _norm(p.get("label"))
         return any(min(len(a), len(b)) >= 4 and (a in b or b in a) for b in d["names"])
     pick(contains)
+
+    def same_options(p, d):  # a radio/checkbox group whose DOM labels are its options, not the question
+        po = {_norm(o) for o in p.get("options") or []}
+        return (d["kind"] in ("radio", "checkbox") and p.get("widget") in ("radio", "checkbox")
+                and bool(d.get("options")) and len(po & d["options"]) >= min(2, len(d["options"])))
+    pick(same_options)
 
     k = len(pairs)
     opt = [(p, d) for p, d in pairs if d["kind"] in ("select", "combobox")]
