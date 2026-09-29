@@ -160,3 +160,15 @@ def test_build_matches_embeds_facts_a_voyage_outage_left_without_a_vector():
     with patch("matching.service.embed_texts", return_value=[[1.0] + [0.0] * 511]):
         assert [m.job.title for m in build_matches(db, profile)] == ["PM"]
     assert profile.fact_centroid is not None
+
+
+def test_a_country_location_matches_its_cities():
+    """Live: "India" missed "Bangalore, Karnataka" (Meesho) and "Gurugram" (MongoDB)."""
+    from campaigns import _in_bounds
+
+    db = _db()
+    for title, loc in [("A", "Bangalore, Karnataka"), ("B", "Gurugram"), ("C", "Bengaluru, India"), ("D", "London")]:
+        _job(db, title).location = loc
+    db.commit()
+    campaign = models.Campaign(name="x", roles=[], locations=["India"], remote_only=False, sources=[])
+    assert sorted(j.title for j in _in_bounds(db.query(models.Job), campaign)) == ["A", "B", "C"]

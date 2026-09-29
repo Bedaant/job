@@ -120,6 +120,14 @@ def select_candidates(db: Session, campaign: models.Campaign, limit: int) -> lis
     return query.order_by(models.Match.score.desc()).limit(limit).all()
 
 
+# A country also matches its main cities: postings say "Bangalore, Karnataka" or
+# "Gurugram", not "India". ponytail: India only; add a country when users target it.
+_LOCATION_ALIASES = {
+    "india": ["bengaluru", "bangalore", "pune", "gurugram", "gurgaon", "hyderabad", "mumbai",
+              "delhi", "noida", "chennai", "kolkata", "ahmedabad"],
+}
+
+
 def _in_bounds(query, campaign: models.Campaign):
     """The campaign's job filters on a Match query already joined to Job."""
     if campaign.remote_only:
@@ -129,7 +137,8 @@ def _in_bounds(query, campaign: models.Campaign):
     if campaign.roles:
         query = query.filter(or_(*[models.Job.title.ilike(f"%{r}%") for r in campaign.roles]))
     if campaign.locations:
-        query = query.filter(or_(*[models.Job.location.ilike(f"%{l}%") for l in campaign.locations]))
+        terms = [t for l in campaign.locations for t in [l, *_LOCATION_ALIASES.get(l.strip().lower(), [])]]
+        query = query.filter(or_(*[models.Job.location.ilike(f"%{t}%") for t in terms]))
     return query
 
 
