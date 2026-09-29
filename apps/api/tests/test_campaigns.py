@@ -642,3 +642,24 @@ def test_run_says_so_when_no_worker_is_listening():
             assert response.status_code == 503
             assert "background worker" in response.json()["detail"]
     mock_queue.return_value.enqueue.assert_not_called()
+
+
+@patch("campaigns.prepare_application_for_review")
+def test_run_campaign_retries_its_applications_a_failed_prep_left_at_saved(mock_prepare):
+    """Live (2026-09-29): NIM 503'd during tailoring, the application stayed `saved`,
+    and every later run skipped the job as "already applied". It is retried, even when
+    the day's cap is spent (it was counted when created)."""
+    db = _session()
+    profile = _profile(db)
+    campaign = _campaign(db, profile, daily_cap=1)
+    job = _job(db, 1)
+    _match(db, profile, job)
+    mock_prepare.side_effect = RuntimeError("503 Service temporarily overloaded")
+    assert campaigns_mod.run_campaign(db, campaign)["failed"]
+    stuck = db.query(models.Application).one()
+    assert stuck.status == models.ApplicationStatus.saved
+
+    mock_prepare.side_effect = None
+    result = campaigns_mod.run_campaign(db, campaign)
+    assert result["prepared"] == 1
+    assert mock_prepare.call_args.args[1].id == stuck.id

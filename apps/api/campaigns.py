@@ -227,12 +227,20 @@ def run_campaign(db: Session, campaign: models.Campaign) -> dict:
     # so they must be durable before the slow (LLM) part can crash or be retried.
     db.commit()
 
-    if remaining <= 0:
+    # This campaign's applications a failed prep (an LLM outage) left at `saved`: later
+    # runs skip their jobs as already applied, so retry them here. Already counted in the cap.
+    stuck = db.query(models.Application).filter(
+        models.Application.campaign_id == campaign.id,
+        models.Application.status == models.ApplicationStatus.saved,
+        models.Application.tailored_resume_json.is_(None),
+        models.Application.id.notin_([a.id for a in created]),
+    ).all()
+    if remaining <= 0 and not stuck:
         return {"skipped": True, "reason": "daily cap reached",
                 "created": 0, "prepared": 0, "failed": []}
 
     prepared, failed = 0, []
-    for application in created:
+    for application in created + stuck:
         try:
             prepare_application_for_review(db, application)
             if campaign.auto_submit:
