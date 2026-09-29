@@ -41,7 +41,52 @@ PLAN = {"fields": [
 ]}
 
 
+# Lever: a radio/checkbox's `group` is the first option's label (or ''), never the question.
+CARD = "cards[001326c7][field{}]"
+LEVER = [f(0, "checkbox", name="pronouns", label="He/him"),
+         f(1, "checkbox", name="pronouns", label="She/her", group="He/him"),
+         f(2, "checkbox", name="pronouns", label="They/them", group="He/him"),
+         f(9, "checkbox", id_="customPronounsOption", label="Custom", group="He/him")] + \
+        [f(3 + 2 * k + j, "radio", name=CARD.format(k), label=o, group="" if j == 0 else "Yes", required=True)
+         for k in (0, 1) for j, o in enumerate(("Yes", "No"))]
+LEVER_PLAN = {"fields": [
+    {"label": "Pronouns", "widget": "checkbox", "options": ["He/him", "She/her", "They/them", "Custom"],
+     "fill_from": "never"},
+    {"label": "Are you legally authorized to work in the US?", "widget": "radio", "required": True,
+     "options": ["Yes", "No"], "fill_from": "answer_bank_question"},
+    {"label": "Do you require sponsorship?", "widget": "radio", "required": True,
+     "options": ["Yes", "No"], "fill_from": "answer_bank_question"},
+]}
+
+# Ashby: multi-select checkboxes are named per option but share the question as `group`;
+# a Yes/No question is one hidden checkbox with no label and the question as `group`.
+HEAR = "How did you hear about us?"
+ASHBY = [f(0, "checkbox", id_="q-0", name="LinkedIn", label="LinkedIn", group=HEAR),
+         f(1, "checkbox", id_="q-1", name="Glassdoor", label="Glassdoor", group=HEAR),
+         f(2, "checkbox", name="Prefer not to say", label="Prefer not to say", group=HEAR),
+         f(3, "checkbox", name="Prefer not to say", label="Prefer not to say", group="Which communities?"),
+         f(4, "checkbox", name="Other", label="Other", group="Which communities?"),
+         f(5, "checkbox", name="9fd0020d", group="Are you based in the EU?", visible=False)]
+ASHBY_PLAN = {"fields": [
+    {"label": "How did you hear about us", "widget": "checkbox", "options": ["LinkedIn", "Glassdoor"]},
+    {"label": "Which communities?", "widget": "checkbox", "options": ["Prefer not to say", "Other"]},
+    {"label": "Are you based in the EU?", "widget": "checkbox", "options": ["Yes", "No"]},
+]}
+
+
 class ScoreTest(unittest.TestCase):
+    def test_lever_groups_matched_by_options(self):
+        self.assertEqual([d["options"] for d in dom_fields(LEVER)],
+                         [{"he him", "she her", "they them", "custom"}, {"yes", "no"}, {"yes", "no"}])
+        s = score(LEVER_PLAN, LEVER)
+        self.assertEqual((s["dom_fields"], s["matched"], s["missed"], s["extra"]), (3, 3, [], []))
+        self.assertEqual(s["required_acc"], 1.0)
+
+    def test_ashby_groups_by_question(self):
+        self.assertEqual([d["label"] for d in dom_fields(ASHBY)], [HEAR, "Which communities?", "Are you based in the EU?"])
+        s = score(ASHBY_PLAN, ASHBY)
+        self.assertEqual((s["recall"], s["precision"], s["missed"], s["extra"]), (1.0, 1.0, [], []))
+
     def test_dom_fields_groups_radios_drops_hidden_and_twins(self):
         labels = [d["label"] for d in dom_fields(SNAP)]
         self.assertEqual(labels, ["First Name*", "Email*", "Resume/CV", "Country*", "Will you require sponsorship?",
