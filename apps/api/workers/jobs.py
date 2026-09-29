@@ -36,6 +36,8 @@ logger = logging.getLogger(__name__)
 # in the same window dedupes. The daily cap is enforced inside run_campaign, so
 # a shorter interval can't send more — it only notices new jobs sooner.
 CAMPAIGN_SWEEP_INTERVAL_SECONDS = 60 * 60
+# One embedding pass every 2 minutes: ~6 jobs a pass on Voyage's free tier (3 RPM / 10K TPM).
+EMBED_BACKLOG_INTERVAL_SECONDS = 2 * 60
 
 
 @lru_cache(maxsize=1)
@@ -160,6 +162,14 @@ def run_campaign_task(campaign_id: str, run_id: str | None = None, scheduled: bo
                         {"campaign_id": campaign.id, "created": created, "reason": reason})
             db.commit()
         return result
+
+
+def embed_backlog_task() -> dict:
+    """Scheduled: one backfill pass over jobs saved without a vector. Discovery also
+    runs one, but only hourly while it adds ~100 jobs; on the free tier that backlog
+    never cleared and unembedded jobs can't be matched (found live, 2026-09-29)."""
+    with session_scope() as db:
+        return {"embedded": backfill_job_embeddings(db)}
 
 
 def sweep_campaigns_task() -> dict:

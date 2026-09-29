@@ -241,6 +241,7 @@ def test_scheduler_registers_discovery_and_campaign_sweep(mock_scheduler_cls, _r
         jobs.discover_jobs_task: run_scheduler.DISCOVERY_INTERVAL_SECONDS,
         jobs.sweep_campaigns_task: jobs.CAMPAIGN_SWEEP_INTERVAL_SECONDS,
         jobs.sweep_form_plans_task: 3600,
+        jobs.embed_backlog_task: jobs.EMBED_BACKLOG_INTERVAL_SECONDS,
         run_scheduler.daily_digest_task: run_scheduler.DIGEST_INTERVAL_SECONDS,
     }
 
@@ -299,3 +300,14 @@ def test_scheduler_survives_a_redis_blip():
         pass
     assert start.call_count == 3  # re-registered after each blip
     assert [c.args[0] for c in sleep.call_args_list] == [5, 10]
+
+
+@patch("workers.jobs.backfill_job_embeddings", return_value=6)
+@patch("workers.jobs.session_scope")
+def test_embed_backlog_task_runs_one_backfill_pass(mock_scope, mock_backfill):
+    """Live (2026-09-29): on Voyage's free tier one pass embeds ~6 jobs before the
+    minute's cap, and discovery ran it once an hour while adding ~100 jobs. A pass
+    every couple of minutes clears the backlog (~180/hour, inside 3 RPM)."""
+    assert jobs.embed_backlog_task() == {"embedded": 6}
+    mock_backfill.assert_called_once()
+    assert 60 <= jobs.EMBED_BACKLOG_INTERVAL_SECONDS <= 300

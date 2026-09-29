@@ -14,7 +14,9 @@ from rq_scheduler import Scheduler
 from digest import daily_digest_task
 from workers.jobs import (
     CAMPAIGN_SWEEP_INTERVAL_SECONDS,
+    EMBED_BACKLOG_INTERVAL_SECONDS,
     discover_jobs_task,
+    embed_backlog_task,
     get_redis_connection,
     sweep_campaigns_task,
     sweep_form_plans_task,
@@ -34,6 +36,8 @@ def start_scheduler() -> Scheduler:
         daily_digest_task: DIGEST_INTERVAL_SECONDS,
         # ADR-016: plan the forms of jobs about to be applied to, before the fill needs them.
         sweep_form_plans_task: 60 * 60,
+        # Voyage free tier: the discovery pass alone never clears the embedding backlog.
+        embed_backlog_task: EMBED_BACKLOG_INTERVAL_SECONDS,
     }
     now = datetime.utcnow()
     digest_at = now.replace(hour=0, minute=5, second=0, microsecond=0)
