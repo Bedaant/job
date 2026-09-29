@@ -70,7 +70,7 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int]:
     if to_insert:
         try:
             embeddings = embed_texts(
-                [f"{j['title']} at {j['company']}. {j.get('description') or ''}" for j in to_insert],
+                [_embed_text(j["title"], j["company"], j.get("description")) for j in to_insert],
                 input_type="document",
             )
         except Exception:
@@ -90,6 +90,13 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int]:
 # ponytail: ~4 chars/token guess keeps one request under Voyage's free-tier
 # 10K TPM; use client.count_tokens (needs `tokenizers`) if descriptions skew dense.
 BACKFILL_REQUEST_CHARS = 24_000
+# What a job's vector is made of: its head (title, company, role summary). A whole
+# description can fill a free-tier request alone; this packs ~6 jobs into one.
+EMBED_CHARS = 4_000
+
+
+def _embed_text(title, company, description) -> str:
+    return f"{title} at {company}. {description or ''}"[:EMBED_CHARS]
 
 
 def backfill_job_embeddings(db, limit: int = 50) -> int:
@@ -104,7 +111,7 @@ def backfill_job_embeddings(db, limit: int = 50) -> int:
                .order_by(models.Job.fetched_at.desc().nullslast()).limit(limit).all())
     batches, size = [], BACKFILL_REQUEST_CHARS
     for job in pending:
-        text = f"{job.title} at {job.company}. {job.description or ''}"[:BACKFILL_REQUEST_CHARS]
+        text = _embed_text(job.title, job.company, job.description)
         if size + len(text) > BACKFILL_REQUEST_CHARS:
             batches.append(([], []))
             size = 0

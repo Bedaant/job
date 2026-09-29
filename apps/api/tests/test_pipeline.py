@@ -168,9 +168,9 @@ def test_backfill_under_a_rate_limit_keeps_what_it_embedded_and_stops():
 
     db = _db()
     jobs = []
-    for i in range(3):
+    for i in range(12):  # each capped at EMBED_CHARS: 6 per request, so 2 requests
         j = _job("remotive", str(i), title=f"Engineer {i}")
-        j["description"] = "word " * 6000  # ~30K chars: one job alone is at the cap
+        j["description"] = "word " * 6000
         jobs.append(j)
     with patch("connectors.pipeline.embed_texts", return_value=None):
         upsert_jobs(db, jobs)
@@ -184,10 +184,10 @@ def test_backfill_under_a_rate_limit_keeps_what_it_embedded_and_stops():
         return [[0.1] * 512 for _ in texts]
 
     with patch("connectors.pipeline.embed_texts", side_effect=fake_embed):
-        assert backfill_job_embeddings(db) == 1
-    assert len(calls) == 2  # stopped at the 429, didn't spend a request on the third
+        assert backfill_job_embeddings(db) == 6
+    assert len(calls) == 2  # stopped at the 429 on the second request
     assert all(sum(len(t) for t in texts) <= 24_000 for texts in calls)  # ~<10K tokens/request
-    assert sum(j.embedding is not None for j in db.query(models.Job).all()) == 1
+    assert sum(j.embedding is not None for j in db.query(models.Job).all()) == 6
 
 
 def test_backfill_embeds_the_newest_jobs_first():
@@ -206,3 +206,28 @@ def test_backfill_embeds_the_newest_jobs_first():
     with patch("connectors.pipeline.embed_texts", side_effect=lambda texts, input_type: [[0.1] * 512 for _ in texts]):
         assert backfill_job_embeddings(db, limit=1) == 1
     assert db.query(models.Job).filter(models.Job.embedding.isnot(None)).one().title == "Product Manager"
+
+
+def test_backfill_packs_several_long_jobs_into_one_request():
+    """A job's head (title, company, role summary) is what matching needs. Embedding the
+    first EMBED_CHARS instead of a whole 30K-char description packs ~6 jobs a request
+    on the free tier instead of one (live: 2-4 jobs a minute, 184 waiting)."""
+    from connectors.pipeline import EMBED_CHARS, backfill_job_embeddings
+
+    db = _db()
+    jobs = []
+    for i in range(3):
+        j = _job("remotive", str(i), title=f"Engineer {i}")
+        j["description"] = "word " * 6000
+        jobs.append(j)
+    with patch("connectors.pipeline.embed_texts", return_value=None):
+        upsert_jobs(db, jobs)
+    calls = []
+
+    def fake_embed(texts, input_type):
+        calls.append(texts)
+        return [[0.1] * 512 for _ in texts]
+
+    with patch("connectors.pipeline.embed_texts", side_effect=fake_embed):
+        assert backfill_job_embeddings(db) == 3
+    assert len(calls) == 1 and all(len(t) <= EMBED_CHARS for t in calls[0])
