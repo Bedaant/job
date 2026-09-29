@@ -1,0 +1,370 @@
+{
+ "url": "https://jobs.ashbyhq.com/linear/d3bc1ced-3ce4-4086-a050-555055dbb1ff/application",
+ "model": "nvidia/nemotron-3-super-120b-a12b",
+ "started_at": "2026-09-29T12:38:10.619Z",
+ "load_s": 4.125,
+ "snapshot_before": [
+  {
+   "index": 0,
+   "type": "file",
+   "role": "",
+   "id": "",
+   "name": "",
+   "label": "",
+   "group": "",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 1,
+   "type": "text",
+   "role": "",
+   "id": "_systemfield_name",
+   "name": "_systemfield_name",
+   "label": "Name",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 2,
+   "type": "email",
+   "role": "",
+   "id": "_systemfield_email",
+   "name": "_systemfield_email",
+   "label": "Email",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 3,
+   "type": "file",
+   "role": "",
+   "id": "_systemfield_resume",
+   "name": "",
+   "label": "Resume",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 4,
+   "type": "textarea",
+   "role": "",
+   "id": "1ed7df4b-e6d4-484e-92c3-4a5f5e07fd0c",
+   "name": "1ed7df4b-e6d4-484e-92c3-4a5f5e07fd0c",
+   "label": "Cover letter",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 5,
+   "type": "text",
+   "role": "",
+   "id": "1c843a13-4fe3-43df-afcf-37a69d88591b",
+   "name": "1c843a13-4fe3-43df-afcf-37a69d88591b",
+   "label": "Github",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 6,
+   "type": "text",
+   "role": "",
+   "id": "ca5c9d78-ec13-4bf2-86b8-bce6ff32e45e",
+   "name": "ca5c9d78-ec13-4bf2-86b8-bce6ff32e45e",
+   "label": "LinkedIn",
+   "group": "",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 7,
+   "type": "text",
+   "role": "",
+   "id": "2165840e-d858-4ff0-ad26-bd48832fe3a7",
+   "name": "2165840e-d858-4ff0-ad26-bd48832fe3a7",
+   "label": "X",
+   "group": "",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 8,
+   "type": "checkbox",
+   "role": "",
+   "id": "",
+   "name": "9fd0020d-14f0-47f3-b076-f31e5eaa8295",
+   "label": "",
+   "group": "Are you based in a EU or equivalent timezone?",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": false,
+   "mark": ""
+  },
+  {
+   "index": 9,
+   "type": "text",
+   "role": "",
+   "id": "b617d074-3a16-46ec-bb02-550e30cb0e50",
+   "name": "b617d074-3a16-46ec-bb02-550e30cb0e50",
+   "label": "What country are you based in?",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 10,
+   "type": "text",
+   "role": "",
+   "id": "ce587bdf-31fa-4768-9e92-7741b7ad2317",
+   "name": "ce587bdf-31fa-4768-9e92-7741b7ad2317",
+   "label": "Notice Period",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 11,
+   "type": "textarea",
+   "role": "",
+   "id": "7d3da580-9e6d-494f-a63b-0a889e0a157a",
+   "name": "7d3da580-9e6d-494f-a63b-0a889e0a157a",
+   "label": "What would you want to work on? Tell us about the features you would want to implement in your first month.",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 12,
+   "type": "textarea",
+   "role": "",
+   "id": "e8a6b6ee-0550-4c69-85ab-05bd9b26c702",
+   "name": "e8a6b6ee-0550-4c69-85ab-05bd9b26c702",
+   "label": "Tell us of a time you had to put your PM hat on to solve a complex product problem.",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 13,
+   "type": "textarea",
+   "role": "",
+   "id": "c4b19ee4-d084-47fa-89df-ca00e63a7721",
+   "name": "c4b19ee4-d084-47fa-89df-ca00e63a7721",
+   "label": "What are you extremely good at? What could you teach the team?",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 14,
+   "type": "text",
+   "role": "",
+   "id": "018585ea-12fd-472a-bdd6-9ef643dfabdd",
+   "name": "018585ea-12fd-472a-bdd6-9ef643dfabdd",
+   "label": "Has someone at Linear referred you for this role? If so, please include their name here:",
+   "group": "",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 15,
+   "type": "textarea",
+   "role": "",
+   "id": "g-recaptcha-response-100000",
+   "name": "g-recaptcha-response",
+   "label": "",
+   "group": "",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": false,
+   "mark": ""
+  }
+ ],
+ "planner": {
+  "model": "nvidia/nemotron-3-super-120b-a12b",
+  "agent_s": 10.135,
+  "steps": 1,
+  "llm_calls": 2,
+  "prompt_tokens": 3321,
+  "completion_tokens": 1016,
+  "done": true,
+  "error": null,
+  "errors": [],
+  "plan": {
+   "fields": [
+    {
+     "label": "Name",
+     "selector_hint": "[2-53] textbox: Name*",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Email",
+     "selector_hint": "[2-54] textbox: Email*",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Resume",
+     "selector_hint": "[2-65] input, file: Resume*",
+     "widget": "file",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Cover letter",
+     "selector_hint": "[2-55] textbox: Cover letter*",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Github",
+     "selector_hint": "[2-56] textbox: Github *",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "LinkedIn",
+     "selector_hint": "[2-57] textbox: LinkedIn",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "X",
+     "selector_hint": "[2-58] textbox: X",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Are you based in a EU or equivalent timezone?",
+     "selector_hint": "[2-66] LabelText: Are you based in a EU or equivalent timezone?",
+     "widget": "radio",
+     "required": false,
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "What country are you based in?",
+     "selector_hint": "[2-59] textbox: What country are you based in?*",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Notice  Period",
+     "selector_hint": "[2-60] textbox: Notice  Period*",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "What would you want to work on? Tell us about the features you would want to implement in your first month.",
+     "selector_hint": "[2-61] textbox: What would you want to work on? Tell us about the features you would want to implement in your first month.*",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Tell us of a time you had to put your PM hat on to solve a complex product problem.",
+     "selector_hint": "[2-62] textbox: Tell us of a time you had to put your PM hat on to solve a complex product problem.*",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "What are you extremely good at? What could you teach the team?",
+     "selector_hint": "[2-63] textbox: What are you extremely good at? What could you teach the team?*",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Has someone at Linear referred you for this role? If so, please include their name here:",
+     "selector_hint": "[2-64] textbox: Has someone at Linear referred you for this role? If so, please include their name here:",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    }
+   ],
+   "steps": []
+  }
+ },
+ "guard": {
+  "blocked_non_get_requests": 1,
+  "canary_blocked": 1,
+  "submit_attempts_blocked": 0,
+  "allowed_readonly_graphql_queries": 3
+ },
+ "total_s": 15.07
+}

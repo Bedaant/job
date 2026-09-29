@@ -558,7 +558,7 @@ connector not worth it — drop that connector, not the architecture.
 
 ---
 
-## ADR-016 — Auto-apply: browser-use plans each job on the server; the extension submits in the user's browser
+## ADR-016 — Auto-apply: a read-only planner (Stagehand) plans each job on the server; the extension submits in the user's browser
 
 **Date:** 2026-09-29 · **Status:** Accepted · **Decided by:** product owner
 (Final after three rounds the same day: extension-first → server-submits-first → this.)
@@ -608,3 +608,21 @@ features.
 
 **Revisit when.** Plans are wrong or stale often enough on an ATS that the extension's own
 filler does better there. Then that ATS goes extension-only.
+
+**Amendment (2026-09-29, Phase 0 measured; decided by engineering on the owner's delegation).**
+The planner in step 1 is **Stagehand `extract()`**, not browser-use. Measured on 15 live postings
+(`docs/harness-reports/phase0-greenhouse.md`, `stagehand-{greenhouse,lever,ashby}.md`):
+browser-use found 7% of Greenhouse fields in ~8 min and 30 LLM calls per job, because it loops
+re-opening dropdowns. Stagehand reads the page once without clicking: field recall 85% on Greenhouse,
+65% on Lever and 74% on Ashby (Lever/Ashby are understated because the scorer matches radio options
+rather than their question), in 11–23 s median, 2–3 calls and ~7–9k tokens per job. The guard held on every run.
+What the plan is **not** trusted for, measured:
+- **Dropdown options** (13% Greenhouse, 0% Ashby): react-select options aren't in the DOM until opened.
+  The extension opens each dropdown at fill time.
+- **Consent/EEO "never"** (50–71%) and the **required flag** (84–95%): the extension's own consent/EEO
+  rule and DOM `required` check decide. The plan never overrides them.
+- **Multi-page forms**: one `extract()` reads one page. Workday-style flows are out of scope until measured.
+- **A blank page**: while the guard still blocked Ashby's form load, `extract()` returned 11–21 made-up
+  fields on pages with no inputs. A plan whose fields don't match the live DOM is discarded (step 4's
+  fingerprint check), never executed.
+Stagehand 3.7.3 (MIT) pinned; 4.x needs Node ≥ 22.18.

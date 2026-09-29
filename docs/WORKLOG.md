@@ -102,6 +102,30 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-29 (latest+56) — Stagehand measured on Lever and Ashby; ADR-016 amended: Stagehand is the planner
+
+**What changed.** The owner asked engineering to decide. The Stagehand harness was run on 5 live
+Lever and 5 live Ashby postings, and ADR-016 now has an amendment: the server planner is Stagehand
+`extract()`, not browser-use. The extension still fills and submits, and its own consent/EEO,
+required and dropdown handling still decide.
+- Lever: 65% recall/precision (understated: the scorer matches radio options, not their question), 92% required,
+  median 23 s. Ashby: 74% recall, 82% precision, 95% required, median 11 s. Both use 2–3 calls per job.
+- `docs/harness-reports/stagehand-{lever,ashby}.md` (new); `score.py` takes the ATS as an argument.
+  `plan.mjs` takes its own DOM snapshot as ground truth, after `extract()`.
+
+**Problems hit.**
+- The guard blocked Ashby's GraphQL POST that loads the form, so every Ashby page had no form. `plan.mjs` now
+  calls `guard.is_readonly_ashby_query` (the tested Python check, fail-closed) instead of copying it into JS.
+  Also, `execFileSync` needs a string path, not a URL; it threw, and fail-closed hid that.
+- While Ashby was blank, `extract()` **made up 11–21 fields** on pages with no inputs. The ADR amendment
+  says a plan whose fields don't match the live DOM is discarded.
+- Lever Outreach and Ro fired one submit event each on load, with no click from Stagehand. The DOM guard
+  cancelled both. Worth knowing for the extension on Lever.
+- NIM returned 503s ("temporarily overloaded"), which the retry handled.
+
+**Next.** Build the planner worker and `form_plans` store (PLAN-MULTI-ATS). First test: whether a plan
+improves the extension's fill rate on the same 15 postings. Scorer: match radio/checkbox groups by their question.
+
 ### 2026-09-29 (latest+55) — Phase 0 (ADR-016): browser-use planner fails; Stagehand extract() works
 
 **What changed.** Phase 0 was measured on 5 live Greenhouse postings. The run was stopped

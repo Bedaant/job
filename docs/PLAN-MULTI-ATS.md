@@ -1,6 +1,6 @@
 # Plan: auto-apply beyond Greenhouse
 
-**Status:** accepted 2026-09-29 (ADR-016): **browser-use plans each job on the server (read-only, synthetic profile); the extension executes the plan and submits in the user's browser; the extension's own filler is the fallback.**
+**Status:** accepted 2026-09-29 (ADR-016, amended after Phase 0: the planner is Stagehand `extract()`, not browser-use): **a read-only planner plans each job on the server (read-only, synthetic profile); the extension executes the plan and submits in the user's browser; the extension's own filler is the fallback.**
 **Context:** WORKLOG latest+50…55. One Greenhouse posting produced ~12 bugs. Most were
 in the shared engine, not Greenhouse: frames, re-rendered forms, timeouts, optional
 fields, Review gaps. The question is how to reach Lever, Ashby, Workable,

@@ -1,0 +1,452 @@
+{
+ "url": "https://jobs.lever.co/ro/3910baa9-f961-4380-ad0a-01deec07f7a2/apply",
+ "model": "nvidia/nemotron-3-super-120b-a12b",
+ "started_at": "2026-09-29T12:41:33.927Z",
+ "load_s": 4.748,
+ "snapshot_before": [
+  {
+   "index": 0,
+   "type": "file",
+   "role": "",
+   "id": "resume-upload-input",
+   "name": "resume",
+   "label": "Resume/CV ✱ATTACH RESUME/CVCouldn't auto-read resume.Analyzing resume...Success!",
+   "group": "",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 1,
+   "type": "text",
+   "role": "",
+   "id": "",
+   "name": "name",
+   "label": "Full name✱",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 2,
+   "type": "email",
+   "role": "",
+   "id": "",
+   "name": "email",
+   "label": "Email✱",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 3,
+   "type": "text",
+   "role": "",
+   "id": "",
+   "name": "phone",
+   "label": "Phone ✱",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 4,
+   "type": "text",
+   "role": "",
+   "id": "location-input",
+   "name": "location",
+   "label": "Current location No location found. Try entering a different locationLoading",
+   "group": "",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 6,
+   "type": "text",
+   "role": "",
+   "id": "",
+   "name": "org",
+   "label": "Current company ✱",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 7,
+   "type": "text",
+   "role": "",
+   "id": "",
+   "name": "urls[LinkedIn]",
+   "label": "LinkedIn URL",
+   "group": "",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 8,
+   "type": "text",
+   "role": "",
+   "id": "",
+   "name": "urls[GitHub]",
+   "label": "GitHub URL",
+   "group": "",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 9,
+   "type": "text",
+   "role": "",
+   "id": "",
+   "name": "urls[Portfolio]",
+   "label": "Portfolio URL",
+   "group": "",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 10,
+   "type": "text",
+   "role": "",
+   "id": "",
+   "name": "urls[Other]",
+   "label": "Other website",
+   "group": "",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 12,
+   "type": "textarea",
+   "role": "",
+   "id": "",
+   "name": "cards[06e54799-8fbd-41b0-b37d-da1d3014c432][field0]",
+   "label": "",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 13,
+   "type": "textarea",
+   "role": "",
+   "id": "",
+   "name": "cards[06e54799-8fbd-41b0-b37d-da1d3014c432][field1]",
+   "label": "",
+   "group": "",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 14,
+   "type": "textarea",
+   "role": "",
+   "id": "",
+   "name": "cards[06e54799-8fbd-41b0-b37d-da1d3014c432][field2]",
+   "label": "",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 16,
+   "type": "radio",
+   "role": "",
+   "id": "",
+   "name": "cards[c8cb8fa2-2145-4df9-9df1-eacae11a8ffd][field0]",
+   "label": "Yes",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 17,
+   "type": "radio",
+   "role": "",
+   "id": "",
+   "name": "cards[c8cb8fa2-2145-4df9-9df1-eacae11a8ffd][field0]",
+   "label": "No",
+   "group": "Yes",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 18,
+   "type": "select",
+   "role": "",
+   "id": "",
+   "name": "eeo[gender]",
+   "label": "GenderSelect ...MaleFemaleDecline to self-identify",
+   "group": "",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 19,
+   "type": "select",
+   "role": "",
+   "id": "",
+   "name": "eeo[race]",
+   "label": "RaceSelect ...Hispanic or LatinoWhite (Not Hispanic or Latino)Black or African American (Not Hispanic or Latino)Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino)Asian (Not Hispanic or",
+   "group": "",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 20,
+   "type": "select",
+   "role": "",
+   "id": "",
+   "name": "eeo[veteran]",
+   "label": "Veteran statusSelect ...I am a veteranI am not a veteranDecline to self-identify",
+   "group": "",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  }
+ ],
+ "planner": {
+  "model": "nvidia/nemotron-3-super-120b-a12b",
+  "agent_s": 28.294,
+  "steps": 1,
+  "llm_calls": 3,
+  "prompt_tokens": 4439,
+  "completion_tokens": 1251,
+  "done": true,
+  "error": null,
+  "errors": [
+   "503 {\"error\":{\"message\":\"Service temporarily overloaded\",\"type\":\"Service Unavailable\",\"code\":503}}"
+  ],
+  "plan": {
+   "fields": [
+    {
+     "label": "LinkedIn profile",
+     "selector_hint": "[10-108] listitem",
+     "widget": "other",
+     "required": true,
+     "options": [],
+     "fill_from": "never"
+    },
+    {
+     "label": "Resume/CV",
+     "selector_hint": "[10-120] listitem",
+     "widget": "file",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Full name",
+     "selector_hint": "[10-127] listitem",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "never"
+    },
+    {
+     "label": "Email",
+     "selector_hint": "[10-131] listitem",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "never"
+    },
+    {
+     "label": "Phone",
+     "selector_hint": "[10-135] listitem",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "never"
+    },
+    {
+     "label": "Current location",
+     "selector_hint": "[10-139] listitem",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "never"
+    },
+    {
+     "label": "Current company",
+     "selector_hint": "[10-142] listitem",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "never"
+    },
+    {
+     "label": "LinkedIn URL",
+     "selector_hint": "[10-149] listitem",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "never"
+    },
+    {
+     "label": "GitHub URL",
+     "selector_hint": "[10-152] listitem",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "never"
+    },
+    {
+     "label": "Portfolio URL",
+     "selector_hint": "[10-155] listitem",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "never"
+    },
+    {
+     "label": "Other website",
+     "selector_hint": "[10-158] listitem",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "never"
+    },
+    {
+     "label": "Do you now or in the future require sponsorship to work in the United States?",
+     "selector_hint": "[10-164] listitem",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "How did you hear about us?",
+     "selector_hint": "[10-168] listitem",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "What is your expected compensation range?",
+     "selector_hint": "[10-171] listitem",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "This position is based in NYC. Are you located in the tri-state area and able to commute into the NYC office 2x a week?",
+     "selector_hint": "[10-178] listitem",
+     "widget": "radio",
+     "required": true,
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Gender",
+     "selector_hint": "[10-351] LabelText",
+     "widget": "select",
+     "required": false,
+     "options": [
+      "Select ...",
+      "Male",
+      "Female",
+      "Decline to self-identify"
+     ],
+     "fill_from": "never"
+    },
+    {
+     "label": "Race",
+     "selector_hint": "[10-385] LabelText",
+     "widget": "select",
+     "required": false,
+     "options": [
+      "Select ...",
+      "Hispanic or Latino",
+      "White (Not Hispanic or Latino)",
+      "Black or African American (Not Hispanic or Latino)",
+      "Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino)",
+      "Asian (Not Hispanic or Latino)",
+      "American Indian or Alaska Native (Not Hispanic or Latino)",
+      "Two or More Races (Not Hispanic or Latino)",
+      "Decline to self-identify"
+     ],
+     "fill_from": "never"
+    },
+    {
+     "label": "Veteran status",
+     "selector_hint": "[10-487] LabelText",
+     "widget": "select",
+     "required": false,
+     "options": [
+      "Select ...",
+      "I am a veteran",
+      "I am not a veteran",
+      "Decline to self-identify"
+     ],
+     "fill_from": "never"
+    }
+   ],
+   "steps": []
+  }
+ },
+ "guard": {
+  "blocked_non_get_requests": 12,
+  "canary_blocked": 1,
+  "submit_attempts_blocked": 1,
+  "allowed_readonly_graphql_queries": 0
+ },
+ "total_s": 33.793
+}

@@ -1,0 +1,401 @@
+{
+ "url": "https://jobs.ashbyhq.com/ramp/34413f8d-26bf-4bbc-8ade-eb309a0e2245/application",
+ "model": "nvidia/nemotron-3-super-120b-a12b",
+ "started_at": "2026-09-29T12:38:27.372Z",
+ "load_s": 4.187,
+ "snapshot_before": [
+  {
+   "index": 0,
+   "type": "file",
+   "role": "",
+   "id": "",
+   "name": "",
+   "label": "",
+   "group": "",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 1,
+   "type": "text",
+   "role": "",
+   "id": "_systemfield_name",
+   "name": "_systemfield_name",
+   "label": "Legal Name",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 2,
+   "type": "email",
+   "role": "",
+   "id": "_systemfield_email",
+   "name": "_systemfield_email",
+   "label": "Email",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 3,
+   "type": "tel",
+   "role": "",
+   "id": "4b71793a-c95c-4cc9-9d06-02e6ef7c5777",
+   "name": "4b71793a-c95c-4cc9-9d06-02e6ef7c5777",
+   "label": "Phone",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 4,
+   "type": "radio",
+   "role": "",
+   "id": "",
+   "name": "communicationConsent",
+   "label": "Yes - I consent to receiving text messages",
+   "group": "Phone",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 5,
+   "type": "radio",
+   "role": "",
+   "id": "",
+   "name": "communicationConsent",
+   "label": "No - I do not consent to receiving text messages",
+   "group": "Phone",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 6,
+   "type": "text",
+   "role": "combobox",
+   "id": "",
+   "name": "",
+   "label": "Start typing...",
+   "group": "Where do you plan on working from (for payroll tax purposes)?",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 7,
+   "type": "file",
+   "role": "",
+   "id": "_systemfield_resume",
+   "name": "",
+   "label": "Resume",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 8,
+   "type": "text",
+   "role": "",
+   "id": "dc915b3a-c535-49df-abd6-dc8f3ddf6728",
+   "name": "dc915b3a-c535-49df-abd6-dc8f3ddf6728",
+   "label": "LinkedIn Profile",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 9,
+   "type": "file",
+   "role": "",
+   "id": "6686ff1d-a7f9-484b-af56-4c32ff8cd99f",
+   "name": "",
+   "label": "Cover Letter",
+   "group": "",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 10,
+   "type": "checkbox",
+   "role": "",
+   "id": "",
+   "name": "3080cfba-13cc-4441-94b9-159da1278e66",
+   "label": "",
+   "group": "Do you have a minimum of 7 years of experience building software?",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": false,
+   "mark": ""
+  },
+  {
+   "index": 11,
+   "type": "checkbox",
+   "role": "",
+   "id": "",
+   "name": "66d3b6e2-6cef-4cf8-9193-87200193ab98",
+   "label": "",
+   "group": "Do you have a minimum of 5 years of experience building in AWS (with Terraform)?",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": false,
+   "mark": ""
+  },
+  {
+   "index": 12,
+   "type": "textarea",
+   "role": "",
+   "id": "0086e069-bc0c-467b-8d38-c3f023146e79",
+   "name": "0086e069-bc0c-467b-8d38-c3f023146e79",
+   "label": "Please elaborate on your experience building software in AWS (with Terraform)",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 13,
+   "type": "textarea",
+   "role": "",
+   "id": "c88f753e-ac4c-461c-81ec-3495a671c5bd",
+   "name": "c88f753e-ac4c-461c-81ec-3495a671c5bd",
+   "label": "Here's some text encoded in a common format. Figure out the correct secret and submit it in the field below. IyEvdXNyL2Jpbi9lbnYgcHl0aG9uMwoKJycnCktlZXAgdXMgb3V0IG9mIGdvb2dsZSBzZWFyY2ggcmVzdWx0cy4uCgo",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 14,
+   "type": "textarea",
+   "role": "",
+   "id": "3285cb76-c9b1-4ac1-92ce-c4059b19e4a0",
+   "name": "3285cb76-c9b1-4ac1-92ce-c4059b19e4a0",
+   "label": "In the above question, we ask you to figure out a secret to prove two things: (1) that you are not a bot auto-applying to the role and (2) that you are able to read and interact with code. With those ",
+   "group": "",
+   "required": true,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 15,
+   "type": "text",
+   "role": "",
+   "id": "3e666775-f7f9-4eab-bbdb-1a3bb13bc8a4",
+   "name": "3e666775-f7f9-4eab-bbdb-1a3bb13bc8a4",
+   "label": "We believe exceptional performance in one area is a good indication of performance in other areas. Do you have any examples of exceptional performance you want to highlight?",
+   "group": "",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": true,
+   "mark": ""
+  },
+  {
+   "index": 16,
+   "type": "textarea",
+   "role": "",
+   "id": "g-recaptcha-response-100000",
+   "name": "g-recaptcha-response",
+   "label": "",
+   "group": "",
+   "required": false,
+   "value": "",
+   "display": "",
+   "visible": false,
+   "mark": ""
+  }
+ ],
+ "planner": {
+  "model": "nvidia/nemotron-3-super-120b-a12b",
+  "agent_s": 8.432,
+  "steps": 1,
+  "llm_calls": 2,
+  "prompt_tokens": 7565,
+  "completion_tokens": 1245,
+  "done": true,
+  "error": null,
+  "errors": [],
+  "plan": {
+   "fields": [
+    {
+     "label": "Legal Name",
+     "selector_hint": "[2-9] textbox: Legal Name*",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Email",
+     "selector_hint": "[2-10] textbox: Email*",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Phone",
+     "selector_hint": "[2-11] textbox: Phone*",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Where do you plan on working from (for payroll tax purposes)?",
+     "selector_hint": "[2-12] combobox: Start typing...",
+     "widget": "select",
+     "required": true,
+     "options": [],
+     "fill_from": "never"
+    },
+    {
+     "label": "Resume",
+     "selector_hint": "[2-20] input, file: Resume*",
+     "widget": "file",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "LinkedIn Profile",
+     "selector_hint": "[2-13] textbox: LinkedIn Profile*",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Cover Letter",
+     "selector_hint": "[2-21] input, file: Cover Letter",
+     "widget": "file",
+     "required": false,
+     "options": [],
+     "fill_from": "resume"
+    },
+    {
+     "label": "Do you have a minimum of 7 years of experience building software?",
+     "selector_hint": "[2-346] div [2-132] button: Yes",
+     "widget": "radio",
+     "required": true,
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Do you have a minimum of  5 years of experience building in AWS (with Terraform)?",
+     "selector_hint": "[2-351] div [2-137] button: Yes",
+     "widget": "radio",
+     "required": true,
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Please elaborate on your experience building software in AWS (with Terraform)",
+     "selector_hint": "[2-14] textbox: Please elaborate on your experience building software in AWS (with Terraform)*",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Here's some text encoded in a common format. Figure out the correct secret and submit it in the field below.",
+     "selector_hint": "[2-15] textbox: Here's some text encoded in a common format. Figure out the correct secret and submit it in the field below. *",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "In the above question, we ask you to figure out a secret to prove two things: (1) that you are not a bot auto-applying to the role and (2) that you are able to read and interact with code. With those goals in mind, what are the security properties (if any) of the resulting secret? Do we achieve our goals? How could we do so more effectively?",
+     "selector_hint": "[2-16] textbox: In the above question, we ask you to figure out a secret to prove two things: (1) that you are not a bot auto-applying to the role and (2) that you are able to read and interact with code. With those goals in mind, what are the security properties (if any) of the resulting secret? Do we achieve our goals? How could we do so more effectively?*",
+     "widget": "text",
+     "required": true,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "We believe exceptional performance in one area is a good indication of performance in other areas. Do you have any examples of exceptional performance you want to highlight?",
+     "selector_hint": "[2-17] textbox: We believe exceptional performance in one area is a good indication of performance in other areas. Do you have any examples of exceptional performance you want to highlight?",
+     "widget": "text",
+     "required": false,
+     "options": [],
+     "fill_from": "answer_bank_question"
+    },
+    {
+     "label": "Yes - I consent to receiving text messages",
+     "selector_hint": "[2-18] radio: Yes - I consent to receiving text messages",
+     "widget": "radio",
+     "required": false,
+     "options": [
+      "Yes - I consent to receiving text messages",
+      "No - I do not consent to receiving text messages"
+     ],
+     "fill_from": "never"
+    },
+    {
+     "label": "No - I do not consent to receiving text messages",
+     "selector_hint": "[2-19] radio: No - I do not consent to receiving text messages",
+     "widget": "radio",
+     "required": false,
+     "options": [
+      "Yes - I consent to receiving text messages",
+      "No - I do not consent to receiving text messages"
+     ],
+     "fill_from": "never"
+    }
+   ],
+   "steps": []
+  }
+ },
+ "guard": {
+  "blocked_non_get_requests": 1,
+  "canary_blocked": 1,
+  "submit_attempts_blocked": 0,
+  "allowed_readonly_graphql_queries": 4
+ },
+ "total_s": 13.302
+}

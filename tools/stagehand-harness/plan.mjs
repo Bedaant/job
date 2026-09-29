@@ -6,7 +6,9 @@
 // Guard (same rules as browser-use-harness/guard.py): CDP Fetch fails every non-GET/HEAD/OPTIONS
 // request, and an init script makes form.submit()/requestSubmit() throw and cancels submit events.
 // A canary POST proves the network layer is live before the real page loads.
+import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { Stagehand, AISdkClient } from "@browserbasehq/stagehand";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { z } from "zod";
@@ -19,6 +21,9 @@ const env = Object.fromEntries(
     .split(/\r?\n/).filter((l) => /^[A-Z_]+=/.test(l))
     .map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1).replace(/^["']|["']$/g, "")]),
 );
+// Ground truth: the same DOM snapshot check_form.py / plan_form.py take (one source of truth).
+const SNAPSHOT_JS = readFileSync(new URL("../browser-use-harness/check_form.py", import.meta.url), "utf8")
+  .match(/SNAPSHOT_JS = r"""([\s\S]*?)"""/)[1];
 const MODEL = process.env.HARNESS_MODEL || env.NVIDIA_MODEL || "nvidia/nemotron-3-super-120b-a12b";
 const TIMEOUT_MS = 180_000;
 const PROFILE_KEYS = ["full_name", "given_name", "family_name", "email", "phone", "city", "region", "country_code",
@@ -69,7 +74,20 @@ const INIT = `(() => {
 })();`;
 
 const report = { url, model: MODEL, started_at: new Date().toISOString() };
-const guard = { blocked_non_get_requests: 0, canary_blocked: 0, submit_attempts_blocked: 0 };
+const guard = { blocked_non_get_requests: 0, canary_blocked: 0, submit_attempts_blocked: 0,
+  allowed_readonly_graphql_queries: 0 };
+// Ashby loads its form with a read-only GraphQL POST. Reuse guard.py's tested check (no JS copy of a
+// security rule); fail closed on a missing body or any error.
+const BU = new URL("../browser-use-harness/", import.meta.url);
+const readonlyAshby = (method, url, body) => {
+  if (!body || !url.startsWith("https://jobs.ashbyhq.com/")) return false;
+  try {
+    execFileSync(fileURLToPath(new URL("../.venv-browser-use/Scripts/python.exe", import.meta.url)), ["-c",
+      "import sys, guard; sys.exit(0 if guard.is_readonly_ashby_query(sys.argv[1], sys.argv[2], sys.stdin.read()) else 1)",
+      method, url], { cwd: BU, input: body, stdio: ["pipe", "ignore", "ignore"] });
+    return true;
+  } catch { return false; }
+};
 const sh = new Stagehand({
   env: "LOCAL", verbose: 0, disablePino: true,
   localBrowserLaunchOptions: { headless: true, viewport: { width: 1280, height: 8000 } },
@@ -82,7 +100,11 @@ try {
   await sh.context.addInitScript(INIT);
   const session = page.getSessionForFrame(page.mainFrame().frameId);
   session.on("Fetch.requestPaused", ({ requestId, request }) => {
-    const safe = ["GET", "HEAD", "OPTIONS"].includes(request.method);
+    let safe = ["GET", "HEAD", "OPTIONS"].includes(request.method);
+    if (!safe && readonlyAshby(request.method, request.url, request.postData)) {
+      guard.allowed_readonly_graphql_queries++;
+      safe = true;
+    }
     if (!safe) {
       guard.blocked_non_get_requests++;
       if (request.url.includes("applyscout-guard-canary")) guard.canary_blocked++;
@@ -102,6 +124,8 @@ try {
 
   const te = Date.now();
   const plan = await sh.extract(INSTRUCTION, Plan, { timeout: TIMEOUT_MS });
+  // After extract(): SPA forms (Ashby) render late; extract() doesn't touch the page.
+  report.snapshot_before = await page.evaluate(`(${SNAPSHOT_JS})()`);
   const m = await sh.metrics;
   report.planner = {
     model: MODEL, agent_s: (Date.now() - te) / 1000, steps: 1, llm_calls: llm.calls,
