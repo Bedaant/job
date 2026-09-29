@@ -555,3 +555,36 @@ boards beyond LinkedIn/Indeed are permissive or feed-friendly; most LinkedIn/agg
 
 **Revisit when.** A source's ToS enforcement or a spike in user account bans makes a given
 connector not worth it — drop that connector, not the architecture.
+
+---
+
+## ADR-016 — Auto-apply engine: the extension first, an in-extension agent loop as fallback
+
+**Date:** 2026-09-29 · **Status:** Accepted · **Decided by:** product owner
+
+**Context.** Live testing on one Greenhouse posting (WORKLOG latest+50…55) found ~12 bugs.
+Most were in the shared engine (frames, re-rendered forms, widget types, timeouts), not
+Greenhouse itself. Per-ATS hand-written adapters don't scale to Lever, Ashby, Workable,
+SmartRecruiters, Workday… ADR-015 §3 left "extension / browser-use / workflow-use" open.
+
+**Decision.**
+1. **Primary:** the extension's deterministic filler, in the user's own browser (as today).
+2. **Fallback:** an **agent loop inside the extension**. For fields still unresolved, the
+   extension sends a compact snapshot of them to the API; the LLM returns one action from
+   an allowlist (type, choose option, check, upload resume, click a non-submit button,
+   stop); the extension executes it and re-reads to verify. It is bounded per page.
+3. **browser-use is a test and discovery tool, not the product runtime:** the harness
+   grader, the pass-rate benchmark, and exploring a new ATS's flow.
+4. Rejected: browser-use on our server (not the user's session, datacenter-IP captchas,
+   contradicts ADR-015 §3); browser-use on the user's PC via CDP (Chrome debug flag and a
+   Python install per user) is kept only as a possible later opt-in "desktop mode".
+
+**Rails.** Enforced in the extension's executor, not the prompt: no submit click in the
+loop; consent/demographic never answered; values only from profile/facts/answer bank
+(ADR-006/009); every harness run behind `guard.py`.
+
+**Consequences.** New `POST /extension/next-action` plus widget executors with verify.
+Order of work and success metrics: `docs/PLAN-MULTI-ATS.md` (measure first).
+
+**Revisit when.** The in-extension loop plateaus below the plan's targets on a
+platform that matters. Then consider the desktop mode.

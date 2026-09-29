@@ -1,6 +1,6 @@
 # Plan: auto-apply beyond Greenhouse
 
-**Status:** proposed 2026-09-29. Needs the owner's call on the one decision in §2.
+**Status:** accepted 2026-09-29: option C (ADR-016). Fallback = agent loop inside the extension.
 **Context:** WORKLOG latest+50…55. One Greenhouse posting produced ~12 bugs. Most were
 in the shared engine, not Greenhouse: frames, re-rendered forms, timeouts, optional
 fields, Review gaps. The question is how to reach Lever, Ashby, Workable,
