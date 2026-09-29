@@ -627,3 +627,12 @@ test("military status is demographic (same list as the server)", () => {
   assert.equal(isDemographicField({ label_text: "What is your military status?*" }), true);
   assert.equal(isDemographicField({ label_text: "Military experience (years)" }), false);
 });
+
+test("'how did you hear' is a user-only question: unanswered, it asks for a bank answer", () => {
+  // Mirrors map_fields.py: the model answered "LinkedIn" live (Zoox). The server keeps it
+  // on the essay rail; here an unanswered one gets the reason the user can clear once.
+  const field = { field_id: "f1", label_text: "How did you hear about us?", input_type: "checkbox",
+                  options: ["LinkedIn", "Other"], required: true };
+  const { flag } = decideFieldActions([field], [{ field_id: "f1", maps_to: "unknown", confidence: 0, value: null }]);
+  assert.deepEqual(flag, [{ field_id: "f1", reason: "essay_no_stored_answer" }]);
+});

@@ -296,3 +296,25 @@ def test_without_an_answer_lookup_behaviour_is_exactly_what_it_was_before(mock_c
     assert "f3" in mock_call_llm.call_args[0][1]
     assert "f1" not in mock_call_llm.call_args[0][1]
     assert "f2" not in mock_call_llm.call_args[0][1]
+
+
+# Live, Zoox (2026-09-29): the model answered "How did you hear about us?" with
+# "LinkedIn" in one run and flagged it in another. Only the user knows the answer:
+# it is an essay-rail question (bank or nothing), bound to the live options.
+HEAR = [{"field_id": "f1", "label_text": "How did you hear about us?", "input_type": "checkbox",
+         "options": ["LinkedIn", "Company website", "Other"], "name": "cards[x][field3]"}]
+
+
+@patch("formfill.map_fields.call_llm",
+       return_value='[{"field_id": "f1", "maps_to": "profile.linkedin", "confidence": 0.9, "value": "LinkedIn"}]')
+def test_how_did_you_hear_is_never_answered_by_the_model(llm):
+    result = map_form_fields(HEAR, {"full_name": "Jane"}, answer_lookup=lambda q: None)
+    llm.assert_not_called()
+    assert all(not m.get("value") for m in result)
+
+
+@patch("formfill.map_fields.call_llm")
+def test_how_did_you_hear_comes_from_the_bank_bound_to_options(llm):
+    result = map_form_fields(HEAR, {"full_name": "Jane"}, answer_lookup=lambda q: "company website")
+    assert result == [{"field_id": "f1", "maps_to": "answer_bank", "confidence": 1.0, "value": "Company website"}]
+    llm.assert_not_called()

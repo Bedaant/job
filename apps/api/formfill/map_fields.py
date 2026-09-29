@@ -95,6 +95,8 @@ def build_profile_summary(profile, email: str) -> dict:
 # through to the LLM like an ordinary unresolved field.
 ESSAY_LABEL_KEYWORDS = [
     "why do you want to work", "why are you interested",
+    # Only the user knows how they found the job: the model answered "LinkedIn" live (Zoox).
+    "hear about", "find out about", "referred you", "referred by",
 ]
 
 # Kept as the union so existing callers (and the extension's mirrored list) keep
@@ -269,6 +271,8 @@ def map_form_fields(
             # An essay question has no deterministic answer and must never be
             # written by a model. The bank or nothing.
             answer = answer_lookup(field["label_text"]) if answer_lookup else None
+            if answer and field.get("options"):
+                answer = bind_to_options(answer, field["options"])  # a choice takes one of its own options
             if answer:
                 bank_results[field_id] = _from_answer_bank(field_id, answer)
             continue

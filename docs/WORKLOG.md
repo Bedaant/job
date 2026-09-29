@@ -102,6 +102,18 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-29 (latest+58) — "How did you hear about us?" is answered only from the answer bank
+
+**What changed.** The Zoox risk from latest+57 is fixed. It was not a lone checkbox. The options share a name, so the
+extension sent one group labelled "How did you hear about us?", and today's LLM path answered it "LinkedIn" in one
+run. Only the user knows this answer. "hear about", "find out about", "referred you" and "referred by" joined
+`ESSAY_LABEL_KEYWORDS` (API and the extension's mirror), so the question now goes to the answer bank or nothing, never the model.
+A bank answer is now bound to the field's options on that path.
+
+**How tested.** Red → green: 2 API tests, 1 extension test. API suite 721 passed, extension 113 passed, typecheck and
+build clean. Live guarded fill of the Zoox posting: nothing ticked, flagged `essay_no_stored_answer`
+("save the answer and we'll reuse it"), canary blocked, 0 submits.
+
 ### 2026-09-29 (latest+57) — ADR-016 built: form_plans, planner worker, plan routing; on for Greenhouse only
 
 **What changed.** One agent planned and four agents built the parts in parallel worktrees. The pieces were then merged, and fixed when they met real planner output.
@@ -130,7 +142,7 @@ Decision: routing is on for **Greenhouse only** (`formplans.ROUTED_ATS`). ADR-01
 - The Neon connection dropped while the planner ran for minutes. `plan_job` now commits before the subprocess.
   Robinhood re-planned OK (23 fields).
 - The running API had no `--reload`, so it served old code. It was restarted before the measurement.
-- **Open risk, not caused by the plan:** on Zoox, today's LLM path ticked a lone "LinkedIn" checkbox under "How did you
+- **Risk, not caused by the plan (fixed in latest+58):** on Zoox, today's LLM path ticked a lone "LinkedIn" checkbox under "How did you
   hear?" in one run and not in the other. That is a made-up answer. Next: flag a lone checkbox whose label is
   an option of a group question, instead of asking the model.
 

@@ -84,6 +84,8 @@ function hasDemographicOptions(options) {
 // stop the run for a question that was already answered.
 export const ESSAY_LABEL_KEYWORDS = [
   "why do you want to work", "why are you interested",
+  // Only the user knows how they found the job (the model answered "LinkedIn" live, Zoox).
+  "hear about", "find out about", "referred you", "referred by",
 ];
 
 // The union, kept because "nothing here is fillable from profile data alone" is
