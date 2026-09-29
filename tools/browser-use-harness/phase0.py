@@ -68,14 +68,17 @@ def dom_fields(snapshot: list[dict]) -> list[dict]:
             if g:
                 g["keys"] |= {f["id"]} - {""}
                 g["required"] |= f["required"]
+                g["filled"] |= bool(f["value"])
                 continue
             g = groups[f["name"]] = {"label": f["group"] or f["label"], "keys": {f["id"], f["name"]} - {""},
                                      "required": f["required"], "kind": kind, "text": f["group"] + " " + f["label"],
+                                     "filled": bool(f["value"]),
                                      "names": {_norm(f["group"] or f["label"])} - {""}}
             out.append(g)
             continue
         out.append({"label": f["label"] or f["group"] or f["id"] or f["name"], "keys": {f["id"], f["name"]} - {""},
                     "required": f["required"], "kind": kind, "text": f["label"] + " " + f["group"],
+                    "filled": bool(f["display"] or f["value"]),
                     "names": {_norm(f["label"]), _norm(f["group"])} - {""}})
     for d in out:
         d["sensitive"] = bool(DEMOGRAPHIC.search(d["text"] + " " + " ".join(d["keys"])) or CONSENT.search(d["text"]))
@@ -112,6 +115,7 @@ def score(plan: dict | None, snapshot: list[dict]) -> dict:
 
     k = len(pairs)
     opt = [(p, d) for p, d in pairs if d["kind"] in ("select", "combobox")]
+    opt_total = sum(1 for d in dom if d["kind"] in ("select", "combobox"))  # a missed dropdown = no options
     sens = [d for d in dom if d["sensitive"]]
     sens_ok = sum(1 for p, d in pairs if d["sensitive"] and p.get("fill_from") == "never")
     ratio = lambda a, b: a / b if b else 0.0  # noqa: E731
@@ -120,7 +124,7 @@ def score(plan: dict | None, snapshot: list[dict]) -> dict:
         "recall": ratio(k, len(dom)), "precision": ratio(k, len(pf)),
         "required_ok": sum(1 for p, d in pairs if bool(p.get("required")) == d["required"]),
         "required_acc": ratio(sum(1 for p, d in pairs if bool(p.get("required")) == d["required"]), k),
-        "options_ok": sum(1 for p, _ in opt if p.get("options")), "options_total": len(opt),
+        "options_ok": sum(1 for p, _ in opt if p.get("options")), "options_total": opt_total,
         "widget_ok": sum(1 for p, d in pairs if p.get("widget") in WIDGETS.get(d["kind"], {"text"})),
         "widget_acc": ratio(sum(1 for p, d in pairs if p.get("widget") in WIDGETS.get(d["kind"], {"text"})), k),
         "sensitive_never": sens_ok, "sensitive_total": len(sens),
@@ -164,8 +168,9 @@ def pick_postings(ats: str, n: int) -> list[dict]:
 
 # ---------- running ----------
 
-def run_plan(url: str, out: Path, allow: list[str]) -> dict:
-    cmd = [PY, str(HERE / "plan_form.py"), "--url", url, "--out", str(out)] + (["--allow", *allow] if allow else [])
+def run_plan(url: str, out: Path, allow: list[str], mode: str) -> dict:
+    cmd = [PY, str(HERE / "plan_form.py"), "--url", url, "--out", str(out), "--mode", mode] + \
+        (["--allow", *allow] if allow else [])
     try:
         subprocess.run(cmd, cwd=HERE, timeout=1500)
     except subprocess.TimeoutExpired:
@@ -183,10 +188,21 @@ def run_baseline(url: str, ats: str) -> dict:
     new = sorted(set((HERE / "reports").glob(f"*-{ats}.json")) - before)
     if not new:
         return {"error": "check_form wrote no report"}
-    r = json.loads(new[-1].read_text(encoding="utf-8"))
+    return baseline_from(new[-1])
+
+
+def baseline_from(path: Path) -> dict:
+    """The extension's result on one posting, counted over dom_fields (react-select twins dropped,
+    radio groups as one), so it is comparable with the plan's ground truth."""
+    r = json.loads(path.read_text(encoding="utf-8"))
     dom = r.get("dom", {})
-    req = [d for d in dom_fields(r.get("dom_snapshot") or []) if d["required"]]
-    return {"report": new[-1].name, "passed": r.get("passed"), "failures": r.get("failures"),
+    df = dom_fields(r.get("dom_snapshot") or [])
+    req = [d for d in df if d["required"] and not d["sensitive"]]  # consent/demographic: never filled, by design
+    flagged = {_norm(f.get("label")) for f in (r.get("extension_response") or {}).get("flagged") or []}
+    empty = [d for d in req if not d["filled"]]
+    return {"report": path.name, "required_empty": [d["label"] for d in empty],
+            "required_flagged": sum(1 for d in empty if d["names"] & flagged),
+            "filled_fields": sum(1 for d in df if d["filled"]), "passed": r.get("passed"), "failures": r.get("failures"),
             "ext_ok": (r.get("extension_response") or {}).get("ok"), "fields": len(dom_fields(r.get("dom_snapshot") or [])),
             "filled": len(dom.get("filled", [])), "required_total": len(req),
             "empty_required": dom.get("empty_required", []), "demographic_violations": len(dom.get("demographic_violations", [])),
@@ -201,19 +217,33 @@ def serve_embed(board: str, token: str):
     return serve_host_page(embed)
 
 
+def plan_file(p: dict) -> Path:
+    return OUT / (f"{p['ats']}-" + f"{p['company']}-{p['job_id']}"[:60] + ("-embed" if p.get("embed") else "")
+                  + ("-list" if p.get("mode") == "list" else "") + "-plan.json")
+
+
+def rows_file(ats: str, mode: str) -> Path:
+    return OUT / f"{ats}{'-list' if mode == 'list' else ''}.jsonl"
+
+
+def union_snapshot(r: dict) -> list[dict]:
+    """Ground truth: the fresh-load snapshot plus any field the walk revealed (conditional questions)."""
+    snap = r.get("snapshot_before") or []
+    seen = {(f["id"], f["name"], f["label"]) for f in snap}
+    return snap + [f for f in r.get("snapshot_after") or [] if (f["id"], f["name"], f["label"]) not in seen]
+
+
 def run_one(p: dict) -> dict:
-    ats, slug = p["ats"], f"{p['company']}-{p['job_id']}"[:60] + ("-embed" if p.get("embed") else "")
+    ats = p["ats"]
     srv, allow, url = None, [], p["url"]
     if p.get("embed"):
         srv, url = serve_embed(p["company"], p["job_id"])
         allow = ["job-boards.greenhouse.io", "boards.greenhouse.io"]
     try:
         t = time.monotonic()
-        r = run_plan(url, OUT / f"{ats}-{slug}-plan.json", allow)
+        r = run_plan(url, plan_file(p), allow, p.get("mode", "explore"))
         pl = r.get("planner", {})
-        snap = r.get("snapshot_before") or []
-        seen = {(f["id"], f["name"], f["label"]) for f in snap}
-        snap = snap + [f for f in r.get("snapshot_after") or [] if (f["id"], f["name"], f["label"]) not in seen]
+        snap = union_snapshot(r)
         row = {**p, "plan_url": url, "score": score(pl.get("plan"), snap) if snap else None,
                "plan_wall_s": round(time.monotonic() - t, 1), "load_s": r.get("load_s"),
                "fingerprint": r.get("fingerprint"),
@@ -224,7 +254,8 @@ def run_one(p: dict) -> dict:
                                                                      "submit_attempts_blocked",
                                                                      "allowed_readonly_graphql_queries")},
                "guard_error": r.get("guard_error"), "final_url": r.get("final_url")}
-        row["baseline"] = run_baseline(url, ats)
+        if p.get("mode") != "list":  # the extension baseline does not depend on the planner mode
+            row["baseline"] = run_baseline(url, ats)
     finally:
         if srv:
             srv.shutdown()
@@ -233,9 +264,20 @@ def run_one(p: dict) -> dict:
 
 # ---------- reports ----------
 
-def _rows(ats: str) -> list[dict]:
-    f = OUT / f"{ats}.jsonl"
-    return [json.loads(x) for x in f.read_text(encoding="utf-8").splitlines() if x.strip()] if f.exists() else []
+def _rows(ats: str, mode: str = "explore") -> list[dict]:
+    """Rows of a run, re-scored from the saved plan files (so scorer fixes apply to old runs)."""
+    f = rows_file(ats, mode)
+    rows = [json.loads(x) for x in f.read_text(encoding="utf-8").splitlines() if x.strip()] if f.exists() else []
+    for row in rows:
+        pf = plan_file(row)
+        if pf.exists():
+            r = json.loads(pf.read_text(encoding="utf-8"))
+            if union_snapshot(r):
+                row["score"] = score((r.get("planner") or {}).get("plan"), union_snapshot(r))
+        rep = HERE / "reports" / (row.get("baseline") or {}).get("report", "-")
+        if rep.is_file():
+            row["baseline"] = baseline_from(rep)
+    return rows
 
 
 def _pct(a, b):
@@ -249,6 +291,8 @@ def aggregate(rows: list[dict]) -> dict:
     med = lambda k: statistics.median([p[k] for p in pl if p.get(k) is not None]) if pl else None  # noqa: E731
     b = [r["baseline"] for r in rows if r.get("baseline", {}).get("required_total") is not None]
     req = sum(x["required_total"] for x in b)
+    req_empty = sum(len(x["required_empty"]) for x in b)
+    flagged = sum(x.get("required_flagged", 0) for x in b)
     return {
         "postings": len(rows), "plans_ok": sum(1 for r in rows if r["planner"].get("done") and r.get("score")
                                                 and r["score"]["plan_fields"]),
@@ -262,7 +306,8 @@ def aggregate(rows: list[dict]) -> dict:
         "median_s": med("agent_s"), "median_steps": med("steps"), "median_calls": med("llm_calls"),
         "median_tokens": statistics.median([(p.get("prompt_tokens") or 0) + (p.get("completion_tokens") or 0)
                                             for p in pl]) if pl else None,
-        "ext_required": _pct(req - sum(len(x["empty_required"]) for x in b), req) if b else "-",
+        "ext_required": _pct(req - req_empty, req) if b else "-",
+        "ext_required_or_flagged": _pct(req - req_empty + flagged, req) if b else "-",
         "ext_filled": sum(x["filled"] for x in b), "ext_fields": sum(x["fields"] for x in b),
         "submits": sum((r.get("plan_guard") or {}).get("submit_attempts_blocked") or 0 for r in rows),
     }
@@ -272,17 +317,18 @@ def write_reports() -> None:
     DOCS.mkdir(parents=True, exist_ok=True)
     summary = ["| ATS | postings | plans done | field recall | precision | required acc | options (select/combobox) "
                "| widget acc | consent/demographic = never | median plan s | median steps | median LLM calls "
-               "| median tokens | extension: required filled | submits blocked (planner) |", "|" + "---|" * 15]
-    for ats in COMPANIES:
-        rows = _rows(ats)
+               "| median tokens | extension: required filled | extension: required filled or flagged | submits blocked (planner) |",
+               "|" + "---|" * 16]
+    for ats, mode in [(a, m) for a in COMPANIES for m in ("explore", "list")]:
+        rows = _rows(ats, mode)
         if not rows:
             continue
         a = aggregate(rows)
-        summary.append(f"| {ats} | {a['postings']} | {a['plans_ok']} | {a['recall']} | {a['precision']} | "
+        summary.append(f"| {ats} ({mode}) | {a['postings']} | {a['plans_ok']} | {a['recall']} | {a['precision']} | "
                        f"{a['required']} | {a['options']} | {a['widget']} | {a['sensitive']} (violations "
                        f"{a['sensitive_violations']}) | {a['median_s']} | {a['median_steps']} | {a['median_calls']} | "
-                       f"{a['median_tokens']} | {a['ext_required']} | {a['submits']} |")
-        lines = [f"# Phase 0: {ats}", "", "Generated by `tools/browser-use-harness/phase0.py --report`. "
+                       f"{a['median_tokens']} | {a['ext_required']} | {a['ext_required_or_flagged']} | {a['submits']} |")
+        lines = [f"# Phase 0: {ats}, planner mode `{mode}`", "", "Generated by `tools/browser-use-harness/phase0.py --report`. "
                  "Guard on for every run (network: non-GET blocked; DOM: submits cancelled). Synthetic identity "
                  "only.", "", "| posting | DOM fields | plan fields | recall | precision | required | options | "
                  "widget | never | plan s | steps | LLM calls | tokens | ext filled | ext required empty | guard "
@@ -297,8 +343,8 @@ def write_reports() -> None:
                 f"{sc.get('sensitive_never', '-')}/{sc.get('sensitive_total', '-')} | {pl.get('agent_s')} | "
                 f"{pl.get('steps')} | {pl.get('llm_calls')} | "
                 f"{(pl.get('prompt_tokens') or 0) + (pl.get('completion_tokens') or 0)} | "
-                f"{b.get('filled', '-')}/{b.get('fields', '-')} | "
-                f"{len(b.get('empty_required', [])) if 'empty_required' in b else '-'}/{b.get('required_total', '-')} | "
+                f"{b.get('filled_fields', '-')}/{b.get('fields', '-')} | "
+                f"{len(b['required_empty']) if 'required_empty' in b else '-'}/{b.get('required_total', '-')} | "
                 f"{g.get('canary_blocked')}/{g.get('blocked_non_get_requests')}/{g.get('submit_attempts_blocked')} |")
         lines += ["", "## Per posting details", ""]
         for r in rows:
@@ -310,11 +356,13 @@ def write_reports() -> None:
                       f"- Required wrong: {sc.get('required_wrong')}", f"- Widget wrong: {sc.get('widget_wrong')}",
                       f"- Sensitive not 'never': {sc.get('sensitive_violations')}",
                       f"- Planner errors: {r.get('planner_errors')}",
-                      f"- Extension baseline: ok={b.get('ext_ok')}, required empty={b.get('empty_required')}, "
+                      f"- Extension baseline: ok={b.get('ext_ok')}, required empty={b.get('required_empty')}, "
                       f"failures={b.get('failures')}, error={b.get('error')}", ""]
             if pl.get("final_result"):
                 lines.insert(-1, f"- Final text (no structured plan): {pl['final_result'][:300]!r}")
-        (DOCS / f"phase0-{ats}.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        doc = DOCS / f"phase0-{ats}.md"
+        prev = doc.read_text(encoding="utf-8") if mode == "list" and doc.exists() else ""
+        doc.write_text(prev + ("\n---\n\n" if prev else "") + "\n".join(lines) + "\n", encoding="utf-8")
     (OUT / "summary-table.md").write_text("\n".join(summary) + "\n", encoding="utf-8")
     print("\n".join(summary))
 
@@ -326,15 +374,21 @@ def main() -> int:
     ap.add_argument("--embed", action="store_true", help="also plan the first Greenhouse posting via a local embed page")
     ap.add_argument("--report", action="store_true")
     ap.add_argument("--pick-only", action="store_true")
+    ap.add_argument("--mode", choices=["explore", "list"], default="explore",
+                    help="list: re-plan the postings of the explore run with the done-only planner (no baseline)")
     a = ap.parse_args()
     if a.report:
         write_reports()
         return 0
     OUT.mkdir(parents=True, exist_ok=True)
-    done = {(r["url"], bool(r.get("embed"))) for r in _rows(a.ats)}
-    postings = pick_postings(a.ats, a.n)
-    if a.embed and postings:
-        postings.append({**postings[0], "embed": True})
+    done = {(r["url"], bool(r.get("embed"))) for r in _rows(a.ats, a.mode)}
+    if a.mode == "list":
+        keep = ("ats", "company", "title", "url", "job_id", "embed")
+        postings = [{**{k: r[k] for k in keep if k in r}, "mode": "list"} for r in _rows(a.ats)]
+    else:
+        postings = pick_postings(a.ats, a.n)
+        if a.embed and postings:
+            postings.append({**postings[0], "embed": True})
     print(json.dumps(postings, indent=1))
     if a.pick_only:
         return 0
@@ -343,7 +397,7 @@ def main() -> int:
             continue
         print(f"=== {p['ats']} {p['company']} {p['url']}{' (embed)' if p.get('embed') else ''}", flush=True)
         row = run_one(p)
-        with open(OUT / f"{a.ats}.jsonl", "a", encoding="utf-8") as fh:
+        with open(rows_file(a.ats, a.mode), "a", encoding="utf-8") as fh:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
         print(json.dumps({k: row.get(k) for k in ("score", "planner", "baseline")}, default=str)[:1500], flush=True)
     return 0

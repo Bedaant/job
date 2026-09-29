@@ -53,8 +53,9 @@ Your job: walk the WHOLE form, top to bottom (scroll down until you have seen it
 report every field a candidate would fill. To learn each field:
 - native <select>: its first options are listed in the browser state; record those.
 - custom dropdown / combobox (an <input role=combobox>, "Select..."): CLICK the input to open it,
-  read the listed options from the next browser state, then move on to the next field (at most 50
-  options per field).
+  read the listed options from the next browser state, then move on to the next field (at most 20
+  options per field; for long standard lists such as countries or US states record the first 5
+  and then "... (list of countries)").
 - If an action fails, do not repeat it on the same element: record what you know and move on.
 - location / city fields that suggest as you type: input "San Francisco" and read the suggestions.
 - If there is a "Next" / "Continue" step button that is NOT the final submit, click it and map the
@@ -85,6 +86,20 @@ For each field report:
 Never put the applicant's values into the plan."""
 
 
+# --mode list: no exploring at all. The browser state already lists every field (tall viewport), so
+# the agent gets `done` only (like check_form's auditor) and reads the plan off the page in one call.
+LIST_ALLOWED = {"done"}
+LIST_VIEWPORT = {"width": 1280, "height": 8000}
+LIST_TASK = """You are MAPPING a job application form to build a fill plan. The form is already open and
+the browser state you are given lists EVERY field of it. HARD RULES: do not click, type, select,
+scroll, navigate or submit. Call done right away with the COMPLETE plan: every field a candidate
+would fill, top to bottom, including the demographic / EEO questions at the bottom. Options: the
+choices you can see (native select options, radio / checkbox labels; at most 20; [] if hidden).
+Every field must have a non-empty label. The fictional applicant is only context: {identity}.
+
+""" + TASK[TASK.index("For each field report:"):]
+
+
 class PlanField(BaseModel):
     label: str
     selector_hint: str = ""
@@ -106,24 +121,25 @@ def fingerprint(snapshot: list[dict]) -> str:
     return hashlib.sha256("\n".join(keys).encode()).hexdigest()[:16]
 
 
-async def run_planner(cdp_url: str, allowed: list[str], max_steps: int) -> dict:
+async def run_planner(cdp_url: str, allowed: list[str], max_steps: int, mode: str = "explore") -> dict:
     from browser_use import Agent, Browser, Tools
     from browser_use.dom.views import DEFAULT_INCLUDE_ATTRIBUTES
 
     llm, model = cf.nim_llm()
     browser = Browser(cdp_url=cdp_url, keep_alive=True, allowed_domains=allowed,
                       highlight_elements=False, accept_downloads=False, auto_download_pdfs=False)
-    excluded = sorted(set(Tools().registry.registry.actions) - PLANNER_ALLOWED)
+    permitted = LIST_ALLOWED if mode == "list" else PLANNER_ALLOWED
+    excluded = sorted(set(Tools().registry.registry.actions) - permitted)
     agent = Agent(
-        task=TASK.format(identity=json.dumps(IDENTITY), keys=", ".join(PROFILE_KEYS)), llm=llm,
+        task=(LIST_TASK if mode == "list" else TASK).format(identity=json.dumps(IDENTITY), keys=", ".join(PROFILE_KEYS)), llm=llm,
         page_extraction_llm=llm, browser=browser, tools=Tools(exclude_actions=excluded),
         output_model_schema=FormPlan, use_vision=False, flash_mode=False, use_thinking=False, directly_open_url=False,
         max_actions_per_step=5, llm_timeout=170, use_judge=False, max_failures=8,
         include_attributes=DEFAULT_INCLUDE_ATTRIBUTES + ["required", "aria-required"],
     )
     actions = set(agent.tools.registry.registry.actions)
-    if not actions <= PLANNER_ALLOWED:  # never run a planner that could navigate / upload / eval
-        raise GuardMissing(f"planner has disallowed actions: {sorted(actions - PLANNER_ALLOWED)}")
+    if not actions <= permitted:  # never run a planner that could navigate / upload / eval
+        raise GuardMissing(f"planner has disallowed actions: {sorted(actions - permitted)}")
     t = time.monotonic()
     try:
         history = await agent.run(max_steps=max_steps)
@@ -149,7 +165,7 @@ async def run_planner(cdp_url: str, allowed: list[str], max_steps: int) -> dict:
     }
 
 
-async def plan(url: str, allow: list[str], headed: bool, max_steps: int) -> dict:
+async def plan(url: str, allow: list[str], headed: bool, max_steps: int, mode: str = "explore") -> dict:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     t0 = time.monotonic()
     report: dict = {"url": url, "started_at": stamp}
@@ -161,7 +177,7 @@ async def plan(url: str, allow: list[str], headed: bool, max_steps: int) -> dict
     try:
         async with async_playwright() as pw:
             context = await pw.chromium.launch_persistent_context(
-                user_dir, channel="chromium", headless=not headed, service_workers="block", viewport=VIEWPORT,
+                user_dir, channel="chromium", headless=not headed, service_workers="block", viewport=LIST_VIEWPORT if mode == "list" else VIEWPORT,
                 args=[f"--remote-debugging-port={port}"],
             )
             guard = await install_guard(context)  # layers 1+2, before ANY navigation
@@ -181,7 +197,7 @@ async def plan(url: str, allow: list[str], headed: bool, max_steps: int) -> dict
             await page.evaluate("() => { const f = document.querySelector('form, iframe, input:not([type=hidden])');"
                                 " if (f) f.scrollIntoView({block: 'start'}); }")
             try:
-                report["planner"] = await run_planner(f"http://127.0.0.1:{port}", allowed, max_steps)
+                report["planner"] = await run_planner(f"http://127.0.0.1:{port}", allowed, max_steps, mode)
             except GuardMissing:
                 raise
             except Exception as e:
@@ -210,10 +226,13 @@ def main() -> int:
     ap.add_argument("--url", required=True)
     ap.add_argument("--allow", nargs="*", default=[], help="extra hosts the agent may be on (embed iframes)")
     ap.add_argument("--out", help="write the JSON report here (default reports/<stamp>-plan.json)")
-    ap.add_argument("--max-steps", type=int, default=40)
+    ap.add_argument("--max-steps", type=int, default=30)
+    ap.add_argument("--mode", choices=["explore", "list"], default="explore",
+                    help="explore: walk the form with clicks/typing; list: done-only, read the plan off the page")
     ap.add_argument("--headed", action="store_true")
     a = ap.parse_args()
-    r = asyncio.run(plan(a.url, a.allow, a.headed, a.max_steps))
+    r = asyncio.run(plan(a.url, a.allow, a.headed, 3 if a.mode == "list" else a.max_steps, a.mode))
+    r["mode"] = a.mode
     out = a.out or str(cf.REPORTS / f"{r['started_at']}-plan.json")
     cf.REPORTS.mkdir(exist_ok=True)
     with open(out, "w", encoding="utf-8") as fh:
