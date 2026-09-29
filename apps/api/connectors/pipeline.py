@@ -99,7 +99,7 @@ def _embed_text(title, company, description) -> str:
     return f"{title} at {company}. {description or ''}"[:EMBED_CHARS]
 
 
-def backfill_job_embeddings(db, limit: int = 50) -> int:
+def backfill_job_embeddings(db, limit: int = 50, only_ids=None) -> int:
     """Embed jobs saved without a vector (an embeddings outage during discovery).
     Bounded per run and failure-tolerant, like the insert path. Requests are
     sized to fit a 10K-tokens-per-minute cap; the first failure (a 429 once the
@@ -107,8 +107,10 @@ def backfill_job_embeddings(db, limit: int = 50) -> int:
     rest waits for the next discover run rather than sleeping in the worker.
     Returns how many were embedded."""
     # Newest first: on a 3 RPM free tier the backlog clears slowly, and fresh postings matter most.
-    pending = (db.query(models.Job).filter(models.Job.embedding.is_(None))
-               .order_by(models.Job.fetched_at.desc().nullslast()).limit(limit).all())
+    query = db.query(models.Job).filter(models.Job.embedding.is_(None))
+    if only_ids is not None:
+        query = query.filter(models.Job.id.in_(only_ids))
+    pending = query.order_by(models.Job.fetched_at.desc().nullslast()).limit(limit).all()
     batches, size = [], BACKFILL_REQUEST_CHARS
     for job in pending:
         text = _embed_text(job.title, job.company, job.description)

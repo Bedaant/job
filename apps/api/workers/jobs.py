@@ -168,8 +168,13 @@ def embed_backlog_task() -> dict:
     """Scheduled: one backfill pass over jobs saved without a vector. Discovery also
     runs one, but only hourly while it adds ~100 jobs; on the free tier that backlog
     never cleared and unembedded jobs can't be matched (found live, 2026-09-29)."""
+    from campaigns import _in_bounds
     with session_scope() as db:
-        return {"embedded": backfill_job_embeddings(db)}
+        # Jobs an active campaign asks for first; the free tier is too slow to spend on the rest.
+        unembedded = db.query(models.Job).filter(models.Job.embedding.is_(None))
+        active = db.query(models.Campaign).filter(models.Campaign.status == models.CampaignStatus.active).all()
+        wanted = {j.id for c in active for j in _in_bounds(unembedded, c)}
+        return {"embedded": backfill_job_embeddings(db, only_ids=wanted or None)}
 
 
 def sweep_campaigns_task() -> dict:

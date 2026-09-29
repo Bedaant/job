@@ -311,3 +311,28 @@ def test_embed_backlog_task_runs_one_backfill_pass(mock_scope, mock_backfill):
     assert jobs.embed_backlog_task() == {"embedded": 6}
     mock_backfill.assert_called_once()
     assert 60 <= jobs.EMBED_BACKLOG_INTERVAL_SECONDS <= 300
+
+
+@patch("workers.jobs.session_scope")
+def test_embed_backlog_task_embeds_jobs_the_active_campaigns_want_first(mock_scope, db_session):
+    """Live: 1,556 jobs waited and newest-first spent the free tier on roles nobody's
+    campaign asks for (PM backlog 96 -> 92 in four passes)."""
+    mock_scope.return_value.__enter__.return_value = db_session
+    mock_scope.return_value.__exit__.return_value = False
+    user = models.User(email="emb@x.com", password_hash="x")
+    db_session.add(user)
+    db_session.commit()
+    profile = models.Profile(user_id=user.id, persona=models.Persona.developer)
+    db_session.add(profile)
+    db_session.commit()
+    for n, title in enumerate(["Product Manager", "Staff Engineer"]):
+        db_session.add(models.Job(source="lever", external_id=str(n), canonical_hash=f"e{n}", title=title,
+                                  company="Acme", apply_url="https://x", location="Bengaluru"))
+    db_session.add(models.Campaign(profile_id=profile.id, name="PM", roles=["product manager"], locations=[],
+                                   remote_only=False, sources=[], status=models.CampaignStatus.active))
+    db_session.commit()
+
+    with patch("connectors.pipeline.embed_texts", side_effect=lambda texts, input_type: [[0.1] * 512 for _ in texts]):
+        assert jobs.embed_backlog_task() == {"embedded": 1}
+        assert db_session.query(models.Job).filter(models.Job.embedding.isnot(None)).one().title == "Product Manager"
+        assert jobs.embed_backlog_task() == {"embedded": 1}  # nothing wanted left: the rest of the backlog
