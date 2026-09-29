@@ -4,6 +4,7 @@ value the profile doesn't have; never fills a demographic/EEO/essay field
 regardless of what the model says.
 """
 import json
+import logging
 import re
 
 from answer_bank import DEMOGRAPHIC_LABEL_KEYWORDS, is_consent_field, is_demographic_field, is_demographic_label  # noqa: F401
@@ -312,7 +313,14 @@ def map_form_fields(
             f"PROFILE:\n{json.dumps(profile_summary)}"
         )
         for _attempt in range(MAX_ATTEMPTS):
-            raw = call_llm(SYSTEM_PROMPT, user_prompt)
+            try:
+                raw = call_llm(SYSTEM_PROMPT, user_prompt)
+            except Exception:
+                # Provider outage (NIM "temporarily overloaded"): keep what the rules and the
+                # bank answered, flag the rest for the user. Never fail the whole fill.
+                logging.getLogger(__name__).exception("map-fields LLM call failed; flagging %d fields",
+                                                      len(remaining_fields))
+                break
             cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
             try:
                 parsed = json.loads(cleaned)

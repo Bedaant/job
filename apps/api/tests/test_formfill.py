@@ -318,3 +318,15 @@ def test_how_did_you_hear_comes_from_the_bank_bound_to_options(llm):
     result = map_form_fields(HEAR, {"full_name": "Jane"}, answer_lookup=lambda q: "company website")
     assert result == [{"field_id": "f1", "maps_to": "answer_bank", "confidence": 1.0, "value": "Company website"}]
     llm.assert_not_called()
+
+
+@patch("formfill.map_fields.call_llm", side_effect=RuntimeError("503 Service temporarily overloaded"))
+def test_llm_outage_keeps_the_rule_matched_fields_and_flags_the_rest(_llm):
+    """NIM was overloaded again and again on 2026-09-29. An outage raised out of
+    map_form_fields, /extension/map-fields 500'd, and the extension filled nothing,
+    not even the email it had matched by rule."""
+    fields = [{"field_id": "e", "label_text": "Email", "input_type": "email", "name": "email"},
+              {"field_id": "q", "label_text": "Years of experience", "input_type": "text", "name": "yoe"}]
+    result = {m["field_id"]: m for m in map_form_fields(fields, {"email": "jane@example.com"})}
+    assert result["e"]["value"] == "jane@example.com"
+    assert result["q"]["maps_to"] == "unknown" and result["q"]["value"] is None
