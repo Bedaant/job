@@ -13,6 +13,9 @@ import {
   answerForFrame,
   isFromAssignedFrame,
   ITEM_TIMEOUT_MS,
+  MAX_PAGES,
+  pickEntryButton,
+  pickNextButton,
 } from "./driverCore.mjs";
 
 // Found live (auto-apply, embedded Greenhouse): page load (~8 s) + reading 12
@@ -187,4 +190,55 @@ test("fillsOnPopup: only a frame with the application form fills; a formless top
   assert.equal(fillsOnPopup({ isTop: true, controlTypes: tiny, hasIframes: true }), false);
   assert.equal(fillsOnPopup({ isTop: true, controlTypes: form, hasIframes: true }), true);
   assert.equal(fillsOnPopup({ isTop: true, controlTypes: tiny, hasIframes: false }), true); // plain page: as before
+});
+
+// --- page flow (multi-page forms, Workday) -------------------------------------
+const btn = (text, extra = {}) => ({ text, submitsForm: false, disabled: false, inOverlay: false, ...extra });
+
+test("MAX_PAGES covers Workday's six steps", () => {
+  assert.ok(MAX_PAGES >= 7);
+});
+
+// Workday's Review "Submit" shares Save and Continue's automation id: text decides.
+test("pickNextButton: a submit-ish button is never Next (last page)", () => {
+  assert.equal(pickNextButton([btn("Back"), btn("Submit")]), null);
+  assert.equal(pickNextButton([btn("Submit application")]), null);
+  assert.equal(pickNextButton([btn("Apply")]), null);
+  assert.equal(pickNextButton([]), null);
+});
+
+test("pickNextButton: Save and Continue is Next", () => {
+  assert.deepEqual(pickNextButton([btn("Back"), btn("Save and Continue")]), { index: 1 });
+  assert.deepEqual(pickNextButton([btn("Save & Continue")]), { index: 0 });
+});
+
+test("pickNextButton: an overlay's Continue (cookie banner) is skipped", () => {
+  assert.deepEqual(pickNextButton([btn("Continue", { inOverlay: true }), btn("Next")]), { index: 1 });
+});
+
+test("pickNextButton: two candidates, a page-posting one, or a disabled one stops", () => {
+  assert.match(pickNextButton([btn("Continue"), btn("Continue")]).stop, /Couldn't tell which button/);
+  assert.match(pickNextButton([btn("Next", { submitsForm: true })]).stop, /sends each page/);
+  assert.match(pickNextButton([btn("Next", { disabled: true })]).stop, /stayed disabled/);
+});
+
+test("pickEntryButton: Apply Manually beats Apply", () => {
+  assert.equal(pickEntryButton([btn("Apply"), btn("Apply Manually")], new Set()), 1);
+});
+
+test("pickEntryButton: an already-clicked text is skipped", () => {
+  assert.equal(pickEntryButton([btn("Apply"), btn("Apply Manually")], new Set(["apply manually"])), 0);
+  assert.equal(pickEntryButton([btn("Apply")], new Set(["apply"])), -1);
+});
+
+test("pickEntryButton: never a form-posting button, never a third-party shortcut", () => {
+  assert.equal(pickEntryButton([btn("Apply", { submitsForm: true })], new Set()), -1);
+  assert.equal(
+    pickEntryButton([btn("Apply with LinkedIn"), btn("Autofill with Resume"), btn("Use My Last Application")], new Set()),
+    -1,
+  );
+});
+
+test("pickEntryButton: overlays count (Workday's start dialog is one)", () => {
+  assert.equal(pickEntryButton([btn("Apply Manually", { inOverlay: true })], new Set()), 0);
 });
