@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Software Engineer - Harness Co Careers</title>
+<!-- Harness fixture: the Workday account wall. "Apply Manually" leads to Create Account, never to a
+     form. The only thing ApplyScout may do here is stop and ask the user to sign in. -->
+<style>
+  body { font: 15px system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; }
+  .field { margin: 12px 0; } label { display: block; }
+  input:not([type=checkbox]) { width: 100%; padding: 6px; box-sizing: border-box; }
+  [role=dialog] { border: 1px solid #888; padding: 16px; margin-top: 12px; }
+</style></head>
+<body>
+<div id="app"></div>
+
+<template id="job">
+  <h1>Software Engineer</h1>
+  <p>Harness Co - Remote. Build reliable backend services.</p>
+  <a data-automation-id="adventureButton" href="#" role="button">Apply</a>
+  <div role="dialog" aria-label="Start Your Application" hidden>
+    <h2>Start Your Application</h2>
+    <button type="button" data-automation-id="autofillWithResume">Autofill with Resume</button>
+    <button type="button" data-automation-id="applyManually">Apply Manually</button>
+    <button type="button" data-automation-id="useMyLastApplication">Use My Last Application</button>
+  </div>
+</template>
+
+<template id="signIn">
+  <div data-automation-id="signInContent">
+    <h2>Create Account</h2>
+    <div class="field"><label for="email">Email Address *</label>
+      <input id="email" type="email" data-automation-id="email" required aria-required="true"></div>
+    <div class="field"><label for="password">Password *</label>
+      <input id="password" type="password" data-automation-id="password" required aria-required="true"></div>
+    <div class="field"><label for="verifyPassword">Verify New Password *</label>
+      <input id="verifyPassword" type="password" data-automation-id="verifyPassword" required aria-required="true"></div>
+    <div class="field"><input type="checkbox" id="createAccountCheckbox" data-automation-id="createAccountCheckbox" required>
+      <label for="createAccountCheckbox" style="display:inline">Yes, I have read and consent to the terms and conditions *</label></div>
+    <button type="button" data-automation-id="createAccountSubmitButton">Create Account</button>
+    <p>Already have an account? <a href="#" data-automation-id="signInLink">Sign In</a></p>
+  </div>
+</template>
+
+<script>
+  const app = document.getElementById('app');
+  const clone = (id) => document.getElementById(id).content.cloneNode(true);
+  app.replaceChildren(clone('job'));
+  const dialog = app.querySelector('[role=dialog]');
+  app.querySelector('[data-automation-id=adventureButton]').addEventListener('click', (e) => {
+    e.preventDefault(); dialog.hidden = false;
+  });
+  app.querySelector('[data-automation-id=applyManually]').addEventListener('click', () => {
+    history.pushState(null, '', location.pathname.replace(/\/?$/, '/apply/applyManually') + location.search);
+    app.replaceChildren(clone('signIn'));
+    app.querySelector('[data-automation-id=createAccountSubmitButton]').addEventListener('click', () => {
+      fetch('/account', { method: 'POST', body: 'create' }).catch(() => null);
+    });
+  });
+</script>
+</body></html>

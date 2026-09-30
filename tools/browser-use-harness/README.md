@@ -79,6 +79,28 @@ D:\job-copilot\apps\api\.venv\Scripts\python.exe cleanup_accounts.py
 
 The default Anthropic posting stops at `needs_human` on its required arbitration consent, which ApplyScout never gives. `--job brex/8795500002` has no consent and no required location, so it reaches the submit. The guard cancels the submit, and the driver reports `unconfirmed`. The harness job is deleted along with the account.
 
+#### Multi-page (Workday-like) fixtures and recon
+
+```
+..\.venv-browser-use\Scripts\python auto_apply.py --fixture workday|workday-noconsent|wall [--passes 1]
+..\.venv-browser-use\Scripts\python auto_apply.py --url <real job URL>
+```
+
+- `--fixture` serves a local page from `fixtures/` as the job's `apply_url`. Both fixtures are a single top-frame page with no `<form>`, using real Workday `data-automation-id`s: a job page, an `adventureButton` "Apply" that opens a dialog, and "Apply Manually".
+  - `workday` (`workday_like.html`): 5 pages (My Information, My Experience, Application Questions, Voluntary Disclosures, Review). "Save and Continue" shows `errorMessage` alerts on empty required fields and stays on the page; otherwise it POSTs `/save`, shows a 1 s spinner and renders the next page. On Review the same button reads "Submit" and POSTs `/submitted`.
+  - `workday-noconsent`: the same page with `?consent=0`, which drops the Voluntary Disclosures page and its required consent checkbox, so Review is reachable.
+  - `wall` (`account_wall.html`): "Apply Manually" leads to Create Account (email, password, verify password, `createAccountSubmitButton`, which POSTs `/account`).
+- The local server counts POSTs per path (`server_hits`). The guard lets them through because they go to 127.0.0.1.
+- `--url` uses a real posting as the `apply_url`, under the guard. It is recon: the outcome is recorded, not judged.
+- The run timeout per pass is 900 s in these modes.
+- Each tab's `trail` records every distinct state: URL, which Workday automation ids are present, the active step, and the next button's text.
+- `mode_failures()` fails any of these modes on: a missing or unverified guard, a password field with a value, any `/account` or `/submitted` POST, or a demographic value.
+  - `wall` also needs a final status of `ready_for_review` with "sign in" in the last notes line.
+  - `workday` also needs `ready_for_review` and at least 2 `/save` POSTs.
+  - `workday-noconsent` needs the same, plus Review reached.
+
+`test_auto_apply.py` covers `mode_failures`, the POST counter and the fixtures in Chromium under the guard, offline (~15 s).
+
 ## Reading the report
 
 Each run writes `reports/<UTC stamp>-<ats>.json`, `.md` and a full-page `.png`. The directory is gitignored.
