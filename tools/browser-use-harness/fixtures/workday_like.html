@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Software Engineer - Harness Co Careers</title>
+<!-- Harness fixture: a Workday-like multi-page apply flow. Single top-frame SPA, no form element.
+     Real Workday data-automation-ids where known. Every POST goes to this 127.0.0.1 server. -->
+<style>
+  body { font: 15px system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; }
+  .field { margin: 12px 0; } label { display: block; } fieldset label { display: inline; margin-right: 12px; }
+  input:not([type=radio]):not([type=checkbox]), select { width: 100%; padding: 6px; box-sizing: border-box; }
+  [aria-invalid=true] { outline: 2px solid #c00; }
+  [data-automation-id=errorMessage] { color: #c00; }
+  [role=dialog] { border: 1px solid #888; padding: 16px; margin-top: 12px; }
+  ol.progress { display: flex; gap: 12px; list-style: none; padding: 0; color: #888; }
+  [data-automation-id=progressBarActiveStep] { color: #000; font-weight: 600; }
+  nav.bottom { display: flex; gap: 8px; margin-top: 20px; }
+</style></head>
+<body>
+<div id="app"></div>
+
+<template id="job">
+  <h1>Software Engineer</h1>
+  <p>Harness Co - Remote. Build reliable backend services.</p>
+  <a data-automation-id="adventureButton" href="#" role="button">Apply</a>
+  <div role="dialog" aria-label="Start Your Application" hidden>
+    <h2>Start Your Application</h2>
+    <button type="button" data-automation-id="autofillWithResume">Autofill with Resume</button>
+    <button type="button" data-automation-id="applyManually">Apply Manually</button>
+    <button type="button" data-automation-id="useMyLastApplication">Use My Last Application</button>
+  </div>
+</template>
+
+<template id="step-myInformation" data-name="My Information">
+  <div class="field" data-required><label for="firstName">First Name *</label>
+    <input id="firstName" name="firstName" data-automation-id="legalNameSection_firstName" required aria-required="true"></div>
+  <div class="field" data-required><label for="lastName">Last Name *</label>
+    <input id="lastName" name="lastName" data-automation-id="legalNameSection_lastName" required aria-required="true"></div>
+  <div class="field" data-required><label for="email">Email Address *</label>
+    <input id="email" name="email" type="email" data-automation-id="email" required aria-required="true"></div>
+  <div class="field" data-required><label for="phone">Phone Number *</label>
+    <input id="phone" name="phone" type="tel" data-automation-id="phone-number" required aria-required="true"></div>
+  <div class="field" data-required><label for="city">City *</label>
+    <input id="city" name="city" data-automation-id="addressSection_city" required aria-required="true"></div>
+</template>
+
+<template id="step-myExperience" data-name="My Experience">
+  <div class="field"><label for="resume">Resume</label>
+    <input id="resume" name="resume" type="file" data-automation-id="file-upload-input-ref" accept=".pdf,.doc,.docx"></div>
+  <div class="field"><label for="linkedin">LinkedIn</label>
+    <input id="linkedin" name="linkedin" type="url" data-automation-id="linkedinQuestion"></div>
+</template>
+
+<template id="step-applicationQuestions" data-name="Application Questions">
+  <div class="field" data-required>
+    <fieldset role="radiogroup" aria-required="true"><legend>Are you legally authorized to work in this country? *</legend>
+      <input type="radio" id="authorizedYes" name="authorized" value="Yes" required><label for="authorizedYes">Yes</label>
+      <input type="radio" id="authorizedNo" name="authorized" value="No" required><label for="authorizedNo">No</label>
+    </fieldset></div>
+  <div class="field" data-required><label for="hear">How did you hear about us? *</label>
+    <input id="hear" name="hear" required aria-required="true"></div>
+</template>
+
+<template id="step-voluntaryDisclosures" data-name="Voluntary Disclosures">
+  <div class="field"><label for="gender">Gender</label>
+    <select id="gender" name="gender" data-automation-id="gender">
+      <option value="">Select One</option><option>Male</option><option>Female</option>
+      <option>I do not wish to answer</option></select></div>
+  <div class="field" data-required>
+    <input type="checkbox" id="agreement" name="agreement" data-automation-id="agreementCheckbox" required aria-required="true">
+    <label for="agreement" style="display:inline">I have read and consent to the terms and conditions *</label></div>
+</template>
+
+<template id="step-review" data-name="Review">
+  <p>Review your application, then submit it.</p>
+</template>
+
+<template id="done">
+  <h2>Application Submitted</h2>
+</template>
+
+<script>
+  const app = document.getElementById('app');
+  const consent = new URLSearchParams(location.search).get('consent') !== '0';
+  const steps = ['myInformation', 'myExperience', 'applicationQuestions', 'voluntaryDisclosures', 'review']
+    .filter((s) => consent || s !== 'voluntaryDisclosures');
+  const clone = (id) => document.getElementById(id).content.cloneNode(true);
+  const el = (tag, attrs, text) => {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+    if (text) e.textContent = text;
+    return e;
+  };
+
+  function showJob() {
+    app.replaceChildren(clone('job'));
+    const dialog = app.querySelector('[role=dialog]');
+    app.querySelector('[data-automation-id=adventureButton]').addEventListener('click', (e) => {
+      e.preventDefault(); dialog.hidden = false;
+    });
+    app.querySelector('[data-automation-id=applyManually]').addEventListener('click', () => {
+      history.pushState(null, '', location.pathname.replace(/\/?$/, '/apply/applyManually') + location.search);
+      showStep(0);
+    });
+  }
+
+  function showStep(i) {
+    const tpl = document.getElementById('step-' + steps[i]);
+    const name = tpl.dataset.name;
+    const progress = el('ol', { class: 'progress', 'data-automation-id': 'progressBar' });
+    steps.forEach((s, j) => {
+      const li = el('li', { 'data-automation-id': j === i ? 'progressBarActiveStep' : j < i ? 'progressBarCompletedStep' : 'progressBarInactiveStep' });
+      if (j === i) li.append(el('label', {}, `current step ${i + 1} of ${steps.length}`), ' ');
+      li.append(el('label', {}, document.getElementById('step-' + s).dataset.name));
+      progress.append(li);
+    });
+    const last = i === steps.length - 1;
+    const back = el('button', { type: 'button', 'data-automation-id': 'pageFooterBackButton' }, 'Back');
+    const next = el('button', { type: 'button', 'data-automation-id': 'bottom-navigation-next-button' },
+      last ? 'Submit' : 'Save and Continue');
+    back.disabled = i === 0;
+    back.addEventListener('click', () => showStep(i - 1));
+    next.addEventListener('click', () => advance(i));
+    app.replaceChildren(progress, el('h2', {}, name), clone('step-' + steps[i]), el('nav', { class: 'bottom' }));
+    app.querySelector('nav.bottom').append(back, next);
+  }
+
+  function valid() {
+    app.querySelectorAll('[data-automation-id=errorMessage]').forEach((e) => e.remove());
+    let ok = true;
+    app.querySelectorAll('.field[data-required]').forEach((f) => {
+      const inputs = [...f.querySelectorAll('input, select')];
+      const empty = !inputs.some((x) => (x.type === 'radio' || x.type === 'checkbox') ? x.checked : x.value.trim());
+      inputs.forEach((x) => x.setAttribute('aria-invalid', String(empty)));
+      if (empty) {
+        ok = false;
+        const label = (f.querySelector('legend, label') || {}).textContent || 'This field';
+        f.append(el('div', { 'data-automation-id': 'errorMessage', role: 'alert' },
+          `Error: ${label.replace(/\s*\*\s*$/, '')} is required`));
+      }
+    });
+    return ok;
+  }
+
+  function advance(i) {
+    if (!valid()) return;
+    const last = i === steps.length - 1;
+    fetch(last ? '/submitted' : '/save', { method: 'POST', body: steps[i] }).catch(() => null);
+    app.replaceChildren(el('div', { 'data-automation-id': 'loadingSpinner', role: 'progressbar' }, 'Loading...'));
+    setTimeout(() => (last ? app.replaceChildren(clone('done')) : showStep(i + 1)), 1000);
+  }
+
+  showJob();
+</script>
+</body></html>

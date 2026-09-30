@@ -11,6 +11,11 @@ A `needs_human` pass answers the questions it returned in the answer bank (the r
 and re-approves, up to --passes. Account and job are deleted at the end.
 Exit 1 on: guard missing, the submit NOT blocked, a talent-community value, a demographic value,
 or no fields filled in the iframe.
+
+  --fixture workday|workday-noconsent|wall   local Workday-like multi-page SPA / account wall
+  --url <job URL>                            recon on a real posting (guarded, outcome not judged)
+Those modes are judged by mode_failures(): a password filled, a POST to /account or /submitted,
+a demographic value, and per mode the expected final status / notes / pages reached.
 """
 
 import argparse
@@ -24,8 +29,10 @@ import sys
 import tempfile
 import threading
 import time
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 from playwright.async_api import async_playwright
@@ -53,7 +60,7 @@ MARKS_SCRIPT = """(() => {
     || el.id || el.name || el.tagName).trim().slice(0, 150);
   new MutationObserver((ms) => { for (const m of ms) {
     const el = m.target; if (!el.title || !el.title.includes('ApplyScout')) continue;
-    try { window.%s(label(el), el.title, String(el.value || '').slice(0, 100)); } catch (_) {}
+    try { window.%s(label(el), el.title, String(el.value || '').slice(0, 100), el.type || ''); } catch (_) {}
   } }).observe(document, {subtree: true, attributes: true, attributeFilter: ['title']});
 })();""" % MARKS_BINDING
 # Observation only: a chained 25 ms timer in every frame, to measure background-tab throttling
@@ -80,6 +87,20 @@ new MutationObserver((ms) => { if (p.first_mark_ms !== null) return; const now =
 # = Playwright's service_workers="block", which a CDP-joined context doesn't take (guard layer 1)
 BLOCK_SW = "if (navigator.serviceWorker) navigator.serviceWorker.register = async () => {};"
 RUN_TIMEOUT_S = 300  # ITEM_TIMEOUT 60 s + verify 20+10 s per item, plus slack
+LONG_RUN_TIMEOUT_S = 900  # fixture / url modes: several pages per item
+FIXTURES = cf.HERE / "fixtures"
+FIXTURE = {"workday": ("workday_like.html", ""), "workday-noconsent": ("workday_like.html", "?consent=0"),
+           "wall": ("account_wall.html", "")}
+# Where a multi-page flow is, per snapshot: URL, which Workday automation ids are on the page, the
+# active step and the next button's text.
+WORKDAY_IDS = ["adventureButton", "applyManually", "signInContent", "password", "bottom-navigation-next-button",
+               "progressBarActiveStep", "errorMessage"]
+TRAIL_JS = """(ids) => {
+  const q = (i) => document.querySelector(`[data-automation-id="${i}"]`);
+  const txt = (i) => ((q(i) || {}).innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 120);
+  return {href: location.href, ids: ids.filter(q), step: txt('progressBarActiveStep'),
+          next: txt('bottom-navigation-next-button')};
+}"""
 # Fictional answers for questions a needs_human pass returns (the user would type these in review).
 CANNED = [("notified", "Yes"), ("name of your current manager", "Alex Example"), ("sponsor", "No"), ("interviewed", "No"), ("deadline", "No"), ("country", "United States"), ("visa", "No"), ("authorized", "Yes"), ("relocat", "Yes"), ("remote", "Yes"),
           ("in-person", "Yes"), ("office", "Yes"), ("salary", "Open to discussing"), ("start", "In two weeks"),
@@ -92,20 +113,30 @@ def canned(q: str) -> str:
                 "I build reliable backend services and would like to work on safe AI systems.")
 
 
-def serve_host_page(embed: str) -> tuple[http.server.ThreadingHTTPServer, str]:
+def serve_host_page(page: str) -> tuple[http.server.ThreadingHTTPServer, str]:
+    """Serves `page` on every GET; counts POSTs per path in srv.hits (/save, /submitted, /account)."""
+    body = page.encode()
+    hits: Counter = Counter()
+
     class H(http.server.BaseHTTPRequestHandler):
         def do_GET(self):  # noqa: N802
-            body = HOST_PAGE.replace("{embed}", embed.replace("&", "&amp;")).encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
 
+        def do_POST(self):  # noqa: N802
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            hits[urlsplit(self.path).path] += 1
+            self.send_response(204)
+            self.end_headers()
+
         def log_message(self, *_):
             pass
 
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    srv.hits = hits
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv, f"http://127.0.0.1:{srv.server_address[1]}/careers"
 
@@ -133,6 +164,45 @@ async def launch_like_a_user(pw, user_dir: str):
     return proc, browser.contexts[0]
 
 
+def mode_failures(report: dict, mode: str) -> list[str]:
+    """Verdict for the fixture / url modes (the default Greenhouse mode keeps its own checks in run)."""
+    passes = report.get("passes") or []
+    tabs = [t for p in passes for t in p.get("tabs") or []]
+    marks = [m for p in passes for m in p.get("marks") or []]
+    hits = report.get("server_hits") or {}
+    out = [report["error"]] if report.get("error") else []
+    if report.get("guard_error") or not (report.get("guard") or {}).get("installed") or not tabs \
+            or any(not t.get("guard_verified") for t in tabs):
+        out.append(f"guard missing or unverified: {report.get('guard_error') or [t.get('guard_error') for t in tabs]}")
+    pw = [x for t in tabs for x in t.get("passwords_filled") or []] + \
+         [m["label"] for m in marks if m.get("type") == "password" and m.get("value")]
+    if pw:
+        out.append(f"a password field got a value: {pw}")
+    for path in ("/account", "/submitted"):
+        if hits.get(path):
+            out.append(f"{path} was POSTed {hits[path]} time(s)")
+    demo = [d for t in tabs for d in t.get("demographic_violations") or []]
+    if demo:
+        out.append(f"demographic field got a value: {demo}")
+    if mode == "url":
+        return out
+    last = passes[-1] if passes else {}
+    if last.get("status_after") != "ready_for_review":
+        out.append(f"final status {last.get('status_after')!r}, expected 'ready_for_review'")
+    if mode == "wall":
+        lines = (last.get("notes") or "").strip().splitlines()
+        if not lines or "sign in" not in lines[-1].lower():
+            out.append(f"last notes line doesn't ask to sign in: {lines[-1] if lines else None!r}")
+        return out
+    if hits.get("/save", 0) < 2:
+        out.append(f"/save POSTed {hits.get('/save', 0)} time(s): fewer than 2 pages saved")
+    if mode == "workday-noconsent" and not any(
+            "review" in s.get("step", "").lower() or s.get("next", "").strip() == "Submit"
+            for t in tabs for s in t.get("trail") or []):
+        out.append("the Review page was never reached")
+    return out
+
+
 def add_job(url: str) -> str:
     r = subprocess.run([str(cf.API_PY), str(cf.HERE / "cleanup_accounts.py"), "--add-job", url],
                        capture_output=True, encoding="utf-8", errors="replace", timeout=120)
@@ -150,7 +220,7 @@ class Watcher:
     def attach(self, page) -> None:
         if not page.url.startswith("chrome-extension://"):
             rec = {"dialogs": [], "snapshots": 0, "iframe": None, "iframe_first": None, "top": None,
-                   "guard_verified": False}
+                   "top_first": None, "guard_verified": False, "trail": [], "passwords": set(), "demographic": {}}
             rec["task"] = asyncio.ensure_future(self.watch(page, rec))
             self.tabs.append(rec)
 
@@ -164,13 +234,19 @@ class Watcher:
             while not page.is_closed():
                 gh = next((f for f in page.frames if "greenhouse.io" in f.url), None)
                 try:
-                    rec["top"] = await page.main_frame.evaluate(cf.SNAPSHOT_JS)
+                    rec["top"] = top = await page.main_frame.evaluate(cf.SNAPSHOT_JS)
+                    rec["top_first"] = rec["top_first"] or top
+                    self.scan(rec, rec["top_first"], top)
+                    at = await page.main_frame.evaluate(TRAIL_JS, WORKDAY_IDS)
+                    if not rec["trail"] or rec["trail"][-1] != at:
+                        rec["trail"].append(at)
                     if gh:
                         snap = await gh.evaluate(cf.SNAPSHOT_JS)
                         rec["iframe_first"] = rec["iframe_first"] or snap
                         rec["iframe"], rec["iframe_url"] = snap, gh.url
                         rec["timer_probe"] = await gh.evaluate(
                             "() => ({...window.__jcTimerProbe, refs: (window.__refs || []).map((e) => [e.id.slice(-6), e.isConnected, e.getAttribute('aria-expanded'), document.activeElement === e]), comboboxes: [...document.querySelectorAll('input[role=combobox]')].map((e) => e.id)})")
+                        self.scan(rec, rec["iframe_first"], snap)
                     rec["snapshots"] += 1
                 except Exception:  # closing / re-rendering mid-evaluate
                     pass
@@ -182,18 +258,33 @@ class Watcher:
             if not page.is_closed():
                 rec["error"] = f"{type(e).__name__}: {e}"[:300]
 
+    @staticmethod
+    def scan(rec: dict, first: list, snap: list) -> None:
+        """Every snapshot, not just the last: a multi-page flow drops a page's fields when it advances."""
+        rec["passwords"] |= {f["label"] or f["id"] for f in snap if f["type"] == "password" and f["value"]}
+        for d in cf.analyse(first, snap)["demographic_violations"]:
+            rec["demographic"][d["key"]] = d["label"] or d["key"]
 
-async def run(headed: bool, passes: int, job: str) -> dict:
+
+async def run(headed: bool, passes: int, job: str, mode: str = "greenhouse", url: str | None = None) -> dict:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    report: dict = {"mode": "auto-apply", "started_at": stamp, "passes": []}
+    report: dict = {"mode": "auto-apply", "target": mode, "started_at": stamp, "passes": []}
     if not (cf.EXT_DIST / "manifest.json").exists():
         sys.exit(f"{cf.EXT_DIST} missing - npm run build in apps/extension")
-    with httpx.Client(timeout=30) as c:
-        board, token = job.split("/")
-        embed = EMBED.format(board=board, token=token)
-        c.get(embed).raise_for_status()  # the posting must still be live
-    srv, host_url = serve_host_page(embed)
-    report["embed"] = embed
+    srv, timeout = None, LONG_RUN_TIMEOUT_S
+    if mode == "greenhouse":
+        with httpx.Client(timeout=30) as c:
+            board, token = job.split("/")
+            embed = EMBED.format(board=board, token=token)
+            c.get(embed).raise_for_status()  # the posting must still be live
+        srv, host_url = serve_host_page(HOST_PAGE.replace("{embed}", embed.replace("&", "&amp;")))
+        report["embed"], timeout = embed, RUN_TIMEOUT_S
+    elif mode == "url":
+        host_url = url
+    else:
+        name, query = FIXTURE[mode]
+        srv, host_url = serve_host_page((FIXTURES / name).read_text(encoding="utf-8"))
+        host_url += query
     report["apply_url"] = host_url
     acct = cf.provision(stamp)
     report["account"] = {"email": acct["email"], "profile_id": acct["profile_id"]}
@@ -220,8 +311,9 @@ async def run(headed: bool, passes: int, job: str) -> dict:
                 )
             guard = await install_guard(context)  # before ANY navigation, covers every tab the driver opens
             marks: list = []
-            await context.expose_binding(MARKS_BINDING, lambda src, label, title, value: marks.append(
-                {"frame": src["frame"].url[:120], "label": label, "mark": title.split(" —")[0], "value": value}))
+            await context.expose_binding(MARKS_BINDING, lambda src, label, title, value, typ="": marks.append(
+                {"frame": src["frame"].url[:120], "label": label, "mark": title.split(" —")[0], "value": value,
+                 "type": typ}))
             await context.add_init_script(MARKS_SCRIPT)
             await context.add_init_script(TIMER_PROBE)
             ours = lambda w: w.url.endswith("/service-worker-loader.js")  # a CDP-joined browser lists others too
@@ -245,9 +337,9 @@ async def run(headed: bool, passes: int, job: str) -> dict:
                 t = time.monotonic()
                 try:
                     result = await asyncio.wait_for(
-                        popup.evaluate("() => chrome.runtime.sendMessage({type: 'jc:run-queue'})"), RUN_TIMEOUT_S)
+                        popup.evaluate("() => chrome.runtime.sendMessage({type: 'jc:run-queue'})"), timeout)
                 except asyncio.TimeoutError:
-                    result = {"error": f"no answer in {RUN_TIMEOUT_S}s"}
+                    result = {"error": f"no answer in {timeout}s"}
                 context.remove_listener("page", watcher.attach)
                 for tab in watcher.tabs:
                     tab["task"].cancel()
@@ -264,6 +356,8 @@ async def run(headed: bool, passes: int, job: str) -> dict:
                         "iframe_url": tab.get("iframe_url"), "timer_probe": tab.get("timer_probe"),
                         "iframe": cf.analyse(tab.get("iframe_first") or [], ifr) if ifr else None,
                         "talent_community": [{"id": f["id"], "value": f["value"]} for f in top],
+                        "trail": tab["trail"], "passwords_filled": sorted(tab["passwords"]),
+                        "demographic_violations": sorted(tab["demographic"].values()),
                     })
                 report["passes"].append(p)
                 if row["status"] != "ready_for_review":
@@ -287,12 +381,16 @@ async def run(headed: bool, passes: int, job: str) -> dict:
     finally:
         report["guard"] = guard.summary() if guard else {"installed": False}
         report["cleanup"] = cf.cleanup(acct["email"])
-        srv.shutdown()
+        if srv:
+            report["server_hits"] = dict(srv.hits)
+            srv.shutdown()
         if proc:
             proc.terminate()
             proc.wait(timeout=30)
         shutil.rmtree(user_dir, ignore_errors=True)
 
+    if mode != "greenhouse":
+        return finish(report, stamp, mode_failures(report, mode))
     g, last = report["guard"], (report["passes"] or [{}])[-1]
     tabs = [t for p in report["passes"] for t in p["tabs"]]
     failures = [report["error"]] if report.get("error") else []
@@ -309,10 +407,15 @@ async def run(headed: bool, passes: int, job: str) -> dict:
         failures.append("nothing filled in the Greenhouse iframe")
     if last.get("status_after") in ("applied", "submitted_unconfirmed") and not g.get("submit_attempts_blocked"):
         failures.append("a submit was reported but the guard saw none")
+    return finish(report, stamp, failures)
+
+
+def finish(report: dict, stamp: str, failures: list[str]) -> dict:
     report["failures"] = failures
     report["passed"] = not failures
     cf.REPORTS.mkdir(exist_ok=True)
-    out = cf.REPORTS / f"{stamp}-auto-apply.json"
+    mode = report["target"]
+    out = cf.REPORTS / f"{stamp}-auto-apply{'' if mode == 'greenhouse' else '-' + mode}.json"
     out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"report: {out}")
     return report
@@ -323,14 +426,24 @@ def main() -> int:
     ap.add_argument("--headed", action="store_true",
                     help="visible window with Chrome's real background-tab timer throttling (the driver's tab is hidden)")
     ap.add_argument("--job", default=DEFAULT_JOB, help="Greenhouse <board>/<job id> to embed")
+    target = ap.add_mutually_exclusive_group()
+    target.add_argument("--fixture", choices=list(FIXTURE), help="local Workday-like fixture instead of the embed")
+    target.add_argument("--url", help="recon: a real job URL as the apply_url (guarded; outcome recorded, not judged)")
     ap.add_argument("--passes", type=int, default=2, help="driver passes; a needs_human pass answers and re-approves")
     ap.add_argument("--ext-dist", type=Path, help=f"built extension to load (default {cf.EXT_DIST})")
     a = ap.parse_args()
     if a.ext_dist:
         cf.EXT_DIST = a.ext_dist.resolve()
-    r = asyncio.run(run(a.headed, a.passes, a.job))
+    mode = a.fixture or ("url" if a.url else "greenhouse")
+    r = asyncio.run(run(a.headed, a.passes, a.job, mode, a.url))
     for p in r["passes"]:
         print(f"pass {p['pass']}: {p['run_queue']} -> {p['status_after']} ({p['seconds']} s)")
+        if mode != "greenhouse":
+            print(f"  notes: {p['notes']!r}")
+            for t in p["tabs"]:
+                print("  trail: " + " | ".join(f"{s['step'] or ','.join(s['ids']) or s['href']}" for s in t["trail"]))
+    if "server_hits" in r:
+        print(f"server POSTs: {r['server_hits']}")
     g = r["guard"]
     print(f"guard: submit attempts blocked={g.get('submit_attempts_blocked')}, "
           f"non-GET blocked={g.get('blocked_non_get_requests')}, canary={g.get('canary_blocked')}")
