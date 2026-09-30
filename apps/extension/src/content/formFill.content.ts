@@ -28,6 +28,7 @@ import {
   matchOption,
   readAllOptions,
   type Place,
+  waitFor as waitForChange,
 } from "./combobox.mjs";
 import { readLive, relink } from "./relink.mjs";
 import { base64ToBytes } from "../background/apiProxyCore.mjs";
@@ -177,15 +178,14 @@ function readControls(controls: HTMLElement[]): RawControl[] {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function waitFor<T>(probe: () => T, ms: number): Promise<T> {
-  const end = Date.now() + ms;
-  let hit = probe();
-  while (!hit && Date.now() < end) {
-    await sleep(25);
-    hit = probe();
-  }
-  return hit;
+// Woken by DOM changes, not a polling timer (background tabs: combobox.mjs waitFor).
+function onDomChange(cb: () => void): () => void {
+  const observer = new MutationObserver(cb);
+  observer.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+  return () => observer.disconnect();
 }
+
+const waitFor = <T,>(probe: () => T, ms: number): Promise<T> => waitForChange(probe, ms, onDomChange);
 
 // Greenhouse opens its react-select on key/mouse UP: a lone keydown does nothing.
 function pressKey(el: HTMLElement, key: string) {
@@ -223,8 +223,10 @@ async function openMenu(el: HTMLElement) {
 async function closeMenu(el: HTMLElement) {
   // Blur, never Escape: on a closed Greenhouse select Escape CLEARS the chosen value
   // (seen live), and on an open one it doesn't even close the menu.
+  // Not waited on: nothing reads the closed state, and in the driver's background tab
+  // the frame never gets focus (no focus/blur events, seen live), so the menu stays
+  // open and a wait here only ran out its timer: ~1 s per menu there.
   el.blur();
-  await waitFor(() => !isOpen(el), 150);
 }
 
 type ComboKind = "react-select" | "listbox";

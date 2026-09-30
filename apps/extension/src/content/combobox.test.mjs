@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
@@ -12,6 +12,7 @@ import {
   optionLabels,
   readAllOptions,
   readOptions,
+  waitFor,
 } from "./combobox.mjs";
 
 // --- widget kind, from attribute snapshots taken on the real pages ------------
@@ -266,4 +267,52 @@ test("matchCityOption: a state code only matches its own state", () => {
   assert.equal(matchCityOption(["Springfield, Maryland, United States", "Springfield, Massachusetts, United States"], ma), 1);
   assert.equal(matchCityOption(["Portland, Oregon, United States"], { city: "Portland", region: "ME", country_code: "US" }), -1);
   assert.equal(matchCityOption(["San Francisco, California, United States"], { city: "San Francisco", region: "CA", country_code: "US" }), 0);
+});
+
+// --- waitFor: the driver's tab is a background tab, where Chrome runs timers at most
+// once a second (measured live: a 25 ms timer took ~1000 ms). A wait must wake on
+// the DOM change it is waiting for, not on a timer tick.
+
+function fakeDom() {
+  const subs = new Set();
+  return {
+    onChange: (cb) => (subs.add(cb), () => subs.delete(cb)),
+    change: () => subs.forEach((cb) => cb()),
+    subs,
+  };
+}
+
+test("waitFor resolves on the DOM change, with no timer firing", async () => {
+  mock.timers.enable({ apis: ["setTimeout"] }); // no timer fires unless ticked
+  try {
+    const dom = fakeDom();
+    let open = false;
+    const waiting = waitFor(() => open, 150, dom.onChange);
+    open = true;
+    dom.change();
+    assert.equal(await waiting, true);
+    assert.equal(dom.subs.size, 0, "stops listening once resolved");
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("waitFor gives up after ms with the probe's last answer, and stops listening", async () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const dom = fakeDom();
+    const waiting = waitFor(() => null, 150, dom.onChange);
+    dom.change(); // an unrelated change: still nothing
+    mock.timers.tick(150);
+    assert.equal(await waiting, null);
+    assert.equal(dom.subs.size, 0);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("waitFor answers at once when the probe already holds", async () => {
+  const dom = fakeDom();
+  assert.equal(await waitFor(() => "x", 150, dom.onChange), "x");
+  assert.equal(dom.subs.size, 0);
 });
