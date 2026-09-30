@@ -102,6 +102,17 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-30 (latest+64) — Remote roles restricted to another country are left out
+
+**What changed.** A user in India was offered "Remote - US", "Europe" and "Time zone: CET" roles. `matching.filters.remote_open_to`
+treats a remote job as open if its location names no place (anywhere/worldwide/global/remote/blank), or names the user's country or
+region (whole words, so "Indiana" doesn't count). `build_matches` uses it with `profile.country_code`, and so does campaign candidate
+selection, because stored matches predate the filter. `LOCATION_ALIASES` moved from campaigns.py to matching/filters.py.
+Only India is covered; an unknown country is not filtered. Live: 218 of 630 remote jobs are open to India. The API suite passes (737).
+
+**Problem hit.** The `\b` regex escapes were written as literal backspace characters (heredoc → Python non-raw string).
+The tests caught it. Write regex-bearing code with the file tools, not shell heredocs.
+
 ### 2026-09-30 (latest+63) — Audit of the owner's first real use: matching, worker, outages, free-tier embeddings
 
 **What changed.** The owner asked for problems "like these" to be found and fixed. Each fix below has a test that failed before it and passes after. The API suite passes (733).
