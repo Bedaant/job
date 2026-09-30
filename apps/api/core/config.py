@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     smtp_from: str | None = None  # defaults to smtp_user
 
     cors_origins: list[str] = ["http://localhost:3000"]
+    # Where emailed links (password reset) point.
+    web_base_url: str = "http://localhost:3000"
 
 
 @lru_cache

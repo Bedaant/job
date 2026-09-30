@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { safeNext, setToken } from "@/lib/auth";
@@ -17,10 +18,15 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [expired, setExpired] = useState(false);
+  const [wasReset, setWasReset] = useState(false);
   const signup = mode === "signup";
 
   // Read after mount (not useSearchParams) so the page stays statically renderable.
-  useEffect(() => setExpired(new URLSearchParams(window.location.search).has("expired")), []);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setExpired(params.has("expired"));
+    setWasReset(params.has("reset"));
+  }, []);
   useEffect(() => {
     document.title = `${signup ? "Create account" : "Sign in"} · ApplyScout`;
   }, [signup]);
@@ -70,6 +76,12 @@ export default function LoginPage() {
           </p>
         )}
 
+        {wasReset && !signup && (
+          <p role="status" className="rounded-xl bg-muted px-4 py-3 text-center text-sm text-muted-foreground">
+            Your password is changed. Sign in with the new one.
+          </p>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-5 rounded-2xl border bg-card p-6 shadow-sm">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
@@ -97,10 +109,14 @@ export default function LoginPage() {
               aria-describedby={signup ? "password-hint" : undefined}
               aria-invalid={!!error || undefined}
             />
-            {signup && (
+            {signup ? (
               <p id="password-hint" className="text-sm text-muted-foreground">
                 At least 8 characters.
               </p>
+            ) : (
+              <Link href="/forgot-password" className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">
+                Forgot password?
+              </Link>
             )}
           </div>
 
