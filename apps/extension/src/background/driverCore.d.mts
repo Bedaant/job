@@ -27,6 +27,7 @@ export interface FrameAssignment<T> {
   item: T;
   frameId?: number;
   verify?: Verify;
+  pages?: number; // Next clicks acked so far (multi-page forms)
 }
 export const MIN_APPLICATION_FIELDS: number;
 export function countFields(controlTypes: string[]): number;
@@ -42,3 +43,9 @@ export function isFromAssignedFrame<T>(
 ): boolean;
 export const ITEM_TIMEOUT_MS: number;
 export function fillsOnPopup(frame: { isTop: boolean; controlTypes: string[]; hasIframes: boolean }): boolean;
+
+export type PageButton = { text: string; submitsForm: boolean; disabled: boolean; inOverlay: boolean };
+export const MAX_PAGES: number;
+export function normalize(text: string): string;
+export function pickNextButton(buttons: PageButton[]): null | { index: number } | { stop: string };
+export function pickEntryButton(buttons: PageButton[], clickedTexts: Set<string>): number;

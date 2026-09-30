@@ -82,7 +82,7 @@ function ownLabel(el: HTMLElement): string | null {
   return el.getAttribute("aria-label") || byIds || textOf(labelElement(el));
 }
 
-function isVisible(el: Element | null): boolean {
+export function isVisible(el: Element | null): boolean {
   if (!el || el.closest('[aria-hidden="true"]')) return false;
   const rect = el.getBoundingClientRect(); // display:none -> 0x0
   return rect.width > 0 && rect.height > 0 && getComputedStyle(el).visibility !== "hidden";
@@ -185,7 +185,7 @@ function onDomChange(cb: () => void): () => void {
   return () => observer.disconnect();
 }
 
-const waitFor = <T,>(probe: () => T, ms: number): Promise<T> => waitForChange(probe, ms, onDomChange);
+export const waitFor = <T,>(probe: () => T, ms: number): Promise<T> => waitForChange(probe, ms, onDomChange);
 
 // Greenhouse opens its react-select on key/mouse UP: a lone keydown does nothing.
 function pressKey(el: HTMLElement, key: string) {

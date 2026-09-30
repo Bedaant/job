@@ -143,3 +143,60 @@ export function isFromAssignedFrame(assignment, frameId) {
 export function fillsOnPopup({ isTop, controlTypes, hasIframes }) {
   return holdsApplicationForm(controlTypes) || (isTop && !hasIframes);
 }
+
+// --- page flow (multi-page forms: Workday) --------------------------------------
+// Pages before the last are walked with their "Next" button; the last page goes
+// through the unchanged audited submit (ADR-001). buttons: [{text, submitsForm,
+// disabled, inOverlay}] in document order, already filtered to visible ones.
+
+export const MAX_PAGES = 8; // Workday: 6 steps + slack
+
+export const normalize = (text) =>
+  String(text ?? "").toLowerCase().replace(/&/g, "and").replace(/[^a-z]+/g, " ").trim();
+
+// Exact matches only. Workday's Review "Submit" shares Save and Continue's automation
+// id, which is why Next is picked by text — and why "submit"/"apply" never are.
+const NEXT_TEXTS = new Set(["next", "continue", "save and continue", "save and next", "next step", "proceed"]);
+
+/** -> null (last page) | {index} | {stop: needs_human reason} */
+export function pickNextButton(buttons) {
+  // Overlays are cookie/consent banners and dialogs, not the form's own navigation.
+  const hits = [];
+  buttons.forEach((b, index) => {
+    if (!b.inOverlay && NEXT_TEXTS.has(normalize(b.text))) hits.push(index);
+  });
+  if (hits.length === 0) return null;
+  if (hits.length > 1) {
+    return { stop: "Couldn't tell which button moves this form to its next page; open it and finish it yourself." };
+  }
+  const b = buttons[hits[0]];
+  // Clicking it would send the page to the employer: only the audited submit may (ADR-001).
+  if (b.submitsForm) {
+    return {
+      stop: "This form sends each page to the employer as it goes, which ApplyScout doesn't do yet; open it and finish it yourself.",
+    };
+  }
+  if (b.disabled) return { stop: "The Next button stayed disabled; open the form and finish it yourself." };
+  return { index: hits[0] };
+}
+
+// Priority order. "Apply with LinkedIn" / "Autofill with Resume" never match: exact only.
+const ENTRY_TEXTS = [
+  "apply manually",
+  "apply without account",
+  "apply",
+  "apply now",
+  "apply for this job",
+  "start application",
+  "start your application",
+];
+
+/** The button that opens the application form, or -1. Overlays count: Workday's start dialog is one. */
+export function pickEntryButton(buttons, clickedTexts) {
+  for (const want of ENTRY_TEXTS) {
+    if (clickedTexts.has(want)) continue; // clicked already and we're still here: it didn't help
+    const index = buttons.findIndex((b) => !b.submitsForm && normalize(b.text) === want);
+    if (index !== -1) return index;
+  }
+  return -1;
+}

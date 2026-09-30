@@ -22,6 +22,7 @@ import {
   classifyFailure,
   isFromAssignedFrame,
   ITEM_TIMEOUT_MS,
+  MAX_PAGES,
   planRun,
   type FrameAssignment,
 } from "./driverCore.mjs";
@@ -134,17 +135,15 @@ function runItem(item: WorkItem): Promise<ItemResult> {
       resolve(result);
     };
 
-    let timer = setTimeout(
-      () =>
-        finish({
-          outcome: "failed",
-          reason:
-            tabId !== undefined && assignments.get(tabId)?.frameId === undefined
-              ? `no application form found in any frame of the page within ${ITEM_TIMEOUT_MS}ms`
-              : `timed out after ${ITEM_TIMEOUT_MS}ms`,
-        }),
-      ITEM_TIMEOUT_MS,
-    );
+    const giveUp = () =>
+      finish({
+        outcome: "failed",
+        reason:
+          tabId !== undefined && assignments.get(tabId)?.frameId === undefined
+            ? `no application form found in any frame of the page within ${ITEM_TIMEOUT_MS}ms`
+            : `timed out after ${ITEM_TIMEOUT_MS}ms`,
+      });
+    let timer = setTimeout(giveUp, ITEM_TIMEOUT_MS);
 
     const onMessage = (
       message: any,
@@ -155,6 +154,17 @@ function runItem(item: WorkItem): Promise<ItemResult> {
       const assignment = assignments.get(tabId);
       // Only the chosen frame counts; a captcha/ad frame is never heard (no ack either).
       if (!isFromAssignedFrame(assignment, sender.frameId)) return;
+      if (message?.type === "jc:next-page") {
+        // Multi-page form: each page gets a fresh ITEM_TIMEOUT_MS (a /map-fields call
+        // per page), up to MAX_PAGES. false / no ack -> the content script stops.
+        if (settled || !assignment || assignment.verify) return;
+        assignment.pages = (assignment.pages ?? 0) + 1;
+        if (assignment.pages > MAX_PAGES) return sendResponse(false);
+        clearTimeout(timer);
+        timer = setTimeout(giveUp, ITEM_TIMEOUT_MS);
+        sendResponse(true);
+        return;
+      }
       if (message?.type === "jc:submit-sent") {
         if (settled || !assignment) return; // no ack -> the content script does not submit
         // The submit is about to fire: hand the frame over to verification, so the

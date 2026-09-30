@@ -30,11 +30,20 @@
 //
 // NOT live-browser-tested (no loaded-extension access in this project). The
 // classification it relies on is unit-tested in ../background/driverCore.test.mjs.
-import { classifyFailure, countFields, holdsApplicationForm } from "../background/driverCore.mjs";
+import {
+  classifyFailure,
+  countFields,
+  holdsApplicationForm,
+  MAX_PAGES,
+  normalize,
+  pickEntryButton,
+  pickNextButton,
+  type PageButton,
+} from "../background/driverCore.mjs";
 // Which flag reasons stop the run (an optional EEO field does not — it is left
 // blank) and the needs_human message, both pure and tested in fieldDecision.test.mjs.
 import { NEEDS_USER_REASONS, needsHumanReason, type UnansweredQuestion } from "./fieldDecision.mjs";
-import { controlTypes, fillForm } from "./formFill.content";
+import { controlTypes, fillForm, isVisible, waitFor } from "./formFill.content";
 import { submitApprovedApplication } from "./submitApprovedApplication";
 import { decideVerification, isCaptchaChallengeSrc, verificationReport } from "./submitVerification.mjs";
 
@@ -55,7 +64,57 @@ type WorkItem = {
 const POLL_MS = 500;
 // How long an assigned frame waits for its application form to render (SPA boards
 // render after document_idle) before concluding it doesn't hold one.
-const FORM_WAIT_MS = 10_000;
+// 20s: Workday renders its form only after an "Apply" -> "Apply Manually" click or two.
+const FORM_WAIT_MS = 20_000;
+// How long a Next click gets to show the following page.
+const NEXT_PAGE_WAIT_MS = 15_000;
+
+const SIGN_IN =
+  "Sign in to this company's job site in your browser, then approve it again. ApplyScout never creates accounts.";
+
+// A visible password box is a login/create-account wall: never typed into.
+const hasAccountWall = () => Array.from(document.querySelectorAll('input[type="password"]')).some(isVisible);
+
+const OVERLAY_MARK = /cookie|consent|onetrust/i;
+function inOverlay(el: Element): boolean {
+  if (el.closest('[role=dialog],[aria-modal="true"]')) return true;
+  for (let n: Element | null = el; n; n = n.parentElement) {
+    if (OVERLAY_MARK.test(n.id) || OVERLAY_MARK.test(n.getAttribute("class") ?? "")) return true;
+  }
+  return false;
+}
+
+/** Visible buttons in document order, described for driverCore's pickNextButton/pickEntryButton. */
+function pageButtons(): (PageButton & { el: HTMLElement })[] {
+  return Array.from(
+    document.querySelectorAll<HTMLElement>("button, [role=button], a, input[type=submit], input[type=button]"),
+  )
+    .filter(isVisible)
+    .map((el) => {
+      const b = el as HTMLButtonElement & HTMLInputElement;
+      // Would a click post the form (a <button>'s default type is submit)? Only the
+      // audited submit may do that (ADR-001), so such a button is never clicked here.
+      const submitsForm =
+        !!(b.form ?? el.closest("form")) &&
+        ((el instanceof HTMLButtonElement && el.type === "submit") ||
+          (el instanceof HTMLInputElement && (el.type === "submit" || el.type === "image")));
+      return {
+        el,
+        text: el.innerText || b.value || el.getAttribute("aria-label") || "",
+        submitsForm,
+        disabled: b.disabled === true || el.getAttribute("aria-disabled") === "true",
+        inOverlay: inOverlay(el),
+      };
+    });
+}
+
+// Changes when a Next click has swapped the page's fields (Workday keeps its URL).
+const pageSignature = () =>
+  location.href +
+  Array.from(document.querySelectorAll<HTMLElement>("input, select, textarea"))
+    .filter(isVisible)
+    .map((el) => `${el.id}|${el.getAttribute("name") ?? ""}|${el.getAttribute("aria-label") ?? ""}`)
+    .join(",");
 
 /**
  * Frames (latest+48): the content scripts run in every frame, captcha widgets
@@ -66,9 +125,21 @@ const FORM_WAIT_MS = 10_000;
  */
 async function claimThisFrame(): Promise<boolean> {
   const deadline = Date.now() + FORM_WAIT_MS;
+  const clicked = new Set<string>();
   let types = controlTypes();
-  while (!holdsApplicationForm(types)) {
+  // An account wall is claimed too, so it is reported (Sign in) rather than timing out.
+  while (!holdsApplicationForm(types) && !hasAccountWall()) {
     if (Date.now() > deadline) return false;
+    // No form yet: the top page may need its "Apply" / "Apply Manually" clicked first.
+    // A click that navigates starts a fresh script, which starts over.
+    if (window === window.top) {
+      const buttons = pageButtons();
+      const i = pickEntryButton(buttons, clicked);
+      if (i !== -1) {
+        clicked.add(normalize(buttons[i].text));
+        buttons[i].el.click();
+      }
+    }
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));
     types = controlTypes();
   }
@@ -109,7 +180,8 @@ function labelOf(el: HTMLElement): string {
 }
 
 // Error texts inside the form only — a page-level role=alert (cookie banner) is not ours.
-function errorTexts(form: HTMLFormElement): string[] {
+// (document.body when a formless multi-page flow didn't move.)
+function errorTexts(form: Element): string[] {
   const texts = new Set<string>();
   form
     .querySelectorAll<HTMLElement>('[role="alert"], .error, .errors, .field-error, .error-message, [class*="error-message"], [class*="field-error"]')
@@ -191,18 +263,54 @@ async function run(): Promise<void> {
   // to `approved` and a retry could apply twice.
   let sent = false;
   try {
-    const { flagged, questions } = await fillForm(item.profile_id, item.ats_type, item.job_id);
+    if (hasAccountWall()) return report("needs_human", SIGN_IN);
 
-    const blocking = flagged.filter((f) => NEEDS_USER_REASONS.has(f.reason));
-    if (blocking.length > 0) {
-      report(
-        "needs_human",
-        needsHumanReason(blocking),
-        // What the user answers once in the review queue; the next pass fills
-        // these from the answer bank instead of stopping again.
-        questions,
+    // Multi-page forms (Workday): fill each page and click its Next, until the
+    // page has no Next — that last page goes through the unchanged submit below.
+    // A single-page form has no Next, so this is one fill, exactly as before.
+    for (let page = 1; ; page++) {
+      if (countFields(controlTypes()) > 0) {
+        const fill = await fillForm(item.profile_id, item.ats_type, item.job_id).catch((error) => {
+          // After page 1 a page may hold nothing to fill (only hidden controls): carry on.
+          if (page > 1 && error instanceof Error && error.message === "no form found on page") return null;
+          throw error;
+        });
+        const blocking = fill?.flagged.filter((f) => NEEDS_USER_REASONS.has(f.reason)) ?? [];
+        if (fill && blocking.length > 0) {
+          report(
+            "needs_human",
+            needsHumanReason(blocking),
+            // What the user answers once in the review queue; the next pass fills
+            // these from the answer bank instead of stopping again.
+            fill.questions,
+          );
+          return;
+        }
+      }
+
+      const buttons = pageButtons();
+      const pick = pickNextButton(buttons);
+      if (!pick) break;
+      if ("stop" in pick) return report("needs_human", pick.stop);
+      // The driver resets its timer per page and caps the page count.
+      if ((await chrome.runtime.sendMessage({ type: "jc:next-page" })) !== true) {
+        return report("needs_human", `The form has more than ${MAX_PAGES} pages; open it and finish it yourself.`);
+      }
+      const before = pageSignature();
+      buttons[pick.index].el.click();
+      const moved = await waitFor(
+        () =>
+          pageSignature() !== before &&
+          (countFields(controlTypes()) > 0 || pickNextButton(pageButtons()) !== null),
+        NEXT_PAGE_WAIT_MS,
       );
-      return;
+      // Fields changed but no fields/Next came (Workday's Review page): the loop's
+      // next pass finds no Next and goes on to the final submit path.
+      if (!moved && pageSignature() === before) {
+        const errors = errorTexts(findForm() ?? document.body).join("; ");
+        return report("needs_human", `The form didn't go past page ${page}: ${errors}`.slice(0, 2000));
+      }
+      if (hasAccountWall()) return report("needs_human", SIGN_IN);
     }
 
     const form = findForm();
@@ -213,7 +321,7 @@ async function run(): Promise<void> {
       // to the user rather than `failed`, which would just retry the same wall.
       report(
         "needs_human",
-        "This application page has no form Maggie can submit (Ashby-style). Open the form and submit it yourself.",
+        "Filled what ApplyScout could; this page has no form it can submit. Open it and submit it yourself.",
       );
       return;
     }
