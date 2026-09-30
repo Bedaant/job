@@ -25,6 +25,7 @@ export const FORBIDDEN_LABEL_KEYWORDS: string[];
 export function isDemographicLabel(labelText: string | null | undefined): boolean;
 export function isEssayLabel(labelText: string | null | undefined): boolean;
 export function isForbiddenLabel(labelText: string | null | undefined): boolean;
+export function fillFailureReason(field: { label_text: string | null; required?: boolean }): string;
 export function decideFieldActions(
   fields: FieldDescriptor[],
   mappings: FieldMapping[],

@@ -636,3 +636,12 @@ test("'how did you hear' is a user-only question: unanswered, it asks for a bank
   const { flag } = decideFieldActions([field], [{ field_id: "f1", maps_to: "unknown", confidence: 0, value: null }]);
   assert.deepEqual(flag, [{ field_id: "f1", reason: "essay_no_stored_answer" }]);
 });
+
+test("a value that can't be applied blocks only a required field", async () => {
+  // Live (Brex, 2026-09-30): the optional phone "Country" dropdown couldn't be set, and
+  // the whole application stopped at needs_human for a field the form doesn't require.
+  const { fillFailureReason } = await import("./fieldDecision.mjs");
+  assert.equal(fillFailureReason({ label_text: "Country", required: false }), "optional_left_blank");
+  assert.equal(fillFailureReason({ label_text: "Country*", required: false }), "low_confidence");
+  assert.equal(fillFailureReason({ label_text: "Country", required: true }), "low_confidence");
+});

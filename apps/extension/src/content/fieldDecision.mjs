@@ -133,11 +133,18 @@ export function isForbiddenLabel(labelText) {
 // fields: FieldDescriptor[] ({field_id, label_text, ...})
 // mappings: FieldMapping[] from POST /extension/map-fields
 // returns { fill: [{field_id, value}], flag: [{field_id, reason}] }
+// A value decided for a field couldn't be applied (no option matched, the widget refused).
+// Like an unanswered field: it blocks only if the form requires it; otherwise it's left blank.
+export function fillFailureReason(field) {
+  return field.required || /\*\s*$/.test(field.label_text ?? "") ? "low_confidence" : "optional_left_blank";
+}
+
 export function decideFieldActions(fields, mappings) {
   const mappingById = new Map(mappings.map((m) => [m.field_id, m]));
   const fill = [];
   const flag = [];
   // A radio group is required if any member is (that is how HTML validates it).
+  // (fillFailureReason below uses the same required rule for one field.)
   const requiredRadioNames = new Set(
     fields.filter((f) => f.input_type === "radio" && f.name && f.required).map((f) => f.name),
   );

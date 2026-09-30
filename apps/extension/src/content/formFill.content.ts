@@ -8,6 +8,7 @@ import {
   buildDescriptors,
   classifyFileInput,
   decideFieldActions,
+  fillFailureReason,
   isDemographicField,
   isDemographicLabel,
   pickQuestionText,
@@ -446,8 +447,8 @@ export async function fillForm(profileId: string, atsType?: string | null, jobId
   for (const { field_id, value } of fill) {
     const plan = planFill(targets.get(field_id)!, value);
     if (!plan) {
-      // No option matches the value exactly: never guess one.
-      flag.push({ field_id, reason: "low_confidence" });
+      // No option matches the value exactly: never guess one. Blocks only a required field.
+      flag.push({ field_id, reason: fillFailureReason(descriptorById.get(field_id)!) });
       continue;
     }
     if (plan.kind === "none") continue; // a lone checkbox answered "no" stays unchecked
@@ -456,7 +457,7 @@ export async function fillForm(profileId: string, atsType?: string | null, jobId
       // decideFieldActions never fills a demographic field; this is the belt to that brace
       const kind = comboKinds.get(plan.key);
       if (!kind || isDemographicField(descriptorById.get(field_id)!) || !(await selectComboboxOption(el, kind, plan.label))) {
-        flag.push({ field_id, reason: "low_confidence" });
+        flag.push({ field_id, reason: fillFailureReason(descriptorById.get(field_id)!) });
         continue;
       }
     } else if (plan.kind === "check") {

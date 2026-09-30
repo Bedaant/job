@@ -102,7 +102,8 @@ TRAIL_JS = """(ids) => {
           next: txt('bottom-navigation-next-button')};
 }"""
 # Fictional answers for questions a needs_human pass returns (the user would type these in review).
-CANNED = [("notified", "Yes"), ("name of your current manager", "Alex Example"), ("sponsor", "No"), ("interviewed", "No"), ("deadline", "No"), ("country", "United States"), ("visa", "No"), ("authorized", "Yes"), ("relocat", "Yes"), ("remote", "Yes"),
+# First match wins: "authorized" before "country" ("Are you legally authorized to work in this country?" is a Yes/No).
+CANNED = [("notified", "Yes"), ("name of your current manager", "Alex Example"), ("sponsor", "No"), ("interviewed", "No"), ("deadline", "No"), ("authorized", "Yes"), ("country", "United States"), ("visa", "No"), ("relocat", "Yes"), ("remote", "Yes"),
           ("in-person", "Yes"), ("office", "Yes"), ("salary", "Open to discussing"), ("start", "In two weeks"),
           ("hear about", "Company website"), ("website", "https://example.com"), ("ai policy", "Yes")]
 
