@@ -102,6 +102,38 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-30 (latest+66) — Multi-page forms (Workday first); optional fields that can't be set no longer block
+
+**What changed.** One agent planned the work and two built it in parallel worktrees. ADR-016 amendment 3 records the decision.
+- **Extension:** account walls stop the run with "Sign in…". It clicks entry buttons ("Apply Manually") by exact text,
+  then runs a generic Next loop: it fills a page, clicks Next (picked by exact text, never a form-submitting button),
+  waits for the page to change, and repeats. The driver bounds the loop at 8 pages (`jc:next-page`) and resets
+  the item timer on each page. The final-submit path is unchanged.
+- **Harness:** `auto_apply.py --fixture workday|workday-noconsent|wall` runs a local Workday-like SPA and a local
+  account wall. `--url` runs guarded recon on real job pages. `mode_failures` checks the result, and the fixture server counts
+  `/save` `/submitted` `/account` POSTs.
+- **Brex:** a value the extension couldn't apply used to block the application even when the field was optional (Brex's
+  phone "Country"). Now it blocks only a required field. Two older builds gave the same result, so the bug was already there.
+
+**Results (guarded, synthetic identity, no submit).**
+- Wall fixture: "Sign in…" in 14 s. Before the change it failed after a 190 s timeout. No password typed, 0 `/account`.
+- Workday fixture: pass 1 filled and saved steps 1–3, then stopped on the questions only the user can answer. Pass 2, with those
+  answers saved, reached step 4 and stopped at the consent checkbox. 5 saves, 0 submits, gender blank.
+- No-consent fixture: it reached Review ("Submit") and handed it back. 0 submits.
+- Greenhouse: Anthropic is unchanged (consent stop). Brex again reaches its guard-blocked submit.
+- Real Workday: Salesforce stopped at sign-in in 40 s, as intended. Adobe (guest apply) reached "step 1 of 5", and NVIDIA
+  went past Apply Manually. On both, the guard blocked Workday's POSTs (11 and 13), the page never rendered its fields, and the
+  run timed out as failed. Live multi-page on real Workday can only be proven in the owner's own signed-in session.
+- Tests: extension 132/132, typecheck and build clean; harness unit tests pass.
+
+**Problems hit.**
+- A merge conflict in `auto_apply.py` with the headed-mode merge was resolved, keeping both sides.
+- The harness's canned answer matched "country" before "authorized" and answered a Yes/No with "United States". Fixed.
+- Once, the machine's DNS didn't resolve the Neon host. The API returned 500 and the harness timed out, then it recovered on its own.
+
+**Next.** An owner-watched run on the owner's own Workday account, to capture the step pages. After that, Workday
+button-dropdowns. SMTP credentials. The first real submit.
+
 ### 2026-09-30 (latest+65) — Password reset; background-tab dropdown fix merged; worktrees cleaned
 
 **What changed.**

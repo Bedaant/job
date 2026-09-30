@@ -639,3 +639,21 @@ The scorer was fixed to match radio/checkbox groups by their question. Re-scored
   (`docs/harness-reports/plan-vs-extension.md`), required fields filled went Greenhouse +2, Lever −4, Ashby 0,
   with no wrong values from the plan.
 - **Revisit:** Lever and Ashby, once the planner's routing beats today's filler there.
+
+**Amendment 3 (2026-09-30, multi-page forms; owner approved saving drafts).**
+- **One generic loop, no per-ATS code.** On each page the extension fills what it can, then clicks "Next". It
+  finds Next only by exact text (next / continue / save and continue / …). It never uses an automation id,
+  because Workday's Submit reuses Next's id. It never clicks a button that would submit a `<form>`. The run stops
+  as needs_human if the page doesn't move, if two candidates match, or after 8 pages. The last page uses the
+  existing ADR-001 submit path unchanged.
+- **Account walls stop the run.** A visible password field ends it with "Sign in…". ApplyScout never types a
+  password, never creates an account, and never clicks sign-in buttons.
+- **Entry buttons.** In the top frame only, before any form exists, it may click "Apply manually" / "Apply" /
+  "Apply now" …, each text at most once, and never a button that would submit a form.
+- **Workday:** it fills only in the user's own signed-in session, pressing "Save and Continue" (a saved draft
+  on the employer's side, approved by the owner). It is never auto-submitted: a Review page with no `<form>` goes
+  back to the user.
+- **Not yet handled:** Workday's button-style dropdowns, multi-selects, date spinners and "Add another"
+  sections, and steppers where Next is a real form submit (iCIMS, Taleo). These stop as needs_human.
+- **Evidence:** a local Workday-like fixture and a guarded check on 3 real Workday sites
+  (`WORKLOG latest+66`).
