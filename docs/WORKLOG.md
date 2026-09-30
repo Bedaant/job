@@ -102,6 +102,25 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-30 (latest+65) — Password reset; background-tab dropdown fix merged; worktrees cleaned
+
+**What changed.**
+- **Password reset.** `POST /auth/forgot-password` returns the same for any email and sends a one-hour link. `POST
+  /auth/reset-password` checks the token's purpose and a fingerprint of the current password hash, so the link works once
+  and a login token can't reset a password. No table. Web: "Forgot password?" on sign-in, `/forgot-password`, `/reset-password`.
+  The API has 5 tests and web has 2. Live check with a throwaway account: link logged, new password works, old one refused,
+  reused link refused. **Emails need SMTP:** with `SMTP_HOST` unset the link goes to the API log only (the same rule as the digest).
+- **Background-tab dropdowns** (an agent's unverified WIP branch, now merged). Chrome runs a background tab's timers at most
+  once a second, and only 5 of Anthropic's 8 dropdowns were read in budget. Waits now wake on DOM mutations. Merge conflicts
+  were resolved. Extension tests pass (116). Headed `auto_apply.py` on Anthropic's embed reached all 23 fields in 32 s, with the
+  guard on and no submit.
+- 6 merged agent worktrees were removed. `worktree-agent-af607b1d421ec69ae` is left: an older onboarding-launch
+  change that master's `launchCampaign` has superseded; delete it after a look.
+- **Ops:** `uvicorn --reload` hung on Windows. It detected a change and never restarted, so the API served old code
+  (the remote filter and the reset routes were missing live). The API now runs without `--reload`; restart it after API changes.
+
+**Still open.** SMTP credentials (reset emails and the digest). The first real submit, which the owner watches. Multi-page and Workday forms.
+
 ### 2026-09-30 (latest+64) — Remote roles restricted to another country are left out
 
 **What changed.** A user in India was offered "Remote - US", "Europe" and "Time zone: CET" roles. `matching.filters.remote_open_to`
