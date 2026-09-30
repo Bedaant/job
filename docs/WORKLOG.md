@@ -102,6 +102,27 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-09-30 (latest+63) — Audit of the owner's first real use: matching, worker, outages, free-tier embeddings
+
+**What changed.** The owner asked for problems "like these" to be found and fixed. Each fix below has a test that failed before it and passes after. The API suite passes (733).
+- **Matches:** `build_matches` took the global top 20, and the page filtered it to the campaign afterwards, so US/EU jobs crowded out India
+  ones (3 shown). The top N is now taken inside the active campaigns' `_in_bounds`, and the page-level filter is deleted. The result is 20 India matches.
+- **"India" matches Indian cities** (`campaigns._LOCATION_ALIASES`). Postings say "Bangalore, Karnataka" or "Gurugram".
+- **No worker was running.** A campaign Run had sat in Redis since 17:04 UTC, reported as started. Run and Discover now return 503 with
+  how to start the worker. The worker and scheduler were started; the run prepared Meesho Senior PM (ready_for_review).
+- **LLM outage in map-fields** (NIM "overloaded") raised a 500 and the extension filled nothing. Rule and bank answers are now kept,
+  and the rest are flagged.
+- **Resume facts that a Voyage 429 left unembedded** were only re-embedded on an edit, so a new free-tier account could end up with no centroid and no
+  matches. `build_matches` now refreshes them (`matching.service.refresh_fact_vectors`, moved from main.py).
+- **Failed prep left applications `saved` forever**, and later runs skipped the job as "already applied". Each run now retries
+  its own saved, untailored applications.
+- **Free-tier embeddings:** a job's first 4,000 chars are embedded (about 6 jobs per request instead of 1), newest first. A new
+  `embed_backlog_task` runs every 2 minutes and does the jobs an active campaign wants first. All 21 campaign jobs are embedded, and no
+  Voyage payment is needed.
+
+**Still open.** "Remote" includes US-only remote roles. There is no password reset. Services run locally: the API with `--reload`, the worker
+and the scheduler (logs in `D:\tmp\job-copilot-logs`).
+
 ### 2026-09-29 (latest+62) — Matches page respects the campaign; the campaign was missing boards and Indian cities
 
 **What happened.** The owner's campaign said India, but the Matches page showed US, UK and Europe roles. There were three causes:
