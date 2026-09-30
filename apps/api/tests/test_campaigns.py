@@ -663,3 +663,20 @@ def test_run_campaign_retries_its_applications_a_failed_prep_left_at_saved(mock_
     result = campaigns_mod.run_campaign(db, campaign)
     assert result["prepared"] == 1
     assert mock_prepare.call_args.args[1].id == stuck.id
+
+
+@patch("campaigns.prepare_application_for_review")
+def test_run_campaign_skips_remote_roles_restricted_to_another_country(mock_prepare):
+    """Live: a user in India was offered "Remote - US" roles. Stored matches from
+    before the filter existed must not be picked either."""
+    db = _session()
+    profile = _profile(db)
+    profile.country_code = "IN"
+    db.commit()
+    campaign = _campaign(db, profile, remote_only=True)
+    _match(db, profile, _job(db, 1, location="Remote - US"), score=95)
+    _match(db, profile, _job(db, 2, location="Anywhere in the World"), score=90)
+
+    campaigns_mod.run_campaign(db, campaign)
+
+    assert [a.job.location for a in db.query(models.Application).all()] == ["Anywhere in the World"]

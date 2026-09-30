@@ -31,6 +31,34 @@ _NO_SPONSORSHIP_PATTERN = re.compile(
 )
 
 
+# A country also matches its main cities: postings say "Bangalore, Karnataka" or
+# "Gurugram", not "India". ponytail: India only; add a country when users target it.
+LOCATION_ALIASES = {
+    "india": ["bengaluru", "bangalore", "pune", "gurugram", "gurgaon", "hyderabad", "mumbai",
+              "delhi", "noida", "chennai", "kolkata", "ahmedabad"],
+}
+_COUNTRY_NAMES = {"IN": "india"}
+_COUNTRY_REGIONS = {"IN": ["apac", "asia"]}
+# Words a remote job's location uses when it names no place ("Anywhere in the World").
+_OPEN_WORDS = re.compile(
+    r"\b(anywhere|in|the|world|worldwide|global|globally|remote|job|home ?office|remoto|work|from|home|"
+    r"wfh|fully|international|internationally|location|flexible)\b|[^a-z]+", re.I)
+
+
+def remote_open_to(job, country_code: str | None) -> bool:
+    """A remote role restricted to somewhere else ("USA", "Europe", "Time zone: CET")
+    isn't one this user can take. Open = no place named, or the user's country or
+    region named. Unknown country: no filter (a false "no match" hides a real job)."""
+    name = _COUNTRY_NAMES.get((country_code or "").upper())
+    if not job.remote or not name:
+        return True
+    loc = (job.location or "").lower()
+    terms = [name, *LOCATION_ALIASES.get(name, []), *_COUNTRY_REGIONS.get(country_code.upper(), [])]
+    if any(re.search(rf"\b{re.escape(t)}\b", loc) for t in terms):
+        return True
+    return not _OPEN_WORDS.sub("", loc).strip()
+
+
 def infer_seniority(title: str) -> str | None:
     for level, pattern in _SENIORITY_PATTERNS:
         if pattern.search(title):
@@ -67,5 +95,6 @@ def _passes_visa(prefs: dict, job) -> bool:
     return not blocks_visa_sponsorship(job.description or "")
 
 
-def passes_hard_filters(prefs: dict, job) -> bool:
-    return _passes_location(prefs, job) and _passes_seniority(prefs, job) and _passes_visa(prefs, job)
+def passes_hard_filters(prefs: dict, job, country_code: str | None = None) -> bool:
+    return (_passes_location(prefs, job) and _passes_seniority(prefs, job) and _passes_visa(prefs, job)
+            and remote_open_to(job, country_code))

@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 import models
 from batch_prep import prepare_application_for_review
 from events.outbox import write_event
+from matching.filters import LOCATION_ALIASES, remote_open_to
 
 # Per-job "Skipped X" rows per run; the rest are only counted in the summary row.
 SKIP_EVENT_LIMIT = 20
@@ -117,15 +118,10 @@ def select_candidates(db: Session, campaign: models.Campaign, limit: int) -> lis
         ),
         campaign,
     )
-    return query.order_by(models.Match.score.desc()).limit(limit).all()
-
-
-# A country also matches its main cities: postings say "Bangalore, Karnataka" or
-# "Gurugram", not "India". ponytail: India only; add a country when users target it.
-_LOCATION_ALIASES = {
-    "india": ["bengaluru", "bangalore", "pune", "gurugram", "gurgaon", "hyderabad", "mumbai",
-              "delhi", "noida", "chennai", "kolkata", "ahmedabad"],
-}
+    # Stored matches predate newer filters: a remote role restricted to another country is left out here too.
+    country = campaign.profile.country_code
+    matches = [m for m in query.order_by(models.Match.score.desc()).all() if remote_open_to(m.job, country)]
+    return matches[:limit]
 
 
 def _in_bounds(query, campaign: models.Campaign):
@@ -137,7 +133,7 @@ def _in_bounds(query, campaign: models.Campaign):
     if campaign.roles:
         query = query.filter(or_(*[models.Job.title.ilike(f"%{r}%") for r in campaign.roles]))
     if campaign.locations:
-        terms = [t for l in campaign.locations for t in [l, *_LOCATION_ALIASES.get(l.strip().lower(), [])]]
+        terms = [t for l in campaign.locations for t in [l, *LOCATION_ALIASES.get(l.strip().lower(), [])]]
         query = query.filter(or_(*[models.Job.location.ilike(f"%{t}%") for t in terms]))
     return query
 

@@ -172,3 +172,15 @@ def test_a_country_location_matches_its_cities():
     db.commit()
     campaign = models.Campaign(name="x", roles=[], locations=["India"], remote_only=False, sources=[])
     assert sorted(j.title for j in _in_bounds(db.query(models.Job), campaign)) == ["A", "B", "C"]
+
+
+def test_build_matches_leaves_out_remote_roles_restricted_to_another_country():
+    db = _db()
+    profile = _profile(db, fact_centroid=[1.0] + [0.0] * 511)
+    profile.country_code = "IN"
+    us = _job(db, "US remote PM", embedding=[1.0] + [0.0] * 511)
+    us.remote, us.location = True, "Remote - US"
+    anywhere = _job(db, "Anywhere PM", embedding=[0.6, 0.8] + [0.0] * 510)
+    anywhere.remote, anywhere.location = True, "Anywhere in the World"
+    db.commit()
+    assert [m.job.title for m in build_matches(db, profile)] == ["Anywhere PM"]

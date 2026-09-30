@@ -78,3 +78,25 @@ def test_passes_hard_filters_visa_required_blocks_no_sponsorship_job():
 def test_passes_hard_filters_visa_not_required_ignores_sponsorship_text():
     job = _Job(description="We do not sponsor visas.")
     assert passes_hard_filters({}, job) is True
+
+
+# Live location strings of remote jobs (2026-09-30). A user in India can't take a
+# remote role restricted to somewhere else.
+OPEN_TO_INDIA = ["Anywhere in the World", "Worldwide", "Global", "Remote", "Remote job", "Homeoffice", "",
+                 None, "India", "Remote - Bengaluru", "Europe, LATAM, APAC, the U.S., Canada"]
+CLOSED_TO_INDIA = ["USA", "United States", "Remote - US", "Canada,  USA", "Europe", "UK", "Berlin",
+                   "Time zone: CET (+/- 3 hours)", "Northern America, LATAM, Europe", "Brazil"]
+
+
+def test_remote_job_restricted_elsewhere_fails_for_a_user_in_india():
+    for loc in OPEN_TO_INDIA:
+        assert passes_hard_filters({}, _Job(location=loc, remote=True), country_code="IN") is True, loc
+    for loc in CLOSED_TO_INDIA:
+        assert passes_hard_filters({}, _Job(location=loc, remote=True), country_code="IN") is False, loc
+
+
+def test_remote_region_is_not_checked_without_a_known_country():
+    job = _Job(location="USA", remote=True)
+    assert passes_hard_filters({}, job) is True
+    assert passes_hard_filters({}, job, country_code="ZZ") is True
+    assert passes_hard_filters({}, _Job(location="Berlin", remote=False), country_code="IN") is True  # on-site: campaign locations decide

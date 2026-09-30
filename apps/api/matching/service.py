@@ -53,7 +53,7 @@ def build_matches(db: Session, profile: models.Profile, limit: int = 20) -> list
         models.Campaign.profile_id == profile.id, models.Campaign.status == models.CampaignStatus.active
     ).all()
     candidates = {j.id: j for c in active for j in _in_bounds(embedded, c)}.values() if active else embedded.all()
-    jobs = [job for job in candidates if passes_hard_filters(prefs, job)]
+    jobs = [job for job in candidates if passes_hard_filters(prefs, job, profile.country_code)]
     if not jobs:
         return []
 
