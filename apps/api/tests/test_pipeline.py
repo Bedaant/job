@@ -151,6 +151,54 @@ def test_upsert_uses_at_most_three_queries_regardless_of_batch_size(_mock_embed)
     assert query_count <= 3
 
 
+def _counting(db):
+    """Wrap db.execute with a counter; returns a callable that reads the count."""
+    count = [0]
+    original_execute = db.execute
+
+    def counting_execute(*args, **kwargs):
+        count[0] += 1
+        return original_execute(*args, **kwargs)
+
+    db.execute = counting_execute
+    return lambda: count[0]
+
+
+@patch("connectors.pipeline.embed_texts", return_value=None)
+def test_upsert_uses_at_most_three_queries_for_an_update_only_batch(_mock_embed):
+    """The bulk UPDATE path, isolated: no new rows at all, every job in the
+    batch is already stored. Must still be one SELECT + one bulk UPDATE (no
+    insert query at all), and still bounded at <=3."""
+    db = _db()
+    jobs = [_job("remotive", str(i), title=f"Role {i}") for i in range(50)]
+    upsert_jobs(db, jobs)  # seed: all 50 already exist
+
+    query_count = _counting(db)
+    inserted, updated, skipped = upsert_jobs(db, jobs)  # re-seen batch: update-only
+    assert inserted == 0
+    assert updated == 50
+    assert skipped == 0
+    assert query_count() <= 3
+
+
+@patch("connectors.pipeline.embed_texts", return_value=None)
+def test_upsert_uses_at_most_three_queries_for_a_mixed_new_and_reseen_batch(_mock_embed):
+    """The path the ceiling is actually meant to bound: a batch with both new
+    rows (bulk INSERT) and already-stored rows (bulk UPDATE) in the same
+    call, still at most one SELECT + one bulk INSERT + one bulk UPDATE."""
+    db = _db()
+    existing_jobs = [_job("remotive", str(i), title=f"Role {i}") for i in range(25)]
+    upsert_jobs(db, existing_jobs)  # seed half the batch as already-stored
+
+    query_count = _counting(db)
+    mixed = existing_jobs + [_job("remotive", f"new-{i}", title=f"New Role {i}") for i in range(25)]
+    inserted, updated, skipped = upsert_jobs(db, mixed)
+    assert inserted == 25
+    assert updated == 25
+    assert skipped == 0
+    assert query_count() <= 3
+
+
 @patch("matching.embeddings.get_settings")
 def test_upsert_leaves_embedding_null_without_voyage_key(mock_settings):
     """embed_texts no-ops without VOYAGE_API_KEY — must not crash the pipeline."""
