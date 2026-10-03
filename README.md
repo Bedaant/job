@@ -1,311 +1,283 @@
 # Job Copilot
 
-**Upload your resume once. Get matched jobs, tailored applications, and applications filled in from your own browser. Then get referrals from people inside the company, so you reach an interview and not a black hole.**
+**Upload your resume once. The app finds matching jobs, tailors your resume to each job's ATS, applies from your own browser, then emails people inside the company to ask for a referral. The goal is to get you interviews, not just applications.**
 
-Job Copilot (the browser extension is called **ApplyScout**) is a multi-tenant web app that runs the whole job-search loop:
+Job Copilot (the browser extension is called **ApplyScout**) is a personal project, built to run for the owner and about 5–7 friends. It is not a commercial product yet. This README is the blueprint: what the system does end to end, how the parts fit together, which repos and tools are used where and why, and what is built versus still to build.
 
-```
-Resume ─▶ Facts KB ─▶ Campaign ─▶ Discover ─▶ Match ─▶ Tailor ─▶ Apply ─▶ Referral outreach ─▶ Interview
- upload    reviewed    "PM roles,   many job    score &   truth-    extension   (planned, not
- + parse   by you      India or     sources     explain   checked   fills the   built yet)
-                       remote"                                      forms
-```
-
-The goal is simple: **get the user an interview.** Cold applications convert at about 2%. Referred ones convert at about 30%. So the product does two things at once. It applies well, and it gets a real person inside the company to look at the application.
-
-> **Status in one line:** everything up to and including auto-apply is built and tested. Referral outreach (the cold-email step) is designed but **not built**. See [What works today](#what-works-today).
+> **Status in one line:** everything from resume upload through auto-apply is built and tested. The last step (referral outreach by email) is designed but **not built**. We make no promise of an interview. We aim to raise the chance of a reply, and we measure it.
 
 ---
 
-## The user flow
+## 1. The whole loop
 
-### 1. Upload your resume
-You upload a PDF or DOCX. The app parses it into a **Facts KB**: 25–40 small, checkable claims such as *"Cut checkout API p99 latency from 1.4s to 180ms (Payments team, Acme, Q2 2025)"*.
+```
+ ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
+ │ 1 Resume │──▶│ 2 Facts  │──▶│3 Campaign│──▶│ 4 Find   │──▶│ 5 Match  │
+ │  upload  │   │ review   │   │ (roles,  │   │  jobs    │   │ & explain│
+ └──────────┘   └──────────┘   │ places)  │   └──────────┘   └────┬─────┘
+                               └──────────┘                       │
+ ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐        │
+ │ 9 Learn  │◀──│ 8 Refer- │◀──│ 7 Apply  │◀──│ 6 Tailor │◀───────┘
+ │ & track  │   │ ral email│   │ in your  │   │ to the   │
+ │          │   │ (PLANNED)│   │ browser  │   │ job's ATS│
+ └──────────┘   └──────────┘   └──────────┘   └──────────┘
+```
 
-You review and edit these facts on one screen. This screen matters most, because every document the app writes later can only use facts you confirmed. The resume file itself is never used as the source for generation.
+| # | Stage | What happens | Built? |
+|---|---|---|---|
+| 1 | **Resume upload** | You upload a PDF or DOCX. It is parsed. | ✅ |
+| 2 | **Facts review** | The resume becomes 25–40 small, checkable claims (the **Facts KB**), such as *"Cut checkout API p99 latency from 1.4s to 180ms, Payments team, Q2 2025"*. You edit them. Everything written later can only use facts you confirmed. | ✅ |
+| 3 | **Campaign** | You say what you want: job titles, locations, sources, caps, and whether each application waits for your review (assisted) or goes out on its own. | ✅ |
+| 4 | **Find jobs** | Scheduled workers pull jobs from many public sources into one deduplicated table. | ✅ |
+| 5 | **Match** | Every job is scored against your whole profile, not only the title. Each match says why: "7 of 9 required skills matched, missing Kubernetes". | ✅ |
+| 6 | **Tailor to the ATS** | For each job the app rewrites your resume to the job's own wording, then truth-checks it. | ✅ built, quality not yet measured |
+| 7 | **Apply** | The extension fills and submits the employer's form inside your own browser. | ✅ built, first real submission still to do |
+| 8 | **Referral email** | After you apply, the app finds a suitable person at the company, verifies an email, writes a short note and sends it from your Gmail. | ❌ planned |
+| 9 | **Track and learn** | A Kanban tracker, a daily digest, and reply and interview rates. | ✅ tracker and digest, 🟡 analytics |
 
-### 2. Create a campaign
-A campaign says what you are looking for: job titles (such as *product manager*, *product owner*), locations (such as *India*, *Remote*), and which sources to search. It also sets caps, and whether each application waits for your review (assisted) or goes out automatically within the cap.
+### Stage 5 in more detail: how matching works
+- **Semantic match:** your facts are compared to the job description with embeddings.
+- **Skill coverage:** which required skills you have and which you lack (the keyword gap).
+- **Hard filters:** location and remote policy, seniority, visa or work-authorisation text, and remote jobs that are limited to another country.
+- **Near-duplicate removal:** the same role listed on three boards appears once.
 
-The app doesn't match on titles alone. It scores each job against your **whole profile**:
-- **Semantic match:** your facts compared to the job description using embeddings.
-- **Skill coverage:** which required skills you have and which you lack (the "keyword gap").
-- **Hard filters:** location and remote policy, seniority, visa or work-authorisation text, and remote roles restricted to another country.
-- **Near-duplicate removal:** the same role listed on three boards shows up once.
+### Stage 6 in more detail: tailoring to the ATS
+Before each application the app reads the job description and rewrites your resume to match what that employer's ATS and recruiter look for:
+- **Title alignment:** if you are a *Product Manager* and the job says *Technical Product Manager*, the app uses the job's wording where your real experience supports it.
+- **Skill alignment:** it pulls the skills the job asks for and puts the ones you actually have into your skills section and bullets, in the job's wording.
+- **ATS-safe layout:** single column, standard section names, no tables or text boxes.
 
-Each match shows **why** it scored the way it did, for example "7 of 9 required skills matched, missing Kubernetes and Terraform". It never shows an opaque score.
+Three steps do the work:
+1. **Tailor:** reorder and reword your real facts for this job.
+2. **Truth-check:** a second, independent model call checks the draft against your Facts KB. A claim your facts don't support blocks the application. So "Technical Product Manager" appears only when your facts back it up, and a skill you lack is flagged as a gap and never added.
+3. **Voice:** strips the usual AI filler so the text sounds like you.
 
-### 3. Find jobs from many sources
-Discovery pulls from public job APIs and feeds into one normalised, deduplicated job table:
+The result is an ATS-safe DOCX. The app re-parses its own output to confirm the content survives a parser.
+
+### Stage 7 in more detail: auto-apply
+- A server-side **planner** (Stagehand) studies each job's form once, read-only, and saves a fill plan. A network guard blocks every non-GET request, and the plan holds no personal data.
+- The **ApplyScout extension** runs the plan in your browser, with your IP and your logins, using your real data. It checks each field after writing it. The server never submits an application.
+- **Assisted mode:** the extension fills, you press Send. **Automatic mode:** it sends within your daily cap.
+- It follows multi-page forms (Workday-style "Next" flows). At a sign-in wall it stops and tells you, and it never types a password.
+- It never answers EEO or demographic questions. It never guesses essay questions or "How did you hear about us?". Those come from your saved answers, or it asks you.
+- An application counts as *submitted* only when the employer's confirmation page says so.
+
+### Stage 8 in more detail: referral email (planned)
+Once an application is submitted:
+
+1. **Pick who to contact.** At the same company, find 1–3 people who can help. If you applied as a Developer I, that means a Developer II or III, an Engineering Manager, or the hiring manager.
+2. **Get an email.** Take a candidate address from a public source, a pattern guess (`first.last@company.com`), or a finder service.
+3. **Verify it** (MX and SMTP checks) and send only when the result is safe.
+4. **Write it.** At most 120 words: *"I applied for this role and I'm very interested. Here is my profile."* Every claim comes from your Facts KB.
+5. **Send from your own Gmail** through OAuth, paced and capped.
+6. **Watch.** A bounce, a reply or an opt-out stops all further mail to that person. A reply notifies you.
+
+---
+
+## 2. System architecture
+
+```
+                  ┌───────────────────────────────┐
+  You ──────────▶ │ Web app (Next.js)             │   onboarding, facts, campaign,
+                  │ dashboard                     │   matches, review, tracker
+                  └──────────────┬────────────────┘
+                                 │ REST + live events (SSE)
+ ┌──────────────┐   ┌────────────▼────────────────┐        ┌─────────────────────────┐
+ │ ApplyScout   │◀─▶│ API (FastAPI)               │◀──────▶│ PostgreSQL + pgvector   │
+ │ Chrome ext.  │   │ auth, tenancy, campaigns,   │        │ (Neon). Row-level       │
+ │ fills forms  │   │ matching, tailoring, plans  │        │ security per user       │
+ └──────┬───────┘   └────────────┬────────────────┘        └─────────────────────────┘
+        │                        │ jobs
+        │              ┌─────────▼────────────┐   ┌──────────────────────────────────┐
+        │              │ Redis + RQ workers   │──▶│ Job sources: Greenhouse, Lever,  │
+        │              │ + scheduler          │   │ Ashby, Remotive, Reed, 6 feeds   │
+        │              │ discover · embed ·   │   └──────────────────────────────────┘
+        │              │ prepare · plan forms │   ┌──────────────────────────────────┐
+        │              │ · (outreach, later)  │──▶│ AI: Claude (tailor + truth-check)│
+        │              └─────────┬────────────┘   │ Voyage (embeddings)              │
+        │                        │                │ Stagehand planner (form reading) │
+        │              ┌─────────▼────────────┐   └──────────────────────────────────┘
+        │              │ Planned: outreach    │   ┌──────────────────────────────────┐
+        └─ page the    │ person finder, email │──▶│ agent-reach · email verifier ·   │
+           user opens  │ verify, Gmail send   │   │ Gmail API (user's own account)   │
+                       └──────────────────────┘   └──────────────────────────────────┘
+```
+
+**Design rules**
+1. **One database, one API, one queue.** No microservices. A few friends fit comfortably on this.
+2. **The server plans, your browser acts.** Submitting from the user's own browser avoids captchas on server IPs and keeps personal data off server browsers.
+3. **Facts KB is the only source for generated text.** The resume file is never used to generate. That is what makes the truth-check possible.
+4. **Every outbound action is capped and logged.** Applications and emails both have daily caps and show up in the digest.
+
+---
+
+## 3. Tools and repos: what we use, where and why
+
+### 3.1 In use today
+
+| Tool / repo | Where | Why |
+|---|---|---|
+| **FastAPI, SQLAlchemy, Alembic, Pydantic** | `apps/api` | The existing backend. Alembic for safe migrations. |
+| **PostgreSQL + pgvector** (Neon) | database | One store for normal data and embeddings. |
+| **Redis + RQ + rq-scheduler** (Redis Cloud) | `apps/api/workers` | Background discovery, embedding and preparation, plus scheduled runs. Simple and restart-safe. |
+| **Next.js, TypeScript, Tailwind, shadcn/ui, Kibo UI** | `apps/web` | The dashboard. shadcn and Kibo UI save building a design system (Kibo supplies the Kanban tracker and dropzone). |
+| **Chrome Manifest V3 + Vite** | `apps/extension` | Fills forms in the user's own browser. |
+| **Anthropic Claude** | `tailoring/` | Tailor and truth-check. |
+| **Voyage AI** | `matching/embeddings.py` | Embeddings for matching. The free tier is slow, so a backlog job fills them. |
+| **Stagehand** (MIT) | `tools/stagehand-harness`, `formplans.py` | Reads a job form once, without clicking, and produces a fill plan. Measured as far faster and cheaper than browser-use on the same forms. |
+| **browser-use** (MIT) | `tools/browser-use-harness` | A guarded test harness that fills real forms and can never submit. Used for testing, not production. |
+| **agent-reach** (MIT) | `research/company_research.py` | Company research through GitHub and web pages. Installed in its own venv. |
+| **JobSpy** (MIT) | `connectors/jobspy_connector.py` | Extra search sources, in an isolated venv because of a numpy conflict. Currently returns nothing, pending an upstream fix. |
+| **Microsoft Presidio** (MIT) | `pii/redact.py` | Strips personal data from cached company dossiers and generation history. |
+| **JSON Resume** schema (MIT) | `parsing/jsonresume_export.py` | The standard interchange format for resume facts. |
+| **ats-scrapers URL→ATS mapping** (MIT) | `connectors/discovery.py` | Identifies which ATS a job link belongs to. We took the mapping data, not the code. |
+| **pdfplumber, python-docx** | `parsing/`, `documents/` | Read resumes. Write the ATS-safe DOCX. |
+| **Promptfoo, Langfuse** | `eval/` | Measure tailoring and truth-check quality, and trace model calls. Waiting on a production Anthropic key. |
+
+### 3.2 Planned for the referral step
+
+| Need | Plan | Why |
+|---|---|---|
+| Find who works there | **agent-reach** (web search and public pages), plus the extension reading a LinkedIn page the user opens themselves | Free, and low risk. Agent-reach reads public pages through Jina Reader, and its optional LinkedIn route uses a separate `mcp-server-linkedin`. It does not return a list of employees, so **this is the riskiest part and gets a spike first** (see section 6). |
+| Find an email | Pattern guess (`first.last@domain`), then **Hunter** free tier (50 credits a month) as a top-up | Free to start. Pay only if it proves worth it. |
+| Verify the email | **dnspython** for MX records, plus **AfterShip `email-verifier`** (MIT) or `email-validator-js` | Avoids bounces, which damage a sender's reputation. Many hosts block outbound port 25, so SMTP checks may need a different host or a provider's verifier. |
+| Send the email | **Gmail API** (`gmail.send`) with `google-api-python-client` and `google-auth-oauthlib` | Sends as the user, so it looks like a normal email from a real person. |
+| Suppression and caps | In-house tables | No suitable open-source tool was found (see `docs/DEPENDENCIES.md`). |
+
+**Gmail setup for 5–7 friends:** Google's OAuth app verification is needed for public launch, but an app in testing mode allows up to 100 listed test users with no review. That fits a friends beta. One catch to check early: refresh tokens for apps in testing mode expire after about 7 days, so friends may have to reconnect Gmail weekly. `gmail.send` is a *sensitive* scope (verification needed, no security assessment), not the *restricted* one that `docs/DECISIONS.md` ADR-003 describes.
+
+### 3.3 Studied, not used
+Resume-Matcher (Apache-2.0, keyword-gap ideas), esco-skill-extractor, nanobrowser (extension agent design), pytector, pydantic-ai, career-ops, public-apis.
+
+### 3.4 Rejected, so nobody re-proposes them
+- **AGPL code:** AIHawk and its forks, open-resume, and `check-if-email-exists`. Copyleft would force opening our source.
+- **No-licence repos** such as ats-resume-generator.
+- **LinkedIn Easy-Apply bots** and any bulk LinkedIn scraper.
+- **Stealth tooling:** fingerprint spoofing and rotating proxies. They add legal risk, break often, and are what platforms hunt for.
+
+Full table with licences: [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md).
+
+---
+
+## 4. Job sources
 
 | Kind | Sources |
 |---|---|
 | Company ATS boards | Greenhouse, Lever, Ashby |
 | Aggregator APIs | Remotive, Reed |
 | Keyless feeds | RemoteOK, Himalayas, Working Nomads, Jobicy, Arbeitnow, We Work Remotely |
-| Search scraper (isolated) | JobSpy (Google, ZipRecruiter, Glassdoor). Currently returns nothing, pending a fix. |
+| Search scraper (isolated) | JobSpy: Google, ZipRecruiter, Glassdoor |
 
-LinkedIn is deliberately **not** scraped. It is parked as a later problem. See [`docs/DECISIONS.md`](docs/DECISIONS.md) (ADR-015).
-
-### 4. Tailor each application to the job's ATS (never fabricate)
-Before each application, the app reads the job description and rewrites your resume to match what that employer's ATS and recruiter are looking for:
-
-- **Title alignment:** if you are a *Product Manager* and the job says *Technical Product Manager*, the app notices the gap and uses the job's wording where your real experience supports it.
-- **Skill alignment:** it pulls the skills and keywords the job description asks for and puts the ones you actually have in your skills section and bullets, in the job's wording (the keyword gap).
-- **ATS-safe layout:** single column, standard section names, no tables or text boxes.
-
-A three-step pipeline does this:
-1. **Tailor:** reorder and reword your real facts for this job description.
-2. **Truth-check:** a second, independent model call checks the draft against your Facts KB. If it finds a claim your facts don't support, the application is blocked. So "Technical Product Manager" is only written when your facts back it up, and a skill you don't have is flagged as a gap and never added.
-3. **Voice:** strips the usual AI filler so the text sounds like you.
-
-The output is a DOCX. The app re-parses its own output to confirm the content survives a parser.
-
-### 5. Auto-apply from your own browser
-The **ApplyScout Chrome extension** fills and submits application forms inside your own browser session, using your IP and your logins. The server never submits anything for you.
-
-- A server-side **planner** (Stagehand, read-only, behind a network guard that blocks every non-GET request) studies each job's form once and saves a fill plan. The plan holds no personal data.
-- The extension executes the plan with your real data, checking each field after it writes it.
-- **Assisted mode:** the extension fills, you press Send. **Automatic mode:** it sends within your daily cap.
-- It handles multi-page forms (Workday-style "Next" flows) and stops with a clear message when it hits a sign-in wall. It never types a password.
-- It **never** answers EEO or demographic questions, and never answers essay or "How did you hear about us?" questions by guessing. Those come from your saved answers, or it asks you.
-- An application is marked *submitted* only when the employer's confirmation page says so.
-
-### 6. Referral outreach after you apply (planned, not built)
-Once an application is submitted, the app reaches out to people already inside the company to ask for a referral:
-
-1. **Pick who to contact.** For the role you applied to, find people at that company in the same function who can help. If you applied as a Developer I, that means a Developer II or III or an Engineering Manager. Company research uses [agent-reach](https://github.com/Panniantong/agent-reach).
-2. **Find and verify an email.** Get a candidate address, then check it with an SMTP/MX email verifier before sending, so you don't bounce.
-3. **Write it.** A short note (120 words or fewer): *"I applied for this role and I'm very interested. Here is my profile."* Every claim comes from your Facts KB.
-4. **Send from your own Gmail** (OAuth), not from a shared domain.
-
-**What the research found** (agent-reach and email verification):
-
-| Piece | Finding |
-|---|---|
-| agent-reach (MIT) | A reader for the web, GitHub, Twitter/X, Reddit, RSS and more. For LinkedIn it reads public pages through Jina Reader, or profile details through a separate `mcp-server-linkedin`. It does **not** give you a list of employees with emails. Cookie or login access carries account-suspension risk, and its own docs advise a secondary account. |
-| Email verification | Open-source options: AfterShip `email-verifier` (Go, MIT), `email-validator-js` (Node). They check syntax, MX records and, where the server allows, SMTP. `check-if-email-exists` is AGPL-3.0 (or paid commercial), so avoid it, in line with this project's AGPL rule. |
-| Limits of verification | Outbound port 25 must be open, and many hosts block it. Catch-all domains accept any address, so a "valid" result isn't proof. Big providers often won't confirm a mailbox. Expect "risky" or "unknown" results, not certainty. |
-| Finding the person | Public LinkedIn pages and search results can name people. An email still has to come from somewhere else: a public source, a pattern guess (`first.last@company.com`) that you verify, or a paid email-finder API. Logged-in LinkedIn scraping puts the user's account at risk and is parked by ADR-015. |
-
-**Guardrails in the design:** a hard cap of 10 emails a day, at most one follow-up, an opt-out and suppression list, and sending only to people who match the role and seniority above. Full spec in [`docs/PRD.md`](docs/PRD.md) §6 F12 and ADR-003.
-
-**Not built yet:** Gmail OAuth, the person-finder, the email verifier, the outreach table and the send step. Company research exists, but it only returns a basic dossier (GitHub repos and a web summary).
+LinkedIn is not scraped by the server (ADR-015). The owner accepts some account risk from auto-apply, and the safety rules below keep it small.
 
 ---
 
-## Plan: referral outreach and how to keep accounts safe
+## 5. Safety rules
 
-This section is a plan for the team. It is not built. Its aim is one automatic loop: **apply, then find the right person, then email them**, with as little user effort as possible, while keeping the user's LinkedIn and Gmail accounts out of trouble.
+The owner accepts some account risk. Nothing here guarantees no account is ever flagged. The rules keep volume low and keep the user's own session in charge.
 
-### The honest risk position
-The owner accepts some account risk (ADR-015). Nothing here can guarantee that no account is ever flagged. The plan is to make flags unlikely by keeping volume low, using the user's own session, and moving the riskiest work to sources that are built for it. We do **not** use stealth tricks such as fingerprint spoofing or rotating proxies. They add legal risk, they break often, and they are what platforms hunt for.
+**Applications:** a daily cap, a digest of what went out, no re-applying to the same job, and assisted mode for anyone who wants to press Send.
 
-### Recommended workflow
-
-```
- Application submitted
-        │
-        ▼
- 1. Pick targets      Company + role → 1–3 people (same function, one level up, or a hiring manager)
-        │             Source: people-data provider API first; the user's own browser as fallback
-        ▼
- 2. Get an email      Provider email-finder → else pattern guess (first.last@domain)
-        │
-        ▼
- 3. Verify it         MX + SMTP check, catch-all and risky flags → send only "safe"
-        │
-        ▼
- 4. Draft             ≤120 words, from the user's Facts KB, names the role and the application
-        │
-        ▼
- 5. Send              User's own Gmail, paced, daily cap, one follow-up max
-        │
-        ▼
- 6. Watch             Bounce → stop. Reply → stop and notify the user. Opt-out → suppress forever
-```
-
-### Building blocks (what to use)
-
-| Job | Recommended | Why / caveat |
-|---|---|---|
-| Find people at a company | A people-data API: People Data Labs or Coresignal for bulk enrichment, Apollo for a seat-based product with built-in contacts | Takes the scraping and the account risk off our users. Proxycurl, a popular LinkedIn data API, was sued by LinkedIn and [shut down in July 2025](https://nubela.co/blog/goodbye-proxycurl/amp). Pick providers that don't depend on logged-in scraping. |
-| Fallback people search | The extension reads a LinkedIn page the user opens themselves, one page at a time | Lowest-risk way to use LinkedIn, because it looks like the user browsing. It is not bulk scraping. |
-| Company research | agent-reach (MIT) for web, GitHub and RSS | Does not return employees or emails. |
-| Find an email | Hunter (finder and verifier API), or the same provider as above | Hunter charges credits per find and per verification. Pattern guessing is the free fallback. |
-| Verify an email | AfterShip `email-verifier` (Go, MIT) or `email-validator-js`, or the provider's verifier | Avoid AGPL tools (`check-if-email-exists`). Outbound port 25 is often blocked, so a provider's verifier may be easier to run. |
-| Send | Gmail API with the `gmail.send` scope | This scope needs Google's OAuth app verification, but not the heavier security assessment. Our earlier ADR-003 called it "restricted". It is the "sensitive" tier. |
-| Queue, caps, retries | The existing Redis and RQ workers | Already in the repo. |
-
-### Rules that keep accounts safe
-**Email (Gmail)**
-- Cap of 10 new emails a day per user, starting lower (3–5) for a new account, and rising slowly.
-- Spread sends across the day with random gaps. Never send in a burst.
-- Never send the same text twice. Each email is built from the user's facts and the specific job.
-- Verify every address first. Stop sending if bounces pass about 2–3%.
-- Stop at the first bounce, reply or opt-out for that person. Keep a suppression list across all users.
+**Email (Gmail):**
+- Start new accounts at 3–5 emails a day and rise slowly to 10.
+- Spread sends across the day with random gaps, never in a burst.
+- Never send the same text twice. Each email comes from the user's facts and that specific job.
+- Verify every address first. Stop if bounces pass about 2–3%.
+- A bounce, a reply or an opt-out stops all mail to that person. Keep a suppression list across all users.
 - One follow-up at most, after about 6 days.
-- Plain text, a real signature, no tracking pixels, no link shorteners.
+- Plain text, a real signature, no tracking pixels.
 
-**LinkedIn**
-- Prefer a data provider, so the user's own account is not used at all.
-- If the extension does read LinkedIn, it reads only pages the user opened, at human speed, with a small daily limit, and it never sends connection requests or messages.
-- Use the user's real, logged-in browser. No separate bots and no stored passwords.
+**LinkedIn:** the extension reads only pages the user opened, at human speed with a small daily limit. It never sends connection requests or messages, and it stores no passwords.
 
-**Applications**
-- Daily application cap, a digest of what went out, and no re-applying to the same job.
-- Assisted mode (the user presses Send) stays available for users who want it.
+**Circuit breaker:** a captcha, a warning page, a bounce spike or a spam complaint pauses that user's sending and tells them why.
 
-**Always**
-- A circuit breaker pauses a user's sending the moment signals look bad: a captcha, a warning page, a spike in bounces, or a spam complaint. The user is told why.
+**Truth:** no claim in any resume or email may lack support in the user's Facts KB.
 
-### What would make this worth paying for
-- **One setup, then it runs.** The user uploads a resume and makes one campaign. After that, discovery, tailoring, applying and outreach happen on their own.
-- **A better resume per job**, matched to each job's title and skills, without invented claims.
-- **A real person looking at the application**, not just an ATS queue.
-- **A simple dashboard:** applied, emailed, replied, interviews. This tells the user what is working.
-- **Measured results.** We track reply and interview rates with and without outreach, so the product is judged on outcomes, not promises.
-
-### Cost to plan for
-The people and email data providers charge per lookup or per seat, and so does verification. Model cost per application is already tracked against a target of $0.40. Add provider cost per outreach, and set the paid plan and per-user caps from the real numbers once measured.
-
-### Open questions for the team
-1. Which people-data provider do we start with, and what does it cost per outreach at our volume?
-2. Do we start outreach as "draft, user presses send" and move to automatic after the first real replies?
-3. When do we start Google's OAuth verification for `gmail.send`? It has a review timeline, so start early.
-4. Which countries do we launch in? Email rules differ (GDPR in the EU, CAN-SPAM in the US).
+**Privacy:** resumes are personal data. The plan is encryption at rest, hard delete on request, personal data stripped from cached research, and no third-party analytics on profile pages.
 
 ---
 
-## What works today
+## 6. What is left to close the loop
 
-Measured on the code in this repo (see [`docs/WORKLOG.md`](docs/WORKLOG.md) for the full log).
+| Step | Task | Notes |
+|---|---|---|
+| 1 | **First real, owner-watched submission** through the extension | Proves the core loop. Nothing real has been sent yet. |
+| 2 | **Spike: person-finder.** For 20 real jobs, can we name a suitable person and get a *verified* email? | Decides if stage 8 works at all. If under about 1 in 3 succeed, change the approach before building more. |
+| 3 | **Build outreach as "draft, you press send"** | Gmail OAuth, draft, verify, caps, suppression list. Move to automatic only after real replies. |
+| 4 | **SMTP credentials** | Digest and password-reset emails only log to the console until set. |
+| 5 | **Production Anthropic key, then run the eval** | Gives real tailoring-quality numbers. |
+| 6 | **Workday gaps** | Button-style dropdowns, multi-selects, date pickers and "Add another" sections still stop and ask the user. |
+| 7 | **Friends beta** | 5–7 friends on the hosted app. See below. |
 
-| Area | State |
-|---|---|
-| Accounts, multi-tenancy, password reset | ✅ Done. JWT auth, row-level security, every endpoint scoped to a user |
-| Resume upload and parsing, Facts KB, fact review UI | ✅ Done |
-| Onboarding (resume, facts, preferences, campaign) | ✅ Done |
-| Campaigns | ✅ Done. Roles, locations, sources, caps, run and stats |
-| Job discovery (ATS boards, feeds, Reed, Remotive) | ✅ Done. Runs on background workers with a scheduler |
-| Matching and explanations | ✅ Done. Embeddings (Voyage AI), hard filters, skill gap, near-duplicate removal |
-| Company research | 🟡 Basic. Only GitHub and web summary so far |
-| Tailoring with truth-check, ATS-safe DOCX | ✅ Built. **Quality not yet measured at scale**, because the eval harness is waiting on a production Anthropic key |
-| Review queue and application tracker (Kanban) | ✅ Done |
-| Chrome extension: autofill and submit | ✅ Built. Tested on Greenhouse, Lever and Ashby. Workday multi-page flow is built but proven only on a local fixture |
-| Daily digest and notifications | ✅ Built. Email needs SMTP credentials |
-| **Referral outreach (cold email)** | ❌ **Not built.** Designed only |
-| Real end-to-end submission by the owner | ⏳ Next milestone. No real application has been sent yet |
-
-Tests: about 737 API tests and 132 extension tests pass at the last logged run.
-
-### Known gaps and near-term next steps
-1. **Run the first real, owner-watched submission** through the extension.
-2. **Build referral outreach** (Gmail OAuth, person-finder, draft, send, suppression list).
-3. Add SMTP credentials so digests and password-reset emails actually send.
-4. Get a production Anthropic key, so the eval harness can measure tailoring quality.
-5. Workday: button-style dropdowns, multi-selects, date pickers and "Add another" sections still stop and ask the user.
-6. Only the Developer persona is planned for v1, and PM and Marketing personas come later. The author's own campaign is currently set up for PM roles in India or remote.
+### Beta with 5–7 friends
+- **What to measure:** applications sent, replies, referral emails sent, replies to them, interviews. Compare applications with and without a referral email. That is the number that says whether the idea works.
+- **What it costs:** model and embedding calls for tailoring, plus hosting. Finder and verifier credits stay on free tiers to start. The target is $0.40 or less per prepared application. Check it against real usage.
+- **What to watch:** bounce rate, any account warnings, and how often the extension hands a form back to the user.
+- **Persona:** v1 is built around one persona at a time. The owner's own campaign is Product Manager roles in India or remote.
 
 ---
 
-## Principles
-
-1. **Never fabricate.** Every generated claim traces to a fact you confirmed. A second model call checks this, and unsupported claims block the application.
-2. **Your identity, your reputation.** Applications go out from your browser. Emails (when built) go out from your Gmail.
-3. **Bounded autonomy.** You approve a campaign once. The agent works inside its caps, and you get a digest of what went out.
-4. **Boring, legal ingestion first.** Public APIs and feeds before any scraping.
-5. **Sounds like a person.** Specific facts read as human. Generic enthusiasm doesn't.
-
----
-
-## Architecture
-
-```
-Next.js web app ──REST──▶ FastAPI ──▶ PostgreSQL (+ pgvector, row-level security)
-Chrome extension ────────▶   │   ──▶ Redis + RQ workers (discover, embed, prepare, plan forms)
-                             └─────▶ Claude (tailor, truth-check) · Voyage (embeddings)
-```
+## 7. Where the code lives
 
 ```
 apps/api/         FastAPI backend
-  connectors/       job sources (ATS boards, feeds, Reed, JobSpy), normalise and dedupe
+  connectors/       job sources, normalise, dedupe, ATS detection
   matching/         filters, embeddings, scoring, skill gap, near-duplicate detection
   tailoring/        tailor and truth-check pipeline
   parsing/          resume PDF/DOCX to Facts KB
   documents/        ATS-safe DOCX export and parse-back check
   formfill/         field mapping, deterministic fills, per-ATS schemas
   formplans.py      per-job fill plans from the planner
-  research/         company dossier
+  research/         company research (agent-reach)
   campaigns.py      campaign bounds and runs
   workers/          RQ worker and scheduler
   alembic/          database migrations
-apps/web/         Next.js dashboard (onboarding, facts, campaign, matches, review, tracker, today)
-apps/extension/   ApplyScout Chrome extension (Manifest V3): autofill, multi-page, verify
+apps/web/         Next.js dashboard
+apps/extension/   ApplyScout Chrome extension (Manifest V3)
 eval/             Promptfoo eval harness for tailoring and the truth-checker
-tools/            Stagehand form planner, and a guarded browser-use harness (fills, never submits)
-docs/             product and engineering docs (see below)
+tools/            Stagehand form planner, guarded browser-use harness
+docs/             product and engineering docs
 ```
 
-| Layer | Tech |
-|---|---|
-| Frontend | Next.js, TypeScript, Tailwind, shadcn/ui |
-| Backend | FastAPI, SQLAlchemy, Alembic |
-| Database | PostgreSQL 16 with pgvector (Neon in the author's setup) |
-| Queue | Redis with RQ and rq-scheduler |
-| AI | Anthropic Claude (tailoring), Voyage AI (embeddings), Stagehand (form planning) |
-| Extension | Chrome MV3, Vite, TypeScript |
+Tests: about 737 API tests and 132 extension tests passed at the last logged run.
 
----
-
-## Running it locally
+## 8. Running it locally
 
 ```bash
-cp .env.example .env     # set DATABASE_URL, REDIS_URL, JWT_SECRET, ANTHROPIC_API_KEY
-                         # embeddings need a Voyage key; see docs/WORKLOG.md for the free-tier limits
+cp .env.example .env     # DATABASE_URL, REDIS_URL, JWT_SECRET, ANTHROPIC_API_KEY
+                         # embeddings need a Voyage key (see docs/WORKLOG.md for free-tier limits)
 
 docker compose up -d db redis
 
-# API
 cd apps/api
 pip install -r requirements.txt
 alembic upgrade head
 uvicorn main:app --port 8000
 
-# Background workers (needed for discovery, campaign runs and embeddings)
-python -m workers.run_worker       # in a second terminal
-python -m workers.run_scheduler    # in a third terminal
+python -m workers.run_worker       # second terminal: discovery, campaign runs, embeddings
+python -m workers.run_scheduler    # third terminal: periodic runs
 
-# Web
-cd apps/web && npm install && npm run dev       # http://localhost:3000
-
-# Extension
-cd apps/extension && npm install && npm run build   # load dist/ as an unpacked extension
+cd apps/web && npm install && npm run dev            # http://localhost:3000
+cd apps/extension && npm install && npm run build    # load dist/ as an unpacked extension
 ```
 
-API docs: http://localhost:8000/docs
+API docs: http://localhost:8000/docs. Tests: `pytest` in `apps/api`, `npm test` in `apps/web` and `apps/extension`. Without a running worker, **Run** and **Discover** return a 503 that says how to start one.
 
-Tests: `cd apps/api && pytest` · `cd apps/web && npm test` · `cd apps/extension && npm test`
+## 9. Docs
 
-Without a running worker, **Run** and **Discover** return a 503 that says how to start one.
-
----
-
-## Docs
-
-Start with [`docs/WORKLOG.md`](docs/WORKLOG.md) for the current state. It is the running log, and the top section says where the project stands.
+Start with [`docs/WORKLOG.md`](docs/WORKLOG.md). It is the running log, and its top section says where the project stands.
 
 | Doc | What it is |
 |---|---|
-| [`docs/PRD.md`](docs/PRD.md) | What we are building and why: personas, journeys, features, metrics, build order |
+| [`docs/PRD.md`](docs/PRD.md) | What we are building and why: journeys, features, metrics, build order |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System design and module boundaries |
 | [`docs/SPEC.md`](docs/SPEC.md) | Module contracts and API surface |
-| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Architecture decision records, including the pivot to auto-apply (ADR-015, ADR-016) |
-| [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md) | Third-party tools and the reasons for each |
-| [`docs/LIVE-FORM-TEST.md`](docs/LIVE-FORM-TEST.md) | How auto-apply is tested against real forms |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Decision records, including the pivot to auto-apply (ADR-015, ADR-016) |
+| [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md) | Every third-party tool and repo, with licences and reasons |
+| [`docs/LIVE-FORM-TEST.md`](docs/LIVE-FORM-TEST.md) | How auto-apply is tested on real forms |
 | [`docs/harness-reports/`](docs/harness-reports) | Measured results from the form planner |
 
-## Notes before you deploy or share this
-- Check the licence of any third-party code you add. MIT and Apache are fine. AGPL code (such as AIHawk) is deliberately not used, and a repo with no licence isn't safe to reuse.
-- Auto-applying from a user's browser carries Terms-of-Service and account risk on the job boards. That is an accepted product decision (ADR-015). Caps and the digest exist to bound it.
-- This repo stores resumes and personal data. Before going public, confirm encryption at rest, hard delete on request, and no third-party analytics on profile pages.
+## 10. Before you share this wider
+- Check the licence of any third-party code you add. MIT and Apache are fine. AGPL and no-licence code are not.
+- Auto-applying from a user's browser carries terms-of-service and account risk on job boards. That is an accepted decision (ADR-015). Caps and the digest bound it.
+- If this ever goes beyond friends, Google's OAuth verification, email-law compliance (CAN-SPAM, GDPR) and a paid-provider plan all become required work.
