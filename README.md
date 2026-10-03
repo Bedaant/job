@@ -276,6 +276,7 @@ Start with [`docs/WORKLOG.md`](docs/WORKLOG.md). It is the running log, and its 
 | [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md) | Every third-party tool and repo, with licences and reasons |
 | [`docs/LIVE-FORM-TEST.md`](docs/LIVE-FORM-TEST.md) | How auto-apply is tested on real forms |
 | [`docs/harness-reports/`](docs/harness-reports) | Measured results from the form planner |
+| [`docs/diagrams/`](docs/diagrams) | Interactive architecture, flow and sequence diagrams (download the HTML and open it) |
 
 ## 10. Before you share this wider
 - Check the licence of any third-party code you add. MIT and Apache are fine. AGPL and no-licence code are not.

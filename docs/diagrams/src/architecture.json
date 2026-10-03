@@ -1,0 +1,370 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Job Copilot: System Architecture",
+    "output": "job-copilot-architecture.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "You",
+      "sublabel": "Browser",
+      "pos": [
+        40,
+        330
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "Web app",
+      "sublabel": "Next.js dashboard",
+      "pos": [
+        290,
+        330
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API",
+      "sublabel": "FastAPI, auth, tenancy",
+      "pos": [
+        540,
+        330
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "Neon, pgvector, RLS",
+      "pos": [
+        790,
+        330
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "queue",
+      "type": "messagebus",
+      "label": "Redis queue",
+      "sublabel": "RQ + scheduler",
+      "pos": [
+        540,
+        170
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "workers",
+      "type": "backend",
+      "label": "Workers",
+      "sublabel": "discover, embed, tailor",
+      "pos": [
+        790,
+        160
+      ],
+      "size": [
+        140,
+        80
+      ]
+    },
+    {
+      "id": "sources",
+      "type": "external",
+      "label": "Job sources",
+      "sublabel": "ATS boards and feeds",
+      "pos": [
+        790,
+        30
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "ai",
+      "type": "cloud",
+      "label": "AI services",
+      "sublabel": "Claude, Voyage",
+      "pos": [
+        1040,
+        170
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "planner",
+      "type": "backend",
+      "label": "Form planner",
+      "sublabel": "Stagehand, read-only",
+      "pos": [
+        1040,
+        310
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "ats",
+      "type": "external",
+      "label": "Employer forms",
+      "sublabel": "Greenhouse, Lever, Workday",
+      "pos": [
+        1040,
+        470
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "ext",
+      "type": "frontend",
+      "label": "ApplyScout",
+      "sublabel": "Chrome extension",
+      "pos": [
+        540,
+        470
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "outreach",
+      "type": "backend",
+      "label": "Outreach",
+      "sublabel": "draft, verify, cap",
+      "tag": "PLANNED",
+      "pos": [
+        290,
+        170
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "finder",
+      "type": "backend",
+      "label": "Person finder",
+      "sublabel": "agent-reach",
+      "tag": "PLANNED",
+      "pos": [
+        290,
+        30
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "gmail",
+      "type": "external",
+      "label": "Your Gmail",
+      "sublabel": "OAuth send",
+      "tag": "PLANNED",
+      "pos": [
+        40,
+        170
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "employees",
+      "type": "external",
+      "label": "Employees",
+      "sublabel": "same company",
+      "tag": "PLANNED",
+      "pos": [
+        40,
+        30
+      ],
+      "size": [
+        140,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Your browser: your IP, your logins",
+      "wraps": [
+        "ext"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "user-web",
+      "from": "user",
+      "to": "web",
+      "label": "uses",
+      "variant": "emphasis"
+    },
+    {
+      "id": "web-api",
+      "from": "web",
+      "to": "api",
+      "label": "REST + live events",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-db",
+      "from": "api",
+      "to": "db",
+      "label": "read / write"
+    },
+    {
+      "id": "api-queue",
+      "from": "api",
+      "to": "queue",
+      "label": "enqueue"
+    },
+    {
+      "id": "queue-workers",
+      "from": "queue",
+      "to": "workers",
+      "label": "jobs"
+    },
+    {
+      "id": "workers-db",
+      "from": "workers",
+      "to": "db",
+      "label": "store"
+    },
+    {
+      "id": "workers-sources",
+      "from": "workers",
+      "to": "sources",
+      "label": "fetch jobs"
+    },
+    {
+      "id": "workers-ai",
+      "from": "workers",
+      "to": "ai",
+      "label": "tailor, embed"
+    },
+    {
+      "id": "workers-planner",
+      "from": "workers",
+      "to": "planner",
+      "label": "plan forms",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "planner-ats",
+      "from": "planner",
+      "to": "ats",
+      "label": "read-only GET",
+      "variant": "security"
+    },
+    {
+      "id": "api-ext",
+      "from": "api",
+      "to": "ext",
+      "label": "fill plan / result",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ext-ats",
+      "from": "ext",
+      "to": "ats",
+      "label": "fills and submits",
+      "variant": "emphasis"
+    },
+    {
+      "id": "queue-outreach",
+      "from": "queue",
+      "to": "outreach",
+      "label": "enqueue",
+      "variant": "dashed"
+    },
+    {
+      "id": "outreach-finder",
+      "from": "outreach",
+      "to": "finder",
+      "label": "who works there",
+      "variant": "dashed"
+    },
+    {
+      "id": "outreach-gmail",
+      "from": "outreach",
+      "to": "gmail",
+      "label": "send as you",
+      "variant": "dashed"
+    },
+    {
+      "id": "gmail-employees",
+      "from": "gmail",
+      "to": "employees",
+      "label": "referral ask",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Server plans, your browser acts",
+      "items": [
+        "A read-only planner studies each form",
+        "The extension fills and submits from your browser",
+        "The server never submits an application"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Never fabricate",
+      "items": [
+        "Every claim traces to a fact you confirmed",
+        "A second model call truth-checks each draft"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Planned, not built",
+      "items": [
+        "Referral outreach by email",
+        "Person finder, email verifier, Gmail send"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Apply, Then Ask for a Referral",
+    "output": "job-copilot-sequence.html",
+    "quality_profile": "showcase",
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "you",
+      "type": "external",
+      "label": "You",
+      "sublabel": "dashboard"
+    },
+    {
+      "id": "ext",
+      "type": "frontend",
+      "label": "ApplyScout",
+      "sublabel": "your browser"
+    },
+    {
+      "id": "ats",
+      "type": "external",
+      "label": "Employer",
+      "sublabel": "application form"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Server",
+      "sublabel": "API, workers"
+    },
+    {
+      "id": "finder",
+      "type": "backend",
+      "label": "Finder",
+      "sublabel": "agent-reach + checks"
+    },
+    {
+      "id": "gmail",
+      "type": "external",
+      "label": "Your Gmail",
+      "sublabel": "OAuth send"
+    },
+    {
+      "id": "employee",
+      "type": "external",
+      "label": "Employee",
+      "sublabel": "same company"
+    }
+  ],
+  "messages": [
+    {
+      "from": "you",
+      "to": "ext",
+      "y": 190,
+      "label": "press Send",
+      "variant": "emphasis",
+      "note": "or auto mode, within your daily cap"
+    },
+    {
+      "from": "ext",
+      "to": "ats",
+      "y": 236,
+      "label": "fill and submit",
+      "variant": "emphasis"
+    },
+    {
+      "from": "ats",
+      "to": "ext",
+      "y": 282,
+      "label": "confirmation page",
+      "variant": "return"
+    },
+    {
+      "from": "ext",
+      "to": "api",
+      "y": 328,
+      "label": "submitted",
+      "variant": "emphasis"
+    },
+    {
+      "from": "api",
+      "to": "finder",
+      "y": 390,
+      "label": "who works there?",
+      "variant": "dashed"
+    },
+    {
+      "from": "finder",
+      "to": "api",
+      "y": 436,
+      "label": "names and roles",
+      "variant": "return"
+    },
+    {
+      "from": "api",
+      "to": "finder",
+      "y": 482,
+      "label": "check the email",
+      "variant": "dashed"
+    },
+    {
+      "from": "finder",
+      "to": "api",
+      "y": 528,
+      "label": "safe or skip",
+      "variant": "return"
+    },
+    {
+      "from": "api",
+      "to": "you",
+      "y": 574,
+      "label": "draft for approval",
+      "variant": "dashed"
+    },
+    {
+      "from": "you",
+      "to": "api",
+      "y": 620,
+      "label": "approve",
+      "variant": "emphasis"
+    },
+    {
+      "from": "api",
+      "to": "gmail",
+      "y": 666,
+      "label": "send, paced and capped",
+      "variant": "dashed"
+    },
+    {
+      "from": "gmail",
+      "to": "employee",
+      "y": 712,
+      "label": "referral ask",
+      "variant": "dashed"
+    },
+    {
+      "from": "employee",
+      "to": "gmail",
+      "y": 758,
+      "label": "reply, bounce or opt-out",
+      "variant": "return"
+    },
+    {
+      "from": "gmail",
+      "to": "api",
+      "y": 804,
+      "label": "stop mail to them",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "ext",
+      "from": 184,
+      "to": 334,
+      "type": "frontend"
+    },
+    {
+      "participant": "api",
+      "from": 322,
+      "to": 810,
+      "type": "backend"
+    },
+    {
+      "participant": "finder",
+      "from": 384,
+      "to": 534,
+      "type": "backend"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Built: the apply half",
+      "items": [
+        "Your browser submits, not the server",
+        "Submitted only when the confirmation page says so"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Planned: the referral half",
+      "items": [
+        "Person finder, email verifier and Gmail send are not built",
+        "You approve each draft at first"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Hard stops",
+      "items": [
+        "A bounce, reply or opt-out stops all mail to that person",
+        "At most 10 new emails a day, one follow-up"
+      ]
+    }
+  ]
+}

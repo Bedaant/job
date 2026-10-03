@@ -1,0 +1,289 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Job Copilot: From Resume to Application",
+    "output": "job-copilot-loop.html",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "you",
+      "label": "You"
+    },
+    {
+      "id": "server",
+      "label": "Server: API and workers"
+    },
+    {
+      "id": "tailor",
+      "label": "Claude: tailor and truth-check"
+    },
+    {
+      "id": "browser",
+      "label": "Your browser: ApplyScout"
+    },
+    {
+      "id": "outreach",
+      "label": "Referral outreach (planned)",
+      "variant": "exception"
+    }
+  ],
+  "mainPath": [
+    "upload",
+    "parse",
+    "facts",
+    "campaign",
+    "discover",
+    "match",
+    "tailor",
+    "truth",
+    "apply",
+    "submit",
+    "track"
+  ],
+  "nodes": [
+    {
+      "id": "upload",
+      "lane": "you",
+      "col": 0,
+      "type": "external",
+      "label": "Upload resume",
+      "sublabel": "PDF or DOCX",
+      "width": 166
+    },
+    {
+      "id": "facts",
+      "lane": "you",
+      "col": 1,
+      "type": "frontend",
+      "label": "Review facts",
+      "sublabel": "edit and confirm",
+      "width": 166
+    },
+    {
+      "id": "campaign",
+      "lane": "you",
+      "col": 2,
+      "type": "frontend",
+      "label": "Create campaign",
+      "sublabel": "roles, places, caps",
+      "width": 166
+    },
+    {
+      "id": "fix",
+      "lane": "you",
+      "col": 4,
+      "type": "external",
+      "label": "Fix the gap",
+      "sublabel": "add a fact or drop it",
+      "width": 166
+    },
+    {
+      "id": "track",
+      "lane": "you",
+      "col": 5,
+      "type": "frontend",
+      "label": "Track results",
+      "sublabel": "Kanban, digest, replies",
+      "width": 166
+    },
+    {
+      "id": "parse",
+      "lane": "server",
+      "col": 0,
+      "type": "backend",
+      "label": "Parse resume",
+      "sublabel": "25-40 checkable facts",
+      "width": 166
+    },
+    {
+      "id": "discover",
+      "lane": "server",
+      "col": 2,
+      "type": "backend",
+      "label": "Find jobs",
+      "sublabel": "boards, feeds, APIs",
+      "width": 166
+    },
+    {
+      "id": "match",
+      "lane": "server",
+      "col": 3,
+      "type": "backend",
+      "label": "Match and explain",
+      "sublabel": "skills, filters, dedupe",
+      "width": 166
+    },
+    {
+      "id": "tailor",
+      "lane": "tailor",
+      "col": 3,
+      "type": "cloud",
+      "label": "Tailor resume",
+      "sublabel": "job's title and skills",
+      "width": 166
+    },
+    {
+      "id": "truth",
+      "lane": "tailor",
+      "col": 4,
+      "type": "security",
+      "label": "Truth-check",
+      "sublabel": "blind second call",
+      "tag": "blocks bad claims",
+      "width": 166
+    },
+    {
+      "id": "apply",
+      "lane": "browser",
+      "col": 4,
+      "type": "frontend",
+      "label": "Fill the form",
+      "sublabel": "from a read-only plan",
+      "width": 166
+    },
+    {
+      "id": "submit",
+      "lane": "browser",
+      "col": 5,
+      "type": "frontend",
+      "label": "Send",
+      "sublabel": "you press it, or auto",
+      "tag": "daily cap",
+      "width": 166
+    },
+    {
+      "id": "handoff",
+      "lane": "outreach",
+      "col": 5,
+      "type": "backend",
+      "label": "Email people",
+      "sublabel": "ask for a referral",
+      "tag": "PLANNED",
+      "width": 166
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-upload",
+      "from": "upload",
+      "to": "parse",
+      "label": "resume",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e-parse",
+      "from": "parse",
+      "to": "facts",
+      "label": "facts",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e-facts",
+      "from": "facts",
+      "to": "campaign",
+      "label": "confirmed",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e-campaign",
+      "from": "campaign",
+      "to": "discover",
+      "label": "bounds",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e-discover",
+      "from": "discover",
+      "to": "match",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e-match",
+      "from": "match",
+      "to": "tailor",
+      "label": "chosen jobs",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e-tailor",
+      "from": "tailor",
+      "to": "truth",
+      "label": "draft",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e-truth",
+      "from": "truth",
+      "to": "apply",
+      "label": "all supported",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e-apply",
+      "from": "apply",
+      "to": "submit",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e-submit",
+      "from": "submit",
+      "to": "track",
+      "label": "result",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e-fix",
+      "from": "truth",
+      "to": "fix",
+      "label": "unsupported claim",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "e-handoff",
+      "from": "submit",
+      "to": "handoff",
+      "label": "after you apply",
+      "variant": "dashed",
+      "role": "async"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "The gate that matters",
+      "items": [
+        "Truth-check blocks any claim your facts do not support",
+        "A skill you lack is flagged as a gap, never added"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Your browser submits",
+      "items": [
+        "The server only plans the form, read-only",
+        "Assisted mode: you press Send. Auto mode: within your daily cap"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Planned",
+      "items": [
+        "Referral email after each application",
+        "See the outreach diagram"
+      ]
+    }
+  ]
+}
