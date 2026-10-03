@@ -1,8 +1,8 @@
-# Job Copilot
+# Apply Scout
 
 **Upload your resume once. The app finds matching jobs, tailors your resume to each job's ATS, applies from your own browser, then emails people inside the company to ask for a referral. The goal is to get you interviews, not just applications.**
 
-Job Copilot (the browser extension is called **ApplyScout**) is a personal project, built to run for the owner and about 5–7 friends. It is not a commercial product yet. This README is the blueprint: what the system does end to end, how the parts fit together, which repos and tools are used where and why, and what is built versus still to build.
+Apply Scout (the browser extension is called **ApplyScout**) is a personal project, built to run for the owner and about 5–7 friends. It is not a commercial product yet. This README is the blueprint: what the system does end to end, how the parts fit together, which repos and tools are used where and why, and what is built versus still to build.
 
 > **Status in one line:** everything from resume upload through auto-apply is built and tested. The last step (referral outreach by email) is designed but **not built**. We make no promise of an interview. We aim to raise the chance of a reply, and we measure it.
 
