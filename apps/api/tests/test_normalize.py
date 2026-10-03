@@ -57,14 +57,6 @@ def test_coerce_posted_at_iso_with_offset_converts_to_utc_naive():
     assert coerce_posted_at("2026-09-09T10:50:29-04:00") == datetime(2026, 9, 9, 14, 50, 29)
 
 
-def test_coerce_posted_at_epoch_seconds():
-    assert coerce_posted_at(1790265606) == datetime(2026, 9, 24, 16, 0, 6)
-
-
-def test_coerce_posted_at_epoch_milliseconds():
-    assert coerce_posted_at(1790265606000) == datetime(2026, 9, 24, 16, 0, 6)
-
-
 def test_coerce_posted_at_none_returns_none():
     assert coerce_posted_at(None) is None
 
@@ -75,11 +67,6 @@ def test_coerce_posted_at_empty_string_returns_none():
 
 def test_coerce_posted_at_garbage_string_returns_none():
     assert coerce_posted_at("not a date") is None
-
-
-def test_coerce_posted_at_datetime_passes_through_unchanged():
-    dt = datetime(2026, 1, 1, 0, 0, 0)
-    assert coerce_posted_at(dt) == dt
 
 
 def test_coerce_posted_at_compact_numeric_date_parses_as_iso_date():
@@ -122,8 +109,8 @@ def test_coerce_posted_at_invalid_calendar_year_zero_returns_none():
 
 def test_coerce_posted_at_epoch_value_as_string_is_not_supported_returns_none():
     # No wired connector sends an epoch as a string (Greenhouse/Ashby send
-    # ISO strings, JobSpy sends a date string, Lever sends epoch ms as a
-    # number). Three rounds of trying to distinguish a genuine numeric-epoch
+    # ISO strings, JobSpy sends a date string; Lever decodes its own epoch
+    # ms locally in lever.py). Three rounds of trying to distinguish a genuine numeric-epoch
     # string from an invalid/compact date string each produced a different
     # wrong-but-plausible datetime for some input. A str is parsed as a date
     # or it's None -- full stop, no epoch interpretation for strings at all.
@@ -131,7 +118,14 @@ def test_coerce_posted_at_epoch_value_as_string_is_not_supported_returns_none():
     assert coerce_posted_at("1790265606000") is None
 
 
-def test_coerce_posted_at_epoch_seconds_as_number_still_works():
-    # Pins the str/number distinction: the exact same value as an int is a
-    # genuine epoch-seconds timestamp and must still decode correctly.
-    assert coerce_posted_at(1790265606) == datetime(2026, 9, 24, 16, 0, 6)
+def test_coerce_posted_at_accepts_strings_only():
+    # Final review: the number-epoch and datetime-passthrough branches had no
+    # caller in the codebase (greenhouse/ashby/jobspy all pass str or None;
+    # lever.py and feeds.py decode their own epochs locally), so they were
+    # deleted per the project's YAGNI rule. coerce_posted_at is a date-string
+    # parser now: anything that is not a str (or None/"") is None.
+    assert coerce_posted_at(1790265606) is None
+    assert coerce_posted_at(1790265606000) is None
+    assert coerce_posted_at(1790265606.0) is None
+    assert coerce_posted_at(datetime(2026, 1, 1)) is None
+    assert coerce_posted_at(["2026-01-01"]) is None

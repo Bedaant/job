@@ -146,9 +146,12 @@ class Job(Base):
     skills = Column(JSON, default=list)  # extracted keywords, for skill_coverage scoring
     seniority = Column(String, nullable=True)  # intern|junior|mid|senior|staff|lead, inferred from title
     embedding = Column(Vector(EMBEDDING_DIM), nullable=True)
-    posted_at = Column(DateTime, nullable=True)
+    # index=True on both: migration 0022 creates ix_jobs_posted_at /
+    # ix_jobs_last_seen_at, and alembic/env.py autogenerates against this
+    # metadata — without the flag the next --autogenerate drops them again.
+    posted_at = Column(DateTime, nullable=True, index=True)
     fetched_at = Column(DateTime, default=datetime.utcnow)
-    last_seen_at = Column(DateTime, default=datetime.utcnow)
+    last_seen_at = Column(DateTime, default=datetime.utcnow, index=True)
     delisted_at = Column(DateTime, nullable=True)     # NULL = still listed; set when source stops listing it
 
     applications = relationship("Application", back_populates="job")

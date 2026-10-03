@@ -28,6 +28,27 @@ def _job(delisted_at=None):
     )
 
 
+def test_model_declares_the_freshness_indexes_migration_0022_creates():
+    """Final review I2: migration 0022 creates ix_jobs_posted_at and
+    ix_jobs_last_seen_at, but the model didn't declare them. alembic/env.py
+    autogenerates against Base.metadata, so the next --autogenerate would emit
+    op.drop_index for both and silently revert Task 1 -- and the suite would
+    not notice, because create_all builds from the model."""
+    names = {ix.name for ix in models.Job.__table__.indexes}
+    assert {"ix_jobs_posted_at", "ix_jobs_last_seen_at"} <= names
+
+
+def test_model_does_not_declare_canonical_hash_unique():
+    """Final review C1: the UNIQUE constraint is gone from the schema; dedupe
+    is upsert_jobs' job. Autogenerate must not resurrect it either."""
+    assert models.Job.__table__.c.canonical_hash.unique is not True
+    assert not any(
+        {c.name for c in uc.columns} == {"canonical_hash"}
+        for uc in models.Job.__table__.constraints
+        if hasattr(uc, "columns")
+    )
+
+
 def test_job_delisted_at_defaults_to_none():
     db = _db()
     job = _job()

@@ -277,9 +277,21 @@ def test_upsert_uses_at_most_three_queries_regardless_of_batch_size(_mock_embed)
 def test_upsert_uses_at_most_three_queries_for_an_update_only_batch(_mock_embed):
     """The bulk UPDATE path, isolated: no new rows at all, every job in the
     batch is already stored. Must still be one SELECT + one bulk UPDATE (no
-    insert query at all), and still bounded at <=3."""
+    insert query at all), and still bounded at <=3.
+
+    The fixtures are deliberately HETEROGENEOUS — one job carries a salary and
+    a posted_at the other 49 lack. bulk_update_mappings only collapses to a
+    single executemany when every mapping has the same key set; with uniform
+    fixtures the <=3 bound held by construction (the loop fills all
+    _UPDATE_FIELDS unconditionally) rather than by this test, so a future
+    data-dependent conditional in that loop would regress to N+1 and still
+    ship green. Measured: 6 uniform mappings -> 1 statement, 6 heterogeneous
+    mappings -> 6 statements.
+    """
     db = _db()
     jobs = [_job("remotive", str(i), title=f"Role {i}") for i in range(50)]
+    jobs[7]["salary"] = "$180k"
+    jobs[7]["posted_at"] = datetime(2026, 9, 1)
     upsert_jobs(db, jobs)  # seed: all 50 already exist
 
     query_count = _counting(db)
@@ -415,6 +427,23 @@ def test_backfill_under_a_rate_limit_keeps_what_it_embedded_and_stops():
     assert len(calls) == 2  # stopped at the 429 on the second request
     assert all(sum(len(t) for t in texts) <= 24_000 for texts in calls)  # ~<10K tokens/request
     assert sum(j.embedding is not None for j in db.query(models.Job).all()) == 6
+
+
+def test_backfill_skips_delisted_jobs():
+    """Voyage's free tier is 3 RPM — a dead job must never take a live job's
+    slot in the queue."""
+    from connectors.pipeline import backfill_job_embeddings
+
+    db = _db()
+    with patch("connectors.pipeline.embed_texts", return_value=None):
+        upsert_jobs(db, [_job("remotive", "gone", title="Gone Role"),
+                         _job("remotive", "live", title="Live Role")])
+    db.query(models.Job).filter(models.Job.external_id == "gone").one().delisted_at = datetime(2026, 1, 1)
+    db.commit()
+
+    with patch("connectors.pipeline.embed_texts", side_effect=lambda texts, input_type: [[0.1] * 512 for _ in texts]):
+        assert backfill_job_embeddings(db) == 1
+    assert db.query(models.Job).filter(models.Job.embedding.isnot(None)).one().title == "Live Role"
 
 
 def test_backfill_embeds_the_newest_jobs_first():

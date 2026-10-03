@@ -34,6 +34,14 @@ REED_KEYWORDS = ["product manager", "associate product manager"]
 # Add the startups you're targeting here (seed-Series B companies you like).
 # 2026-09-29: PM roles in India or globally remote, each token checked live against
 # the ATS's public API (boards whose "remote" PM roles were US-only were left out).
+#
+# REMOVING A TOKEN IS A DELISTING. The delisting sweep (workers/jobs.py) is
+# source-wide, not per-board — `Job` has no board_token column — so the next
+# trustworthy run marks every job from a removed board delisted, even though
+# they are all still live. That is expiry by config edit, so drop a token only
+# when you mean its jobs to disappear. To stop fetching a board without
+# tombstoning its inventory, there is no switch today; a `board_token` column is
+# the structural fix and is deferred to a later phase.
 GREENHOUSE_BOARD_TOKENS = [
     "okta", "druva", "mongodb", "rubrik", "inmobi", "databricks", "twilio",  # India offices
     "gitlab", "grafanalabs",  # remote across countries
@@ -47,11 +55,18 @@ ASHBY_ORG_TOKENS = [
     "sarvam", "supabase",
 ]
 
-# Board token -> real company name (Task 4, canonical_hash dedupe). Greenhouse's
-# job payload already carries `company_name`, so this map is only a fallback for
-# it (unmapped/missing token); Lever and Ashby job payloads carry no company name
-# field at all, so their connectors always use this map. An unmapped token falls
-# back to the raw token string (connectors/greenhouse.py, lever.py, ashby.py).
+# Board token -> real company name (Task 4, canonical_hash dedupe). This map WINS
+# for every mapped token, including on Greenhouse, whose payload `company_name`
+# carries board-page cruft that breaks the hash ("Rubrik Job Board" hashes
+# differently from "Rubrik"); Greenhouse's payload is used only for a token that
+# is absent here. Lever and Ashby payloads carry no company name at all, so their
+# connectors always use this map. An unmapped token falls back to the raw token
+# string (connectors/greenhouse.py, lever.py, ashby.py).
+#
+# Trade-off: a mapped company that rebrands upstream keeps the curated name here
+# until someone edits this file — the payload cannot correct it. That is the
+# price of a stable dedupe key; curated staleness is preferable to a hash that
+# changes whenever a board renames itself.
 TOKEN_COMPANY_NAMES: dict[str, str] = {
     "okta": "Okta",
     "druva": "Druva",

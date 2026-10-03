@@ -143,8 +143,11 @@ def backfill_job_embeddings(db, limit: int = 50, only_ids=None) -> int:
     minute's budget is spent) ends the pass, keeping what was embedded — the
     rest waits for the next discover run rather than sleeping in the worker.
     Returns how many were embedded."""
-    # Newest first: on a 3 RPM free tier the backlog clears slowly, and fresh postings matter most.
-    query = db.query(models.Job).filter(models.Job.embedding.is_(None))
+    # Newest first, still-listed only: on a 3 RPM free tier the backlog clears
+    # slowly, so the budget must not go to jobs that are already dead.
+    query = db.query(models.Job).filter(
+        models.Job.embedding.is_(None), models.Job.delisted_at.is_(None)
+    )
     if only_ids is not None:
         query = query.filter(models.Job.id.in_(only_ids))
     pending = query.order_by(models.Job.fetched_at.desc().nullslast()).limit(limit).all()

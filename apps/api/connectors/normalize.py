@@ -26,9 +26,15 @@ def coerce_posted_at(value) -> datetime | None:
     datetime, or None. Never raises — an unparseable value returns None.
 
     Accepts: ISO 8601 string (with 'Z', an offset, or naive), the ISO 8601
-    compact basic date form ("20260909"), epoch seconds or milliseconds as
-    an int or float, an existing datetime (naive passes through, aware is
-    converted to UTC and stripped), None, and "".
+    compact basic date form ("20260909"), None, and "". Anything else is None.
+
+    Strings only, on purpose. Every wired caller passes a str or None
+    (greenhouse.py `first_published`, ashby.py `publishedAt`,
+    jobspy_connector.py `date_posted`, which comes back through JSON). The
+    number-epoch and datetime-passthrough branches this used to carry had no
+    caller in the codebase — lever.py and feeds.py each decode their own
+    epochs locally — so they were dead flexibility (YAGNI). Add one back with
+    its caller if a connector ever needs it.
 
     Deliberately NOT accepted: an epoch value given as a string (e.g.
     "1790265606"). No wired connector sends one — Greenhouse/Ashby send ISO
@@ -42,18 +48,6 @@ def coerce_posted_at(value) -> datetime | None:
     """
     if value is None or value == "":
         return None
-
-    if isinstance(value, datetime):
-        if value.tzinfo is not None:
-            return value.astimezone(timezone.utc).replace(tzinfo=None)
-        return value
-
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        seconds = value / 1000 if abs(value) > 1e12 else value
-        try:
-            return datetime.fromtimestamp(seconds, tz=timezone.utc).replace(tzinfo=None)
-        except (OverflowError, OSError, ValueError):
-            return None
 
     if isinstance(value, str):
         s = value.strip()
