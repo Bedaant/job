@@ -30,6 +30,9 @@ def _all_tokens():
         [("greenhouse", t) for t in config.GREENHOUSE_BOARD_TOKENS]
         + [("lever", t) for t in config.LEVER_COMPANY_TOKENS]
         + [("ashby", t) for t in config.ASHBY_ORG_TOKENS]
+        # Workday tenants are board tokens too: the same token->name rule applies,
+        # and an unmapped tenant would become the `company` value (COLLECT-C).
+        + [("workday", t) for t in config.WORKDAY_BOARDS]
     )
 
 

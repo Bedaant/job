@@ -70,6 +70,53 @@ ASHBY_ORG_TOKENS = [
     "atlan",  # added 2026-10-03: India + SF board, verified live
 ]
 
+# --- Workday (COLLECT-C, ADR-018) -------------------------------------------
+# tenant -> "wd<N>/<site>". Both segments are per-employer and NOT guessable: 3
+# of 6 guessed site names returned HTTP 422 during the COLLECT-C probe. Find a
+# real pair by fetching https://<tenant>.wd<N>.myworkdayjobs.com/ and reading
+# where it redirects — the first path segment is the site.
+#
+# Workday reaches a market the three ATS boards do not: multinational GCCs
+# hiring product roles in Bengaluru/Hyderabad. See
+# docs/harness-reports/collect-c-platforms.md.
+#
+# Removing a tenant here is a delisting, exactly as for the board tokens above.
+# Verified live 2026-10-04: board found, paginated, and an India-located product
+# role confirmed through the detail endpoint. "jobs" is the board size, which is
+# also the per-run cost: ceil(jobs/20) list requests plus one detail request per
+# keyword match. Adobe alone measured 67 requests / 126s.
+#
+#   adobe  wd5/external_experienced    526 jobs, 40 PM, 3 in India (Bangalore, Noida)
+#   cisco  wd5/Cisco_Careers          1341 jobs, 22 PM, 1 in India (Pune/Bangalore/Mumbai)
+#
+# EXCLUDED, with the measurement:
+#   target   wd5/targetcareers        2000 jobs for ONE PM role = 100 list requests,
+#                                     and 2000 sits exactly on MAX_PAGES; it would
+#                                     start raising the moment the board grows.
+#   micron   wd1/External             3080 jobs, 0 India PM in the first 1200.
+#   paypal   wd1/jobs                  291 jobs, 11 PM, 0 in India.
+#   shell    wd3/shellcareers          132 jobs, 0 PM.
+#   qualcomm wd12/External             returns total=0 — site name is probably wrong.
+# A tenant with no India-reachable role is not worth its per-run cost; re-probe
+# rather than adding speculatively.
+#
+# Found a wd host but NO site name matched a 15-candidate guess list, so they
+# need their site read off the employer's careers link: mastercard (wd1),
+# visa (wd5), autodesk (wd1), ebay (wd5), philips (wd3), unilever (wd3), lowes (wd5).
+WORKDAY_BOARDS: dict[str, str] = {
+    "adobe": "wd5/external_experienced",
+    "cisco": "wd5/Cisco_Careers",
+}
+
+# Workday is fetched only when `utcnow().hour % this == 0`, not on every
+# discovery run. Measured live: adobe ~95s and cisco 165s = ~4.3 minutes of
+# mostly-paced requests for two boards. Discovery runs hourly and this machine
+# runs a single RQ SimpleWorker, so an hourly Workday fetch would block campaign
+# runs behind it for minutes at a time, every hour.
+# 1 (or 0) means every run. Skipping is safe: it yields an empty payload and
+# `_sweep_delisted` no-ops on empty, so a skipped run never delists anything.
+WORKDAY_INTERVAL_HOURS = 6
+
 # Board token -> real company name (Task 4, canonical_hash dedupe). This map WINS
 # for every mapped token, including on Greenhouse, whose payload `company_name`
 # carries board-page cruft that breaks the hash ("Rubrik Job Board" hashes
@@ -105,4 +152,7 @@ TOKEN_COMPANY_NAMES: dict[str, str] = {
     "cred": "CRED",
     "hevodata": "Hevo Data",
     "atlan": "Atlan",
+    # Workday tenants (COLLECT-C)
+    "adobe": "Adobe",
+    "cisco": "Cisco",
 }

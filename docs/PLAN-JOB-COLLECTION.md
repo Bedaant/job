@@ -64,7 +64,17 @@ the numbers are in `tests/test_feed_pagination.py`.
 
 ---
 
-## COLLECT-C — Reach · **NEXT. Starts with a decision.**
+## COLLECT-C — Reach · **DONE for Workday** (2026-10-04, ADR-018, WORKLOG latest+72)
+
+`connectors/workday.py` is live, wired into discovery and in `SWEEPABLE_SOURCES`, with two
+verified tenants (adobe, cisco — both with an India-located product role). Fetched every 6th
+hour, not every run: two boards measured ~4.3 minutes and discovery shares a single worker.
+
+**Still open in this stage:** the owner's ruling on SmartRecruiters' `robots.txt: Disallow: /`
+(ADR-018 §7), which is the only route to Swiggy. Workable is implemented-not-worth-it, Keka
+needs a re-probe (expired TLS certs), Darwinbox stays out.
+
+The measurement that drove all of it is below, unchanged.
 
 **The problem, measured.** 117 candidate slugs were probed live across Greenhouse, Lever and
 Ashby. 42 had a live board. **19 of 22 Indian consumer-tech companies had none at all** —

@@ -196,7 +196,7 @@ def test_sweepable_sources_is_pinned_to_the_complete_listing_sources():
     """
     from workers.jobs import SWEEPABLE_SOURCES
 
-    assert SWEEPABLE_SOURCES == {"greenhouse", "lever", "ashby", "jobicy"}
+    assert SWEEPABLE_SOURCES == {"greenhouse", "lever", "ashby", "jobicy", "workday"}
 
 
 def test_sweep_ignores_a_truncated_feed():

@@ -7,6 +7,7 @@ import os
 os.environ["LLM_PROVIDER"] = "anthropic"
 
 import pytest
+from unittest.mock import patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -60,4 +61,31 @@ def no_host_pacing():
     from unittest.mock import patch
 
     with patch("workers.jobs.HOST_PACING_SECONDS", 0):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def no_real_network():
+    """Fail any test that reaches the real network, instead of hanging on it.
+
+    This has now bitten twice: a connector gets wired into `discover_jobs_task`
+    and a test helper's stub list isn't updated, so the suite quietly fetches
+    live job boards. The Workday connector made it worse than slow — two boards
+    are ~160 paced requests, which pushed the suite past a 10-minute timeout.
+
+    Only the real-socket transport is blocked. FastAPI's `TestClient` talks to
+    the app through `ASGITransport`, so every API test is unaffected; a test
+    that genuinely wants an HTTP fixture patches its own connector function.
+    """
+    import httpx
+
+    def blocked(self, request, *args, **kwargs):
+        raise RuntimeError(
+            f"the test suite tried to reach {request.url} for real. Stub the "
+            "connector (see tests/test_source_isolation.py::_offline) rather "
+            "than letting the suite depend on a live job board."
+        )
+
+    with patch.object(httpx.HTTPTransport, "handle_request", blocked), \
+         patch.object(httpx.AsyncHTTPTransport, "handle_async_request", blocked):
         yield

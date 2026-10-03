@@ -730,3 +730,91 @@ stayed in the DB forever, kept being matched, and (per ADR-016) kept consuming f
 **Revisit when.** A feed's fetcher paginates to exhaustion — then it qualifies for sweeping and
 joins `SWEEPABLE_SOURCES`. Or when per-token delisting granularity is wanted, which needs the
 `board_token` column.
+
+---
+
+## ADR-018 — COLLECT-C: Workday is the new source class; SmartRecruiters is deferred on a robots.txt decision
+
+**Date:** 2026-10-04 · **Status:** Accepted · **Decided by:** product owner ("do workday first")
+
+**Context.** COLLECT-B measured that **19 of 22 Indian consumer-tech companies have no board on
+Greenhouse/Lever/Ashby**, so adding board tokens has a low ceiling for an India product-role
+search. COLLECT-C probed five candidate platforms live; the full measurement is
+`docs/harness-reports/collect-c-platforms.md`. The decisive findings:
+
+- **No candidate platform offers cross-company search.** SmartRecruiters, Workday and Workable
+  are all per-company-identifier APIs, structurally identical to the three connectors already
+  wired. Adding one adds reach only for employers we already know to look up.
+- **Workday reaches a market none of the existing sources does:** multinational GCCs hiring
+  product roles in Bengaluru and Hyderabad (verified: Adobe, "Principal Product Manager (DSP
+  Advertising)", Bangalore). Its `robots.txt` explicitly *allows* the career-site path.
+- **SmartRecruiters has the best data contract** of the five (a real `releasedDate`, an ISO
+  country code) and is the only route to Swiggy — but `api.smartrecruiters.com/robots.txt`
+  serves `User-agent: * / Disallow: /`.
+- **Workable** yields nothing: 17 of the 19 companies have an account, every one with `jobs: []`.
+- **Keka** could not be reached at all — expired TLS certificate on every `*.kekahire.com` host
+  tried. **Darwinbox** serves an empty SPA shell.
+
+**Decision.**
+
+1. **Workday is adopted** (`connectors/workday.py`), one tenant per employer, configured in
+   `config.WORKDAY_BOARDS` as `tenant -> "wd<N>/<site>"`.
+2. **Two steps per board, and the split is load-bearing.** The list endpoint is paginated to
+   exhaustion (`limit` is capped at 20 — 50+ returns HTTP 400), then **only titles matching
+   `FEED_KEYWORDS` are detail-fetched.** Hydrating a whole board would be 527 extra requests for
+   Adobe alone. The keyword filter cannot be pushed to the server: `searchText` filters a single
+   word ("engineer" cut 527→343) but returns everything ranked for a phrase ("product manager" →
+   all 527).
+3. **`locationsText` from the list payload is never stored.** It is frequently a count, not a
+   place ("5 Locations", "3 Locations"); storing it would poison `canonical_hash` and silently
+   defeat the India location filter. Locations come from the detail endpoint's `location` +
+   `additionalLocations`.
+4. **`startDate` is the posting date; `postedOn` prose is never parsed.** `startDate` tracked
+   `postedOn` with an exact, constant one-day offset across six jobs with six different
+   `postedOn` values — a role start date would not track it at all. The offset is a timezone
+   artifact of the prose. `postedOn` itself is unbounded at the top ("Posted 30+ Days Ago"), and
+   Phase 1 established that a wrong-but-plausible date is worse than NULL.
+5. **Workday is in `SWEEPABLE_SOURCES`.** The list is exhaustible, so absence is real signal.
+   **Hitting the page cap raises** rather than returning a truncated listing, and **a single
+   failed detail fetch raises** rather than dropping that job — a job missing from the payload is
+   indistinguishable from one that left the board, so either shortcut would tombstone live roles.
+   `_isolate` turns the raise into a `connector_runs` error and the sweep gets nothing.
+6. **`external_id` is tenant-scoped** (`"{tenant}:{jobReqId}"`). Req ids are unique per tenant,
+   while `uq_job_source_external_id` spans the whole source, so two tenants could otherwise
+   collide on `R1001`.
+7. **SmartRecruiters is NOT adopted.** It is deferred pending the owner's explicit call on the
+   `Disallow: /`, which is a judgement with no technically correct answer: read as binding,
+   SmartRecruiters is out and Swiggy goes with it; read as crawler-directed and inapplicable to a
+   per-company API read, it is in and the owner takes that position knowingly. Our rails require a
+   ToS check before a new source (ADR-016 §4), so this does not get decided by default.
+8. **Workable is not implemented** (nothing to fetch), **Keka is to be re-probed** before being
+   ruled out permanently (expired certs may be transient), and **Darwinbox stays out** until
+   something cheaper than a headless browser per employer exists.
+9. **Tenant/site discovery uses the CXS status codes, not the career-site root.** The root returns
+   **HTTP 406** to a non-browser User-Agent, and **spoofing a browser UA was rejected**. The CXS
+   endpoint answers an honest UA and discriminates: `404` = tenant+wd correct and site name wrong
+   (keep guessing sites), `422` = wrong wd or no such tenant (give up on that host), `200` =
+   correct. One bogus-site probe per `wd` finds the host cheaply.
+
+**Consequences.**
+- A board costs `ceil(total/20)` list requests per discovery run plus one detail request per
+  keyword match — about 27 for Adobe, **68 for Cisco (1341 postings)**. With 1s pacing this is by
+  far the most expensive source wired, and the cost scales linearly with the tenant list on a
+  **hourly** discovery cadence. **Keep `WORKDAY_BOARDS` small, or give Workday its own slower
+  schedule before growing it** — a dozen large tenants would add ~10 minutes to every run. The
+  obvious cheap fix (fetch only the newest pages) is not available: a truncated listing cannot be
+  swept, and sweeping is why the source qualifies for freshness at all.
+- `WORKDAY_BOARDS` is a curated list, and **removing a tenant tombstones that employer's whole
+  inventory**, exactly as for the board tokens (COLLECT-D's `board_token` column is the
+  structural fix for both).
+- Both segments of `"wd<N>/<site>"` are per-employer and unguessable; adding a tenant is manual
+  work, which is the point item 1 of the Context makes. **The binding constraint on reach is
+  company→platform discovery, not connectors** — `connectors/discovery.py`'s F5 ATS classifier
+  already proposes patterns per domain and is unmeasured. Measuring it may be worth more than the
+  next connector.
+- Coverage is honest but narrow: this adds India-based roles at large multinationals, not the
+  Indian consumer-tech companies COLLECT-B found unreachable. Swiggy remains reachable only via
+  the deferred SmartRecruiters decision.
+
+**Revisit when.** The owner rules on the SmartRecruiters `robots.txt`; or Keka's certificates are
+valid again; or the F5 classifier is measured and changes what "add a source" should mean.

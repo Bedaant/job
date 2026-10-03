@@ -54,6 +54,7 @@ def _offline(db=None, **overrides):
         "fetch_greenhouse_jobs": MagicMock(return_value=[]),
         "fetch_lever_jobs": MagicMock(return_value=[]),
         "fetch_ashby_jobs": MagicMock(return_value=[]),
+        "fetch_workday_jobs": MagicMock(return_value=[]),
         "fetch_enabled_feeds": MagicMock(return_value=([], {})),
         **overrides,
     }
@@ -163,6 +164,7 @@ def test_requests_inside_one_source_are_paced(db):
          patch("workers.jobs.conn_config.ASHBY_ORG_TOKENS", []), \
          patch("workers.jobs.conn_config.REMOTIVE_KEYWORDS", []), \
          patch("workers.jobs.conn_config.REED_KEYWORDS", []), \
+         patch("workers.jobs.conn_config.WORKDAY_BOARDS", {}), \
          patch("workers.jobs.upsert_jobs", MagicMock(return_value=(0, 0, 0))), \
          patch("workers.jobs.HOST_PACING_SECONDS", 0.25), \
          patch("workers.jobs.time.sleep") as sleep:
@@ -179,6 +181,7 @@ def test_pacing_is_configurable_and_skipped_for_a_single_request(db):
          patch("workers.jobs.conn_config.ASHBY_ORG_TOKENS", []), \
          patch("workers.jobs.conn_config.REMOTIVE_KEYWORDS", []), \
          patch("workers.jobs.conn_config.REED_KEYWORDS", []), \
+         patch("workers.jobs.conn_config.WORKDAY_BOARDS", {}), \
          patch("workers.jobs.upsert_jobs", MagicMock(return_value=(0, 0, 0))), \
          patch("workers.jobs.time.sleep") as sleep:
         wj.discover_jobs_task()
