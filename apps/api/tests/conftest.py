@@ -49,3 +49,15 @@ def no_live_apply_target_resolution():
 
     with patch("main.resolve_apply_target", side_effect=passthrough):
         yield
+
+
+@pytest.fixture(autouse=True)
+def no_host_pacing():
+    """Discovery paces requests inside one source's loop (workers/jobs.py,
+    HOST_PACING_SECONDS). Real sleeps would add ~15s per discovery test for the
+    20 configured tokens/keywords. Tests about pacing patch it back themselves.
+    """
+    from unittest.mock import patch
+
+    with patch("workers.jobs.HOST_PACING_SECONDS", 0):
+        yield

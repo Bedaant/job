@@ -12,6 +12,7 @@ connectors.config. Attribution: Remote OK's and Jobicy's terms require a link
 back to the source -- apply_url always points at the original posting.
 """
 import email.utils
+import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
@@ -19,6 +20,15 @@ import httpx
 
 USER_AGENT = "ApplyScout/0.1 (+https://applyscout.in)"
 TIMEOUT = 25
+
+# Pacing between pages of ONE feed -- same host, back to back. Separate from
+# workers.jobs.HOST_PACING_SECONDS, which paces that module's per-token loops;
+# these are different loops over different hosts and share nothing but the idea.
+PAGE_PACING_SECONDS = 1.0
+# Safety stop for any cursor loop: a feed that always claims `hasMore` must not
+# spin a worker forever. Jobicy exhausted in 7 pages (measured 2026-10-03), so
+# 30 is ~4x headroom.
+MAX_PAGES = 30
 
 
 def _get(url: str, params: dict | None = None) -> httpx.Response:
@@ -170,8 +180,36 @@ def parse_jobicy(raw: dict) -> list[dict]:
     } for j in raw.get("jobs", []) if j.get("jobTitle")]
 
 
-def fetch_jobicy_jobs(count: int = 50) -> list[dict]:
-    return parse_jobicy(_get("https://jobicy.com/api/v2/remote-jobs", {"count": count}).json())
+def fetch_jobicy_jobs(count: int = 100) -> list[dict]:
+    """Paginated to exhaustion through the cursor Jobicy's own envelope returns
+    (`nextCursor` + `hasMore`, both read off a live response 2026-10-03). This
+    is what makes jobicy a COMPLETE listing, and therefore the only one of the
+    six keyless feeds that may be swept for delistings (ADR-017 §2 — absence
+    from a truncated window is age, not a delisting). Measured: 7 requests,
+    633 jobs, `count` honoured at 100.
+
+    A mid-pagination failure raises, discarding the pages already collected,
+    and that is deliberate: `fetch_enabled_feeds` turns it into a per-source
+    error and the sweep gets nothing. Returning a partial listing would make
+    every job on the pages that never arrived look absent from the board.
+
+    `hasMore` alone is not trusted — without a cursor there is nothing to
+    advance, and re-requesting page 1 would loop until MAX_PAGES.
+    """
+    jobs: list[dict] = []
+    cursor = None
+    for page in range(MAX_PAGES):
+        if page:
+            time.sleep(PAGE_PACING_SECONDS)
+        params = {"count": count}
+        if cursor:
+            params["cursor"] = cursor
+        raw = _get("https://jobicy.com/api/v2/remote-jobs", params).json()
+        jobs.extend(parse_jobicy(raw))
+        cursor = raw.get("nextCursor")
+        if not raw.get("hasMore") or not cursor:
+            break
+    return jobs
 
 
 # --- Arbeitnow -- /api/job-board-api (mixed remote/on-site, EU-heavy) --------

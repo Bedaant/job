@@ -174,7 +174,11 @@ def test_sweepable_sources_is_pinned_to_the_complete_listing_sources():
     - himalayas: fetch_himalayas_jobs(limit=100) is capped server-side at 20
       per page; the response carries totalCount 115415 and a nextCursor.
     - jobicy: fetch_jobicy_jobs(count=50) is a count parameter; the response
-      carries hasMore/nextCursor.
+      carries hasMore/nextCursor. REVISED IN PHASE 2 — it is now paged to
+      exhaustion (7 requests, 633 jobs, measured 2026-10-03), so it returns a
+      complete listing and qualifies. See tests/test_feed_pagination.py for
+      the per-feed measurements; the other five were re-probed and stay out
+      (himalayas needs 5,786 requests, arbeitnow 429s at page 21).
     - arbeitnow: page 1 of a paginated endpoint (meta.current_page,
       links.next -> page=2); nothing reads links/meta.
     - weworkremotely: RSS, latest 90 items observed.
@@ -186,14 +190,13 @@ def test_sweepable_sources_is_pinned_to_the_complete_listing_sources():
       doesn't qualify.
 
     greenhouse/lever/ashby each hit one unpaginated board endpoint per token
-    and return every open posting. Pagination to exhaustion is new ingestion
-    work, deliberately not done in this phase, so a disqualified source must
-    stay out of the sweep rather than be swept on partial/unproven data.
-    This assertion exists so re-adding one cannot be quiet.
+    and return every open posting. A disqualified source must stay out of the
+    sweep rather than be swept on partial/unproven data. This assertion exists
+    so re-adding one cannot be quiet.
     """
     from workers.jobs import SWEEPABLE_SOURCES
 
-    assert SWEEPABLE_SOURCES == {"greenhouse", "lever", "ashby"}
+    assert SWEEPABLE_SOURCES == {"greenhouse", "lever", "ashby", "jobicy"}
 
 
 def test_sweep_ignores_a_truncated_feed():
