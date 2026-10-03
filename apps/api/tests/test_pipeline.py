@@ -1,7 +1,7 @@
 from datetime import datetime
 from unittest.mock import patch
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -132,36 +132,37 @@ def test_upsert_updates_row_when_company_change_alters_canonical_hash(_mock_embe
     assert db.query(models.Job).one().company == "Acme Renamed"
 
 
+def _counting(db):
+    """Count statements actually sent to the DBAPI cursor, at the
+    Engine/Connection level — NOT by wrapping Session.execute. ORM bulk
+    operations (bulk_insert_mappings/bulk_update_mappings) call
+    connection.execute(...) directly inside orm/persistence.py, bypassing
+    Session.execute entirely; a counter on the latter only ever sees the
+    legacy Query SELECT and silently misses both bulk statements (found in
+    review round 2 — the round-1 counter was vacuously true on every test).
+    before_cursor_execute fires once per statement sent to the cursor,
+    including once per bulk executemany, so this is what the <=3 budget
+    actually has to bound.
+    """
+    count = [0]
+    engine = db.get_bind()
+
+    def _count(*args, **kwargs):
+        count[0] += 1
+
+    event.listen(engine, "before_cursor_execute", _count)
+    return lambda: count[0]
+
+
 @patch("connectors.pipeline.embed_texts", return_value=None)
 def test_upsert_uses_at_most_three_queries_regardless_of_batch_size(_mock_embed):
     """Fixes H1: was 1 SELECT + 1 INSERT per job (N+1). Must not scale with batch size.
     Raised from 2 to 3 (Task 2, freshness): one SELECT, one bulk INSERT, one bulk UPDATE."""
     db = _db()
-    query_count = 0
-    original_execute = db.execute
-
-    def counting_execute(*args, **kwargs):
-        nonlocal query_count
-        query_count += 1
-        return original_execute(*args, **kwargs)
-
-    db.execute = counting_execute
+    query_count = _counting(db)
     jobs = [_job("remotive", str(i), title=f"Role {i}") for i in range(50)]
     upsert_jobs(db, jobs)
-    assert query_count <= 3
-
-
-def _counting(db):
-    """Wrap db.execute with a counter; returns a callable that reads the count."""
-    count = [0]
-    original_execute = db.execute
-
-    def counting_execute(*args, **kwargs):
-        count[0] += 1
-        return original_execute(*args, **kwargs)
-
-    db.execute = counting_execute
-    return lambda: count[0]
+    assert query_count() <= 3
 
 
 @patch("connectors.pipeline.embed_texts", return_value=None)
