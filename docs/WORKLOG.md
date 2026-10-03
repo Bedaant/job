@@ -12,22 +12,31 @@ too — a failed approach that is not written down gets retried by the next pers
 
 ## Current state — read this first
 
-**Phase 3, in progress (2026-08-16).** Matching (F6) is live end-to-end against real
-Neon + Voyage AI: resume-fact embeddings, `Profile.fact_centroid`, job embeddings on
-ingestion, `GET /matches`, hard filters (location/remote, seniority, a visa-text
-heuristic), job skill extraction, near-dup detection (simhash, reimplemented), and 6
-connectors (5 real + JobSpy isolated, currently 0-yield pending a Google-side scraper
-fix). The ADR-014 eval harness (`eval/`) and Langfuse Cloud tracing are both
-mechanically live, blocked on a real `ANTHROPIC_API_KEY`. `apps/web` has shadcn/ui +
-Kibo UI + jsdiff + better-auth/vitest/msw/openapi-typescript/style-dictionary
-installed and building. Third-party repos from `DEPENDENCIES.md` §3 are installed:
-presidio (PII redaction), jsonresume (export), agent-reach (company research,
-isolated venv). `apps/extension/` scaffolded (MV3, vite+crxjs) but its build is
-currently blocked by a stray unrelated `D:\postcss.config.mjs` outside this project.
-Remaining backend packages (rapidfuzz, instructor, sse-starlette, rq-dashboard-fast,
-cleanco, price-parser, iso4217, croniter, clamd) installed but not yet wired into any
-feature. See the "Phase 3 slice 1-4" and "latest+6/+7/+8" entries below before
-touching `matching/`, `eval/`, `apps/web`, `apps/extension/`, or `tools/`.
+**As of 2026-10-03 (latest+69).** Product is **ApplyScout**, agent **Maggie** (ADR-015).
+Autonomous multi-source auto-apply: the user approves a campaign once, then agents
+discover → tailor → submit through the user's own browser.
+
+- **Two plans run in parallel, and a bare "Phase N" is ambiguous — always use the prefix.**
+  `docs/PLAN-JOB-COLLECTION.md` → stages `COLLECT-A…F` (getting jobs into the pool).
+  `docs/PLAN-MULTI-ATS.md` → stages `ATS-0…3` (filling and submitting forms, ADR-016).
+- **Collection:** COLLECT-A (freshness, ADR-017) and COLLECT-B (resilience) are **done**.
+  COLLECT-C (reach) is next and **starts with an ADR, not code** — 19 of 22 Indian
+  consumer-tech companies have no board on greenhouse/lever/ashby, measured live.
+- **Forms:** plan routing is live for **Greenhouse only**; Lever and Ashby measured no gain
+  on required fields (latest+59), so ATS-3's premise needs rethinking before it is executed.
+- **LLM provider is NVIDIA NIM** (`LLM_PROVIDER=nvidia`, nemotron-3-super), not Anthropic —
+  ADR, latest+34. `ANTHROPIC_API_KEY` is still a placeholder, which no longer blocks the
+  product; it blocks only the ADR-014 eval harness, and that harness is pointed at the wrong
+  provider. **Tailoring quality is currently unmeasured** (`GAPS.md` 6.1).
+- 824 tests passing. Neon at migration 0022 — **0022 has never run against a real Postgres.**
+- `apps/extension/` builds (the stray `D:\postcss.config.mjs` is handled by
+  `css: { postcss: {} }` in its `vite.config.ts` — that blocker is **fixed**, despite what
+  older entries say).
+
+**👉 `docs/GAPS.md` is the open-items register** — 31 gaps across all phases, each marked
+VERIFIED or DOC-CLAIM with its evidence. Read it before planning anything; it records five
+places these docs were actively wrong, including an ADR-015 contradiction still live in the
+extension code.
 
 **2026-09-26 addition:** `tailoring/engine.py` now has a dev-only `LLM_PROVIDER=
 nvidia_smoke` branch (see entry below) that mechanically smoke-tests the pipeline
@@ -101,6 +110,53 @@ docs/              this documentation set
 ---
 
 ## Entries
+
+### 2026-10-03 (latest+70) — Gap register; the job-collection plan gets a doc; stages are named, not numbered
+
+**What changed.** Documentation only, no code.
+
+- **`docs/GAPS.md` (new)** — every open item across all phases in one place. Compiled by
+  sweeping this file (5,557 lines, latest+28 → latest+69), `DECISIONS.md` (ADR-001…017),
+  `PLAN-MULTI-ATS.md` and the session memory, then **re-checking each claim against the code**
+  rather than trusting the entry that recorded it. 31 gaps, 7 categories, each marked VERIFIED
+  or DOC-CLAIM.
+- **`docs/PLAN-JOB-COLLECTION.md` (new)** — the plan COLLECT-A and COLLECT-B were built from
+  never had a document; it existed only as "Next" notes at the bottom of entries. Now written
+  up with COLLECT-A/B recorded as done and COLLECT-C…F scoped.
+- **Stage naming fixed.** `PLAN-MULTI-ATS.md`'s "Phase 0/1/2/3" are now `ATS-0…3`, collection
+  stages are `COLLECT-A…F`, and both docs carry the convention. **A bare "Phase N" is ambiguous
+  in this repo and must not be used.**
+- **This file's "Current state" header was 7 weeks stale** (it said "Phase 3, in progress
+  (2026-08-16)") and is rewritten.
+- **`ATS-3` carries a warning now:** latest+59 measured no gain on Lever/Ashby, so "extend the
+  planner to more platforms" has no evidence behind it.
+
+**Why.** "Start phase 3" was genuinely ambiguous and stalled a session — two plans had a Phase
+3, and one of the two plans had no document at all.
+
+**Five places the docs were wrong, not merely incomplete** (all now corrected):
+1. The `apps/extension` build blocker is **fixed**; `vite.config.ts` already has
+   `css: { postcss: {} }`. The header still listed it as blocking.
+2. `ANTHROPIC_API_KEY` is still the placeholder, but production is NIM — so it blocks only the
+   eval harness, which is pointed at the wrong provider. The docs called it "the single
+   remaining blocker for ADR-014", which now misleads: the real gap is that **tailoring quality
+   is unmeasured on the model actually shipped**.
+3. **ADR-015 and the code disagree about what the product is.** ADR-015 reversed
+   per-application approval on 2026-09-26, but the extension still allows
+   `POST /applications/{id}/claim-submission` (`apiProxyCore.mjs:16`) and still pins
+   `submitApprovedApplication` as the single submit path (`architectureInvariants.test.mjs:32`).
+4. The "Current state" header was 7 weeks stale.
+5. Phase numbering collided across two plans.
+
+**Files created / changed.** New `docs/GAPS.md`, new `docs/PLAN-JOB-COLLECTION.md`;
+`docs/PLAN-MULTI-ATS.md` (stage names + the ATS-3 warning), `docs/WORKLOG.md` (header + this
+entry).
+
+**Dependencies added.** None. **Tests.** None — docs only; suite unchanged at 824.
+
+**Next.** `GAPS.md` ends with a suggested order. The two that actually matter: an **ADR for
+COLLECT-C** (India source class — measure candidate platforms first, don't guess), and
+**repointing the eval harness at NIM** so tailoring quality stops being unknown.
 
 ### 2026-10-03 (latest+69) — Phase 2 item 4b: five board tokens added, three plausible slugs rejected as the wrong company
 
