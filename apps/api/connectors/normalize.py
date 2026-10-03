@@ -9,6 +9,13 @@ from datetime import datetime, timezone
 _COMPANY_SUFFIXES = re.compile(r"\b(inc|llc|ltd|gmbh|pvt|private|limited)\b")
 _SENIORITY_SUFFIXES = re.compile(r"\b(sr|jr|i{1,3}|iv|v)\b")
 
+# Sane calendar bounds for an epoch-derived posting date. No real job was
+# posted before Unix epoch 0, and none is posted ~500 years from now --
+# a numeric string that decodes outside this window is not a timestamp
+# that was ever meant as one, it's a misread (see coerce_posted_at).
+_EPOCH_DATE_MIN = datetime(1970, 1, 1)
+_EPOCH_DATE_MAX = datetime(2100, 1, 1)
+
 
 def normalize_location(location: str | None) -> str:
     if not location:
@@ -49,27 +56,37 @@ def coerce_posted_at(value) -> datetime | None:
         s = value.strip()
         if not s:
             return None
+
+        # Try it as a date/datetime string FIRST. A compact numeric string
+        # like "20260909" is a valid ISO 8601 basic-format date and must be
+        # read as one. A magnitude floor on the numeric interpretation (the
+        # previous fix) only moves the boundary where a compact form gets
+        # misread as an epoch value instead of closing it -- a longer
+        # compact form like "20260909120000" (14 digits) clears any such
+        # floor and still gets misread as epoch milliseconds, landing on a
+        # wrong-but-plausible-looking date (year 2612). Trying the date
+        # parse first means a real date string is never handed to the
+        # numeric path at all.
+        try:
+            parsed = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            return parsed.astimezone(timezone.utc).replace(tzinfo=None) if parsed.tzinfo else parsed
+        except ValueError:
+            pass
+
+        # Not a recognizable date string -- consider it a numeric epoch
+        # value, but only accept the result if it lands within a sane
+        # calendar window. This is what actually closes the bug class: any
+        # numeric string whose epoch-seconds-or-ms interpretation decodes to
+        # an implausible date (year 2612, say) is rejected as None rather
+        # than returned as a wrong date that merely looks plausible.
         try:
             numeric = float(s)
         except ValueError:
-            numeric = None
-        # Only treat a numeric string as an epoch timestamp when its magnitude
-        # is plausible for one (>= 1e9, i.e. seconds on/after 2001-09-09, or
-        # the equivalent magnitude in milliseconds). Without this floor, a
-        # compact date like "20260909" (~2.0e7) parses as a tiny-but-valid
-        # float and gets misread as epoch seconds -> 1970-08-23, a wrong date
-        # that looks plausible instead of the None an unparseable value
-        # should produce. Below the floor, fall through to ISO parsing, which
-        # correctly reads "20260909" as the ISO 8601 basic date format.
-        if numeric is not None and abs(numeric) >= 1e9:
-            return coerce_posted_at(numeric)
-        try:
-            parsed = datetime.fromisoformat(s.replace("Z", "+00:00"))
-        except ValueError:
             return None
-        if parsed.tzinfo is not None:
-            return parsed.astimezone(timezone.utc).replace(tzinfo=None)
-        return parsed
+        candidate = coerce_posted_at(numeric)
+        if candidate is not None and _EPOCH_DATE_MIN <= candidate < _EPOCH_DATE_MAX:
+            return candidate
+        return None
 
     return None
 
