@@ -102,6 +102,62 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-10-03 (latest+69) — Phase 2 item 4b: five board tokens added, three plausible slugs rejected as the wrong company
+
+**What changed.** The owner chose "more ATS board tokens" over the three blocked portals
+(YC WaaS / Wellfound / HN, see latest+68). 117 candidate slugs probed live across all three
+platforms; **42 had a live board**; five were added, with their real names in
+`TOKEN_COMPANY_NAMES`:
+
+| Platform | Token | Company | Evidence |
+|---|---|---|---|
+| greenhouse | `groww` | Groww | Bengaluru-VTP / Mumbai / India, 7 postings |
+| greenhouse | `fivetran` | Fivetran | Bengaluru PM role open; 181 postings, 17 match `FEED_KEYWORDS` |
+| lever | `cred` | CRED | bengaluru, hyderabad, 8 postings |
+| lever | `hevodata` | Hevo Data | Bangalore PM role open; 53 postings |
+| ashby | `atlan` | Atlan | India + San Francisco, 6 postings |
+
+**Why this is the cheap lever.** greenhouse/lever/ashby are already paginated per board,
+already in `SWEEPABLE_SOURCES`, and already get real delisting. A token costs one request per
+run and no code.
+
+**Problems hit — the important one.**
+**Three plausible slugs turned out to be a completely different company.** Verified by fetching
+each board and reading its locations before adding:
+- `slice` → payload company "Slice", locations Ohrid and Skopje (Macedonia), New Jersey,
+  Connecticut — a US/Macedonia pizza business, **not** the Indian fintech.
+- `porter` → "Porter Works" on Greenhouse (LA/SF/Seattle), and a *different* US Porter on Lever
+  (Amherst MA, Boston, Michigan). Neither is the Indian logistics company.
+- `navi` → San Francisco only, 3 postings. The Indian Navi is Bengaluru.
+
+Had any been added, `TOKEN_COMPANY_NAMES` would have mapped a wrong real name onto a wrong
+company's jobs and fed it into `canonical_hash`. **Never add a token because the slug matches a
+company name.** `tests/test_board_tokens.py` records all three rejects.
+
+**Second finding, and it reframes the coverage question: 19 of 22 Indian consumer-tech companies
+have no board on Greenhouse/Lever/Ashby at all** — razorpay, swiggy, zomato, phonepe, flipkart,
+zepto, zerodha, myntra, nykaa, delhivery, paytm, urbancompany, lenskart, cars24, blinkit, rapido,
+licious, udaan, meesho (its Lever board was already configured). So "more ATS tokens" has a **low
+ceiling for an India-focused PM search**: that market sits on other ATSs (Darwinbox, Keka,
+SmartRecruiters, Workday) and on Indian job boards (Naukri, Instahyre, Hirist, Cutshort), none of
+which is wired. That is the next real coverage decision, and it needs an ADR.
+
+**Files changed.** `apps/api/connectors/config.py`, new `apps/api/tests/test_board_tokens.py`.
+
+**Dependencies added.** None.
+
+**Tests.** 820 → 824. New `test_board_tokens.py` pins four invariants, the load-bearing one being
+that **every configured token has a `TOKEN_COMPANY_NAMES` entry** — an unmapped token falls back
+to the raw slug as `company`, which feeds `canonical_hash`, so cross-source dedupe against a feed
+listing the real name becomes impossible. Red-before-green confirmed: the five tokens were added
+without names first and the guard named all five. Also verified live through the real connectors —
+correct company on every row (the map strips the trailing space in Greenhouse's own `"Fivetran "`),
+no missing `external_id`/`apply_url`, real `posted_at`.
+
+**Next.** groww/cred/atlan have no PM opening today — they are standing subscriptions, and the
+hourly sweep will catch openings as they appear. The India coverage question above is the decision
+that actually matters next.
+
 ### 2026-10-03 (latest+68) — Phase 2: a failing source no longer aborts discovery; `connector_runs` gets written; jobicy paged to exhaustion
 
 **What changed.** Phase 2 of the job-collection plan, items 1-3 in full plus item 4a.

@@ -42,17 +42,32 @@ REED_KEYWORDS = ["product manager", "associate product manager"]
 # when you mean its jobs to disappear. To stop fetching a board without
 # tombstoning its inventory, there is no switch today; a `board_token` column is
 # the structural fix and is deferred to a later phase.
+# 2026-10-03 (Phase 2 item 4b): 117 candidate slugs probed live across all three
+# platforms; 42 had a live board, and these are the ones with a PM-track role
+# actually reachable from India. THREE PLAUSIBLE SLUGS WERE A DIFFERENT COMPANY
+# ENTIRELY — `slice` is a US/Macedonia pizza business, both `porter` boards are
+# US firms, `navi` is SF-only — so never add a token because the slug matches a
+# company name. Fetch the board and read its locations first
+# (tests/test_board_tokens.py documents the rejects).
+#
+# Also measured: 19 of 22 Indian consumer-tech companies (razorpay, swiggy,
+# zomato, phonepe, flipkart, zepto, meesho's own board aside, …) have NO board
+# on Greenhouse/Lever/Ashby at all. More tokens here has a low ceiling for an
+# India-focused search; that market is on other ATSs and on Indian job boards.
 GREENHOUSE_BOARD_TOKENS = [
     "okta", "druva", "mongodb", "rubrik", "inmobi", "databricks", "twilio",  # India offices
     "gitlab", "grafanalabs",  # remote across countries
+    "groww", "fivetran",  # added 2026-10-03: India-located PM roles verified live
 ]
 
 LEVER_COMPANY_TOKENS = [
     "meesho", "zeta", "fampay", "mindtickle",
+    "cred", "hevodata",  # added 2026-10-03: Bengaluru/Hyderabad/Pune roles verified live
 ]
 
 ASHBY_ORG_TOKENS = [
     "sarvam", "supabase",
+    "atlan",  # added 2026-10-03: India + SF board, verified live
 ]
 
 # Board token -> real company name (Task 4, canonical_hash dedupe). This map WINS
@@ -83,4 +98,11 @@ TOKEN_COMPANY_NAMES: dict[str, str] = {
     "mindtickle": "Mindtickle",
     "sarvam": "Sarvam",
     "supabase": "Supabase",
+    # Added 2026-10-03. Fivetran's own payload returns "Fivetran " with a
+    # trailing space, which is exactly the cruft this map exists to beat.
+    "groww": "Groww",
+    "fivetran": "Fivetran",
+    "cred": "CRED",
+    "hevodata": "Hevo Data",
+    "atlan": "Atlan",
 }
