@@ -12,13 +12,15 @@ non-empty, "trustworthy" (every token returned something) payload — see
 """
 from unittest.mock import MagicMock, patch
 
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import main
 import models
 from connectors.normalize import canonical_hash
-from database import Base
+from database import Base, get_db
 from workers.jobs import _fetch_ats_source, _sweep_delisted
 
 
@@ -106,6 +108,17 @@ def test_sweep_tolerates_a_payload_entry_missing_external_id():
 
     assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is None
     assert db.query(models.Job).filter_by(external_id="2").one().delisted_at is not None
+
+
+def test_sweep_tolerates_an_explicit_none_external_id():
+    """Same as a missing key through .get(), but spelled out explicitly."""
+    db = _db()
+    _job(db, "remoteok", "1")
+
+    _sweep_delisted(db, "remoteok", [{"source": "remoteok", "external_id": None, "title": "no id here"}])
+    db.commit()
+
+    assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is None
 
 
 def test_sweep_all_entries_missing_external_id_delists_nothing():
@@ -281,3 +294,47 @@ def test_discover_jobs_task_skips_the_whole_sources_sweep_when_one_token_fetch_i
             p.stop()
 
     assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is None
+
+
+# ---------- GET /jobs must not serve a delisted job ----------
+
+def _client_and_session():
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    TestSessionLocal = sessionmaker(bind=engine)
+
+    def override_get_db():
+        db = TestSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    main.app.dependency_overrides[get_db] = override_get_db
+    return TestClient(main.app), TestSessionLocal
+
+
+def _auth(client, email):
+    client.post("/auth/signup", json={"email": email, "password": "correct horse battery staple"})
+    token = client.post(
+        "/auth/login", data={"username": email, "password": "correct horse battery staple"}
+    ).json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_list_jobs_excludes_delisted_and_keeps_still_listed():
+    from datetime import datetime
+    client, TestSessionLocal = _client_and_session()
+    headers = _auth(client, "delisting-jobs-ep@example.com")
+    db = TestSessionLocal()
+    _job(db, "remoteok", "1", title="Gone Role", delisted_at=datetime(2026, 1, 1))
+    _job(db, "remoteok", "2", title="Still Open Role")
+    db.close()
+
+    resp = client.get("/jobs", headers=headers)
+
+    assert resp.status_code == 200
+    titles = {j["title"] for j in resp.json()}
+    assert titles == {"Still Open Role"}

@@ -105,7 +105,14 @@ def get_discovery_status(task_id: str, _user: models.User = Depends(get_current_
 
 @app.get("/jobs", response_model=list[schemas.JobOut])
 def list_jobs(db: Session = Depends(get_db), limit: int = 100, _user: models.User = Depends(get_current_user)):
-    return db.query(models.Job).order_by(models.Job.fetched_at.desc()).limit(limit).all()
+    # Task 5 (freshness): never list a job that's disappeared from its source.
+    return (
+        db.query(models.Job)
+        .filter(models.Job.delisted_at.is_(None))
+        .order_by(models.Job.fetched_at.desc())
+        .limit(limit)
+        .all()
+    )
 
 
 # ---------- Applications / tracker ----------
