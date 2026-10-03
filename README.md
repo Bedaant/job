@@ -47,13 +47,19 @@ Discovery pulls from public job APIs and feeds into one normalised, deduplicated
 
 LinkedIn is deliberately **not** scraped. It is parked as a later problem. See [`docs/DECISIONS.md`](docs/DECISIONS.md) (ADR-015).
 
-### 4. Tailor each application (never fabricate)
-For every job you choose, a three-step pipeline writes a tailored resume and cover letter:
+### 4. Tailor each application to the job's ATS (never fabricate)
+Before each application, the app reads the job description and rewrites your resume to match what that employer's ATS and recruiter are looking for:
+
+- **Title alignment:** if you are a *Product Manager* and the job says *Technical Product Manager*, the app notices the gap and uses the job's wording where your real experience supports it.
+- **Skill alignment:** it pulls the skills and keywords the job description asks for and puts the ones you actually have in your skills section and bullets, in the job's wording (the keyword gap).
+- **ATS-safe layout:** single column, standard section names, no tables or text boxes.
+
+A three-step pipeline does this:
 1. **Tailor:** reorder and reword your real facts for this job description.
-2. **Truth-check:** a second, independent model call checks the draft against your Facts KB. If it finds a claim your facts don't support, the application is blocked.
+2. **Truth-check:** a second, independent model call checks the draft against your Facts KB. If it finds a claim your facts don't support, the application is blocked. So "Technical Product Manager" is only written when your facts back it up, and a skill you don't have is flagged as a gap and never added.
 3. **Voice:** strips the usual AI filler so the text sounds like you.
 
-The output is an ATS-safe, single-column DOCX. The app re-parses its own output to confirm the content survives a parser.
+The output is a DOCX. The app re-parses its own output to confirm the content survives a parser.
 
 ### 5. Auto-apply from your own browser
 The **ApplyScout Chrome extension** fills and submits application forms inside your own browser session, using your IP and your logins. The server never submits anything for you.
@@ -65,17 +71,26 @@ The **ApplyScout Chrome extension** fills and submits application forms inside y
 - It **never** answers EEO or demographic questions, and never answers essay or "How did you hear about us?" questions by guessing. Those come from your saved answers, or it asks you.
 - An application is marked *submitted* only when the employer's confirmation page says so.
 
-### 6. Referral outreach (planned)
-This is the step that turns an application into an interview. The design:
+### 6. Referral outreach after you apply (planned, not built)
+Once an application is submitted, the app reaches out to people already inside the company to ask for a referral:
 
-1. For a job you applied to, the app finds people at that company: the same role, a similar role, or someone more senior. Company research uses [agent-reach](https://github.com/Panniantong/agent-reach).
-2. It finds a reachable email address from public sources.
-3. It drafts a short note (120 words or fewer) in your own words: *"I found this role, I'm very interested, here is my profile."* Every claim comes from your Facts KB.
-4. It sends from **your own Gmail** (OAuth), not from a shared domain. This keeps deliverability good, and keeps one user's mistakes from affecting anyone else.
+1. **Pick who to contact.** For the role you applied to, find people at that company in the same function who can help. If you applied as a Developer I, that means a Developer II or III or an Engineering Manager. Company research uses [agent-reach](https://github.com/Panniantong/agent-reach).
+2. **Find and verify an email.** Get a candidate address, then check it with an SMTP/MX email verifier before sending, so you don't bounce.
+3. **Write it.** A short note (120 words or fewer): *"I applied for this role and I'm very interested. Here is my profile."* Every claim comes from your Facts KB.
+4. **Send from your own Gmail** (OAuth), not from a shared domain.
 
-Guardrails in the design: a hard cap of 10 emails a day, at most one follow-up, a global opt-out and suppression list, and ranking people by a real hook (same school, same previous employer, shared open-source work). Cold outreach with no hook is what gets Gmail accounts flagged, and it is also unpleasant for the recipient. The full spec is in [`docs/PRD.md`](docs/PRD.md) §6 F12 and ADR-003.
+**What the research found** (agent-reach and email verification):
 
-**Not built yet:** there is no Gmail OAuth, no person-finder, and no outreach table. Company research exists, but it only returns a basic dossier (GitHub repos and a web summary).
+| Piece | Finding |
+|---|---|
+| agent-reach (MIT) | A reader for the web, GitHub, Twitter/X, Reddit, RSS and more. For LinkedIn it reads public pages through Jina Reader, or profile details through a separate `mcp-server-linkedin`. It does **not** give you a list of employees with emails. Cookie or login access carries account-suspension risk, and its own docs advise a secondary account. |
+| Email verification | Open-source options: AfterShip `email-verifier` (Go, MIT), `email-validator-js` (Node). They check syntax, MX records and, where the server allows, SMTP. `check-if-email-exists` is AGPL-3.0 (or paid commercial), so avoid it, in line with this project's AGPL rule. |
+| Limits of verification | Outbound port 25 must be open, and many hosts block it. Catch-all domains accept any address, so a "valid" result isn't proof. Big providers often won't confirm a mailbox. Expect "risky" or "unknown" results, not certainty. |
+| Finding the person | Public LinkedIn pages and search results can name people. An email still has to come from somewhere else: a public source, a pattern guess (`first.last@company.com`) that you verify, or a paid email-finder API. Logged-in LinkedIn scraping puts the user's account at risk and is parked by ADR-015. |
+
+**Guardrails in the design:** a hard cap of 10 emails a day, at most one follow-up, an opt-out and suppression list, and sending only to people who match the role and seniority above. Full spec in [`docs/PRD.md`](docs/PRD.md) §6 F12 and ADR-003.
+
+**Not built yet:** Gmail OAuth, the person-finder, the email verifier, the outreach table and the send step. Company research exists, but it only returns a basic dossier (GitHub repos and a web summary).
 
 ---
 
