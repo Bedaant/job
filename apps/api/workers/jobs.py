@@ -46,10 +46,22 @@ EMBED_BACKLOG_INTERVAL_SECONDS = 2 * 60
 # absence there means "not in that search", not "gone" — so they never
 # qualify and must never appear here. jobspy isn't wired into ingestion at
 # all (main.py), so it's moot.
-SWEEPABLE_SOURCES = {
-    "greenhouse", "lever", "ashby",
-    "remoteok", "himalayas", "workingnomads", "jobicy", "arbeitnow", "weworkremotely",
-}
+#
+# A feed that returns only the newest N listings does not qualify either:
+# absence from a newest-N window IS age, and this phase expires by source
+# absence, never by age. Verified against live responses (2026-10-03) — four
+# of the six keyless feeds are truncated and were removed:
+#   remoteok       fixed 100-row payload (99 jobs), limit/offset ignored
+#   himalayas      capped at 20/page server-side; totalCount 115415, nextCursor
+#   jobicy         `count` parameter; response carries hasMore + nextCursor
+#   arbeitnow      page 1 only (meta.current_page, links.next -> page=2)
+#   weworkremotely RSS, latest ~90 items
+#   workingnomads  one bare JSON list, no cursor/page/count knob -> QUALIFIES
+# greenhouse/lever/ashby each hit one unpaginated board endpoint per token.
+# Paginating the truncated fetchers to exhaustion is new ingestion work, not
+# this phase. tests/test_delisting_sweep.py pins this set so re-adding a
+# truncated source cannot be quiet.
+SWEEPABLE_SOURCES = {"greenhouse", "lever", "ashby", "workingnomads"}
 
 
 def _sweep_delisted(db, source: str, jobs: list[dict]) -> None:
@@ -117,14 +129,19 @@ def _fetch_ats_source(fetcher, tokens: list[str], keywords: list[str]) -> tuple[
     (never cross-contaminate between companies) — the next run picks it back
     up once the flaky token recovers. See task-5-report.md for the schema
     constraint this works around (no persisted token column on Job).
+
+    Trust is judged on the RAW fetch, before keyword filtering: a board that
+    responded but has no role matching FEED_KEYWORDS is a working fetch, not a
+    dead one. Judging it after filtering meant all nine Greenhouse tokens had to
+    have an open PM role in the same run or nothing was ever delisted.
     """
     source_jobs = []
     trustworthy = True
     for token in tokens:
-        token_jobs = filter_by_keywords(fetcher(token), keywords)
-        source_jobs.extend(token_jobs)
-        if not token_jobs:
+        raw = fetcher(token)
+        if not raw:
             trustworthy = False
+        source_jobs.extend(filter_by_keywords(raw, keywords))
     return source_jobs, trustworthy
 
 
