@@ -94,6 +94,89 @@ Once an application is submitted, the app reaches out to people already inside t
 
 ---
 
+## Plan: referral outreach and how to keep accounts safe
+
+This section is a plan for the team. It is not built. Its aim is one automatic loop: **apply, then find the right person, then email them**, with as little user effort as possible, while keeping the user's LinkedIn and Gmail accounts out of trouble.
+
+### The honest risk position
+The owner accepts some account risk (ADR-015). Nothing here can guarantee that no account is ever flagged. The plan is to make flags unlikely by keeping volume low, using the user's own session, and moving the riskiest work to sources that are built for it. We do **not** use stealth tricks such as fingerprint spoofing or rotating proxies. They add legal risk, they break often, and they are what platforms hunt for.
+
+### Recommended workflow
+
+```
+ Application submitted
+        │
+        ▼
+ 1. Pick targets      Company + role → 1–3 people (same function, one level up, or a hiring manager)
+        │             Source: people-data provider API first; the user's own browser as fallback
+        ▼
+ 2. Get an email      Provider email-finder → else pattern guess (first.last@domain)
+        │
+        ▼
+ 3. Verify it         MX + SMTP check, catch-all and risky flags → send only "safe"
+        │
+        ▼
+ 4. Draft             ≤120 words, from the user's Facts KB, names the role and the application
+        │
+        ▼
+ 5. Send              User's own Gmail, paced, daily cap, one follow-up max
+        │
+        ▼
+ 6. Watch             Bounce → stop. Reply → stop and notify the user. Opt-out → suppress forever
+```
+
+### Building blocks (what to use)
+
+| Job | Recommended | Why / caveat |
+|---|---|---|
+| Find people at a company | A people-data API: People Data Labs or Coresignal for bulk enrichment, Apollo for a seat-based product with built-in contacts | Takes the scraping and the account risk off our users. Proxycurl, a popular LinkedIn data API, was sued by LinkedIn and [shut down in July 2025](https://nubela.co/blog/goodbye-proxycurl/amp). Pick providers that don't depend on logged-in scraping. |
+| Fallback people search | The extension reads a LinkedIn page the user opens themselves, one page at a time | Lowest-risk way to use LinkedIn, because it looks like the user browsing. It is not bulk scraping. |
+| Company research | agent-reach (MIT) for web, GitHub and RSS | Does not return employees or emails. |
+| Find an email | Hunter (finder and verifier API), or the same provider as above | Hunter charges credits per find and per verification. Pattern guessing is the free fallback. |
+| Verify an email | AfterShip `email-verifier` (Go, MIT) or `email-validator-js`, or the provider's verifier | Avoid AGPL tools (`check-if-email-exists`). Outbound port 25 is often blocked, so a provider's verifier may be easier to run. |
+| Send | Gmail API with the `gmail.send` scope | This scope needs Google's OAuth app verification, but not the heavier security assessment. Our earlier ADR-003 called it "restricted". It is the "sensitive" tier. |
+| Queue, caps, retries | The existing Redis and RQ workers | Already in the repo. |
+
+### Rules that keep accounts safe
+**Email (Gmail)**
+- Cap of 10 new emails a day per user, starting lower (3–5) for a new account, and rising slowly.
+- Spread sends across the day with random gaps. Never send in a burst.
+- Never send the same text twice. Each email is built from the user's facts and the specific job.
+- Verify every address first. Stop sending if bounces pass about 2–3%.
+- Stop at the first bounce, reply or opt-out for that person. Keep a suppression list across all users.
+- One follow-up at most, after about 6 days.
+- Plain text, a real signature, no tracking pixels, no link shorteners.
+
+**LinkedIn**
+- Prefer a data provider, so the user's own account is not used at all.
+- If the extension does read LinkedIn, it reads only pages the user opened, at human speed, with a small daily limit, and it never sends connection requests or messages.
+- Use the user's real, logged-in browser. No separate bots and no stored passwords.
+
+**Applications**
+- Daily application cap, a digest of what went out, and no re-applying to the same job.
+- Assisted mode (the user presses Send) stays available for users who want it.
+
+**Always**
+- A circuit breaker pauses a user's sending the moment signals look bad: a captcha, a warning page, a spike in bounces, or a spam complaint. The user is told why.
+
+### What would make this worth paying for
+- **One setup, then it runs.** The user uploads a resume and makes one campaign. After that, discovery, tailoring, applying and outreach happen on their own.
+- **A better resume per job**, matched to each job's title and skills, without invented claims.
+- **A real person looking at the application**, not just an ATS queue.
+- **A simple dashboard:** applied, emailed, replied, interviews. This tells the user what is working.
+- **Measured results.** We track reply and interview rates with and without outreach, so the product is judged on outcomes, not promises.
+
+### Cost to plan for
+The people and email data providers charge per lookup or per seat, and so does verification. Model cost per application is already tracked against a target of $0.40. Add provider cost per outreach, and set the paid plan and per-user caps from the real numbers once measured.
+
+### Open questions for the team
+1. Which people-data provider do we start with, and what does it cost per outreach at our volume?
+2. Do we start outreach as "draft, user presses send" and move to automatic after the first real replies?
+3. When do we start Google's OAuth verification for `gmail.send`? It has a review timeline, so start early.
+4. Which countries do we launch in? Email rules differ (GDPR in the EU, CAN-SPAM in the US).
+
+---
+
 ## What works today
 
 Measured on the code in this repo (see [`docs/WORKLOG.md`](docs/WORKLOG.md) for the full log).
