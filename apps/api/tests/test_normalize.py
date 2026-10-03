@@ -80,3 +80,31 @@ def test_coerce_posted_at_garbage_string_returns_none():
 def test_coerce_posted_at_datetime_passes_through_unchanged():
     dt = datetime(2026, 1, 1, 0, 0, 0)
     assert coerce_posted_at(dt) == dt
+
+
+def test_coerce_posted_at_compact_numeric_date_not_misread_as_epoch():
+    # "20260909" as a float is ~2.0e7 — far below the plausible-epoch floor —
+    # so it must not be read as epoch seconds (which would wrongly yield
+    # 1970-08-23). It is valid ISO 8601 basic-format date, so it parses as one.
+    assert coerce_posted_at("20260909") == datetime(2026, 9, 9)
+
+
+def test_coerce_posted_at_epoch_seconds_string_still_works():
+    assert coerce_posted_at("1790265606") == datetime(2026, 9, 24, 16, 0, 6)
+
+
+def test_coerce_posted_at_epoch_milliseconds_string_still_works():
+    assert coerce_posted_at("1790265606000") == datetime(2026, 9, 24, 16, 0, 6)
+
+
+def test_coerce_posted_at_just_below_plausible_epoch_floor_is_not_epoch():
+    # 999999999 (< 1e9 floor) is not a plausible epoch value and is not a
+    # valid ISO date string either, so it must come back None, not a bogus
+    # 1970-ish timestamp.
+    assert coerce_posted_at("999999999") is None
+
+
+def test_coerce_posted_at_at_plausible_epoch_floor_is_epoch():
+    # 1e9 exactly (2001-09-09T01:46:40 UTC) is the floor's lower bound — must
+    # still be treated as a real epoch-seconds value, not rejected.
+    assert coerce_posted_at("1000000000") == datetime(2001, 9, 9, 1, 46, 40)

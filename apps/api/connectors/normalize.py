@@ -50,9 +50,19 @@ def coerce_posted_at(value) -> datetime | None:
         if not s:
             return None
         try:
-            return coerce_posted_at(float(s))
+            numeric = float(s)
         except ValueError:
-            pass
+            numeric = None
+        # Only treat a numeric string as an epoch timestamp when its magnitude
+        # is plausible for one (>= 1e9, i.e. seconds on/after 2001-09-09, or
+        # the equivalent magnitude in milliseconds). Without this floor, a
+        # compact date like "20260909" (~2.0e7) parses as a tiny-but-valid
+        # float and gets misread as epoch seconds -> 1970-08-23, a wrong date
+        # that looks plausible instead of the None an unparseable value
+        # should produce. Below the floor, fall through to ISO parsing, which
+        # correctly reads "20260909" as the ISO 8601 basic date format.
+        if numeric is not None and abs(numeric) >= 1e9:
+            return coerce_posted_at(numeric)
         try:
             parsed = datetime.fromisoformat(s.replace("Z", "+00:00"))
         except ValueError:
