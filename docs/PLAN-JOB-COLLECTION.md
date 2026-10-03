@@ -1,0 +1,157 @@
+# Plan: job collection
+
+**Status:** in progress. Stages COLLECT-A and COLLECT-B are done; COLLECT-C is next and
+starts with a decision, not with code.
+
+**Why this doc exists.** This plan had no document. Stages A and B were built from "Next" notes
+at the bottom of `docs/WORKLOG.md` entries, and both were called "Phase 1" and "Phase 2" — the
+same numbers `PLAN-MULTI-ATS.md` uses for entirely different work. On 2026-10-03 "start phase 3"
+was genuinely ambiguous and stalled a session (`docs/GAPS.md` 7.3).
+
+---
+
+## Naming convention — read this before writing "Phase N" anywhere
+
+**A bare phase number is ambiguous in this repo and must not be used.** Two plans run in
+parallel, so every stage carries its plan's prefix:
+
+| Plan | Prefix | What it covers |
+|---|---|---|
+| `PLAN-JOB-COLLECTION.md` (this doc) | `COLLECT-A`, `COLLECT-B`, … | Getting jobs into the pool: sources, freshness, ingestion health |
+| `PLAN-MULTI-ATS.md` | `ATS-0`, `ATS-1`, … | Filling and submitting application forms (ADR-016) |
+
+Letters, not numbers, so a stage can be inserted without renumbering the rest. Say
+"COLLECT-C", never "Phase 3". `PLAN-MULTI-ATS.md`'s existing "Phase 0/1/2/3" map to
+`ATS-0/1/2/3`.
+
+---
+
+## Where this plan sits
+
+Collection ends when a job is in the pool, still listed, embedded and matchable. What happens
+to it afterwards — tailoring, form plans, submission — is `PLAN-MULTI-ATS.md` and ADR-015.
+
+The rails from ADR-015 and ADR-017 apply to every stage below and are not re-litigated:
+expiry is by source absence and never by age; only a source returning a complete listing may
+be swept; a failed or empty fetch delists nothing; no AGPL vendoring; every new dependency
+needs the owner's approval.
+
+---
+
+## COLLECT-A — Freshness · **DONE** (2026-10-03, WORKLOG latest+67, ADR-017)
+
+A job could not stop being current. `upsert_jobs` was insert-only, `last_seen_at` was written
+once and never read, Greenhouse stored a modification date in `posted_at`, and greenhouse/
+lever/ashby stored the board *token* in `company`, defeating the cross-source dedupe that
+`canonical_hash` exists for.
+
+Delivered: re-seen rows UPDATE, `posted_at` is a real date per source, real company names,
+absence-based delisting via `Job.delisted_at` (migration 0022), `canonical_hash` no longer
+UNIQUE. 742 → 807 tests.
+
+## COLLECT-B — Resilience · **DONE** (2026-10-03, WORKLOG latest+68/+69)
+
+Freshness was possible but ingestion was not survivable: one source's bad day cost the whole
+run, and nothing recorded which source had the bad day.
+
+Delivered: per-source error isolation (`_isolate`), one `connector_runs` row per source per run
+with `/sources` reading it, per-host pacing, jobicy paged to exhaustion and added to
+`SWEEPABLE_SOURCES`, five verified board tokens. 807 → 824 tests.
+
+Measured and closed out: five of six keyless feeds **cannot** be paginated to exhaustion
+(himalayas 5,786 requests/run, arbeitnow 429s at page 21, three have no knob). Don't re-probe —
+the numbers are in `tests/test_feed_pagination.py`.
+
+---
+
+## COLLECT-C — Reach · **NEXT. Starts with a decision.**
+
+**The problem, measured.** 117 candidate slugs were probed live across Greenhouse, Lever and
+Ashby. 42 had a live board. **19 of 22 Indian consumer-tech companies had none at all** —
+razorpay, swiggy, zomato, phonepe, flipkart, zepto, zerodha, myntra, nykaa, delhivery, paytm,
+urbancompany, lenskart, cars24, blinkit, rapido, licious, udaan.
+
+The owner's search is India PM roles. **Adding more tokens to the three ATSs we support has a
+low ceiling for that search**, because the target companies are not on those ATSs.
+
+**This stage cannot start as code.** It needs an ADR choosing a source class. The options, with
+what each actually costs:
+
+| Option | What it needs | Risk |
+|---|---|---|
+| **Other ATSs** — Darwinbox, Keka, SmartRecruiters, Workable | A public per-company endpoint per platform, found by reading live responses. SmartRecruiters and Workable have documented public APIs; Darwinbox and Keka need checking and may not. | Low if a public API exists; the connector contract already fits. Highest chance of clean structured data. |
+| **Indian job boards** — Naukri, Instahyre, Hirist, Cutshort | None has a public API. Means scraping, and checking each one's ToS and bot defences. | Account-safety and legal exposure. ADR-015 reversed no-scraping, but its rails still stand. |
+| **Company career pages directly** | Per-company work; the ATS-discovery classifier (F5, `connectors/discovery.py`) already proposes patterns. | Doesn't scale without the classifier being good, and that is unmeasured. |
+| **Accept the ceiling** | Nothing. Be explicit that coverage is global-remote plus a few India offices. | Honest, and leaves the owner's actual search underserved. |
+
+**First task, before any ADR: measure.** Probe one company per candidate platform for a public
+JSON endpoint (the way COLLECT-B probed feed pagination), and write
+`docs/harness-reports/collect-c-platforms.md`. An ADR written without that is a guess.
+
+**Done when:** an ADR is accepted, one new source class is live behind the same connector
+contract, and it is either in `SWEEPABLE_SOURCES` with evidence or explicitly excluded with a
+measured reason.
+
+## COLLECT-D — Board identity · should land **with or before** COLLECT-C
+
+**Why it's coupled to C.** `Job` has no `board_token` column, so the delisting sweep is
+source-wide. **Removing a token from `connectors/config.py` tombstones that board's entire
+inventory on the next run, even though every job is still live** (ADR-017 consequences; the
+trap is documented at the token lists). Editing config is currently a destructive data
+operation.
+
+That is survivable with 20 tokens. COLLECT-C plausibly multiplies the token count, and with it
+the chance of someone pruning a token and silently killing live jobs.
+
+**Work:** add `Job.board_token`, write it in the greenhouse/lever/ashby connectors, scope
+`_sweep_delisted` per token instead of per source, and replace `_fetch_ats_source`'s
+all-or-nothing trust flag with per-token trust — one flaky board then blocks delisting only for
+itself. This also removes the "editing `FEED_KEYWORDS` would tombstone a swept source" hazard.
+
+**Done when:** a token can be removed from config without tombstoning anything, proven by a
+test, and one flaky board no longer suppresses the whole source's sweep.
+
+## COLLECT-E — Liveness
+
+**Problem.** Five keyless feeds can never be swept (COLLECT-B measured why), so their rows go
+stale forever. ADR-017 accepts this, but it means "fresh jobs" is only true for
+greenhouse/lever/ashby/jobicy.
+
+**Idea to evaluate, not yet decided:** probe a stored job's own `apply_url` and treat a 404/410
+as delisted. That is *direct evidence a posting is gone*, which is strictly stronger than
+inferring from absence — and it costs one request per stored job we hold (hundreds), not per job
+the feed has (115,729 for himalayas alone).
+
+**It needs an ADR** because ADR-017 §1 frames expiry as absence-only; a liveness probe is a third
+mechanism, not a variant of absence. Open questions to answer first: how many of these feeds'
+`apply_url`s are stable permalinks rather than redirects; what a soft-404 (200 with "this job has
+closed") looks like per host; and the per-host request budget.
+
+**Done when:** either the probe is live with a measured false-positive rate of 0 on a sample, or
+the ADR records why it was rejected.
+
+## COLLECT-F — Hygiene
+
+Small, independent, each with a test. No ADR needed.
+
+- **`connector_runs` retention.** ~14 rows/hour, inserted since COLLECT-B, nothing prunes them. `/sources` reads the newest 200. Add a bounded delete to the discovery run.
+- **Remote-country filtering beyond India.** `matching.filters.remote_open_to` covers India only; an unknown `country_code` is not filtered at all, so a non-India user gets US-only "remote" roles (`GAPS.md` 4.4).
+- **Decide JobSpy's fate.** The connector exists, is not wired into ingestion, and `/sources` tells users it "Currently returns no results". Either wire it or delete it and drop it from `/sources` — shipping a dead source to the UI is worse than not having it.
+- **Duplicate `canonical_hash` reconciliation.** Two live rows can now share a hash (ADR-017 §5) and nothing re-collapses such a pair. Decide whether that ever needs fixing or is permanently accepted.
+
+---
+
+## How we'll know collection works
+
+| Metric | Target |
+|---|---|
+| Live jobs wrongly tombstoned | **0** — any false delisting fails the stage |
+| Jobs in the pool matching the owner's campaign bounds | grows stage over stage; was 20 India matches at latest+63 |
+| Sources with real freshness (in `SWEEPABLE_SOURCES`) | 4 today; every new source either qualifies with evidence or is excluded with a measured reason |
+| A failing source's blast radius | confined to that source — held by COLLECT-B |
+| Stale rows from non-sweepable sources | known and stated, never silently presented as fresh |
+
+## Related
+
+`docs/GAPS.md` (every open item, with evidence) · `docs/DECISIONS.md` ADR-015 and ADR-017 ·
+`docs/PLAN-MULTI-ATS.md` (the `ATS-*` stages) · `docs/WORKLOG.md` latest+67/+68/+69
