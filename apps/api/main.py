@@ -983,9 +983,10 @@ def confirm_facts_bulk(
     return created
 
 
-# Job sources the discovery worker actually searches (workers/jobs.py), with a
-# cheap health signal: how many jobs each has put in the shared pool.
-# (connector_runs has no rows for these — only F5's classifier writes it.)
+# Job sources the discovery worker actually searches (workers/jobs.py), with two
+# health signals: how many jobs each has put in the shared pool, and whether its
+# most recent discovery run failed (connector_runs, written per source per run
+# since Phase 2 item 2).
 _SOURCE_LABELS = {
     "remotive": ("Remotive", "Remote-first job board"),
     "remoteok": ("Remote OK", "Remote jobs board"),
@@ -1018,6 +1019,24 @@ def list_sources(db: Session = Depends(get_db), _user: models.User = Depends(get
     }
     for feed in _SOURCE_LABELS:
         reasons.setdefault(feed, None if feed in conn_config.ENABLED_FEEDS else "Not searched right now.")
+
+    # A source configured correctly but failing upstream is not "enabled" in any
+    # sense the user cares about, so the last run's error wins over config.
+    # ponytail: newest rows, first one per source wins — cheaper than a
+    # per-source MAX(ran_at) join at ~14 sources an hour. Raise the limit (or
+    # join) if the source list grows past what 200 rows covers.
+    latest: dict[str, str | None] = {}
+    for source, error in (
+        db.query(models.ConnectorRun.source, models.ConnectorRun.error)
+        .order_by(models.ConnectorRun.ran_at.desc())
+        .limit(200)
+        .all()
+    ):
+        latest.setdefault(source, error)  # newest first, so the first row per source is the latest
+    for source, error in latest.items():
+        if error and reasons.get(source) is None and source in _SOURCE_LABELS:
+            reasons[source] = "Last check failed; trying again on the next run."
+
     counts = dict(db.query(models.Job.source, func.count(models.Job.id)).group_by(models.Job.source).all())
     return [
         schemas.SourceOut(id=sid, label=label, note=note, enabled=reasons[sid] is None,

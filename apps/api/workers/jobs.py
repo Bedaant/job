@@ -109,6 +109,83 @@ def _sweep_delisted(db, source: str, jobs: list[dict]) -> None:
     ).update({"delisted_at": datetime.utcnow()}, synchronize_session=False)
 
 
+# Phase 2 item 3 — per-host pacing. Every fetch loop below is N requests to a
+# SINGLE host (9 Greenhouse tokens, 3 Remotive keywords), and no two loops share
+# a host, so spacing requests inside a loop is per-host pacing.
+# ponytail: lives at the loop, not in a shared HTTP client — these loops are the
+# only bursts that exist. Move it into one paced client if connectors start
+# sharing a host, or if a single call needs its own rate limit.
+HOST_PACING_SECONDS = 1.0
+
+
+def _pace(index: int) -> None:
+    """Wait before every request in a loop except the first."""
+    if index:
+        time.sleep(HOST_PACING_SECONDS)
+
+
+def _isolate(source: str, fetch) -> tuple[list[dict], bool, dict]:
+    """Phase 2 items 1+2 — run one source's whole fetch, isolated, and describe
+    the outcome as a `connector_runs` row.
+
+    `fetch` returns `(jobs, trustworthy)`; this returns that plus the row.
+    Nothing a connector raises may escape: `fetch_remotive_jobs` and
+    `fetch_reed_jobs` call `raise_for_status()`, which used to propagate out of
+    `discover_jobs_task` and throw away every OTHER source's jobs, the delisting
+    sweep and the embedding backfill for the entire run.
+
+    A failed source returns no payload and is never trustworthy, so absence
+    from it can't delist anything (ADR-017 §3: a failed fetch delists nothing).
+
+    `inserted` stays 0: dedupe happens across all sources at once in
+    `upsert_jobs`, which returns batch totals, so there is no honest per-source
+    insert count without attributing the batch. The row exists for health —
+    "did this source answer, how much and how fast" — which `fetched`/`error`/
+    `duration_ms` already say.
+    """
+    started = time.monotonic()
+    try:
+        jobs, trustworthy = fetch()
+        error = None
+    except Exception as exc:  # network, auth, JSON/XML shape drift
+        jobs, trustworthy = [], False
+        error = f"{type(exc).__name__}: {exc}"
+        logger.exception("discovery source %s failed", source)
+    return jobs, trustworthy, {
+        "source": source,
+        "fetched": len(jobs),
+        "failed": 1 if error else 0,
+        "error": error,
+        "duration_ms": int((time.monotonic() - started) * 1000),
+    }
+
+
+def _feed_report_rows(report: dict) -> list[dict]:
+    """`fetch_enabled_feeds` already isolates per feed and returns a kept-job
+    count or an error string per source. Reuse that as the rows rather than
+    building a second reporting path for the same thing.
+    """
+    return [{
+        "source": name,
+        "fetched": outcome if isinstance(outcome, int) else 0,
+        "failed": 0 if isinstance(outcome, int) else 1,
+        "error": None if isinstance(outcome, int) else outcome,
+        "duration_ms": None,  # fetch_enabled_feeds doesn't time individual feeds
+    } for name, outcome in report.items()]
+
+
+def _fetch_keyword_source(fetcher, keywords: list[str]) -> tuple[list[dict], bool]:
+    """Remotive/Reed: one request per configured keyword, same host each time.
+    Never trustworthy for the sweep — a keyword slice is not a full listing
+    (ADR-017 §2), which `SWEEPABLE_SOURCES` enforces independently.
+    """
+    jobs: list[dict] = []
+    for i, keyword in enumerate(keywords):
+        _pace(i)
+        jobs.extend(fetcher(keyword))
+    return jobs, False
+
+
 def _fetch_ats_source(fetcher, tokens: list[str], keywords: list[str]) -> tuple[list[dict], bool]:
     """Fetch every token's board for one ATS source (greenhouse/lever/ashby)
     and say whether the combined result is trustworthy enough to sweep.
@@ -145,7 +222,8 @@ def _fetch_ats_source(fetcher, tokens: list[str], keywords: list[str]) -> tuple[
     """
     source_jobs = []
     trustworthy = True
-    for token in tokens:
+    for i, token in enumerate(tokens):
+        _pace(i)
         raw = fetcher(token)
         if not raw:
             trustworthy = False
@@ -187,20 +265,24 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
     # trustworthy full listing for — swept for delistings after upsert_jobs,
     # below. remotive/reed never go in here (see SWEEPABLE_SOURCES).
     sweep_batches: list[tuple[str, list[dict]]] = []
+    # Phase 2 item 2: one connector_runs row per source per run, written in the
+    # same transaction as the upsert below. Ingestion wrote none before, so
+    # /sources had to infer health from job counts — which cannot tell "fetched
+    # nothing this run" from "has never run".
+    runs: list[dict] = []
 
-    for kw in conn_config.REMOTIVE_KEYWORDS:
-        all_jobs.extend(fetch_remotive_jobs(kw))
-    for kw in conn_config.REED_KEYWORDS:
-        all_jobs.extend(fetch_reed_jobs(kw))
     # A company board returns every opening; keep the target titles only (FEED_KEYWORDS).
     kw = conn_config.FEED_KEYWORDS
-    for source_name, tokens, fetcher in (
-        ("greenhouse", conn_config.GREENHOUSE_BOARD_TOKENS, fetch_greenhouse_jobs),
-        ("lever", conn_config.LEVER_COMPANY_TOKENS, fetch_lever_jobs),
-        ("ashby", conn_config.ASHBY_ORG_TOKENS, fetch_ashby_jobs),
+    for source_name, fetch in (
+        ("remotive", lambda: _fetch_keyword_source(fetch_remotive_jobs, conn_config.REMOTIVE_KEYWORDS)),
+        ("reed", lambda: _fetch_keyword_source(fetch_reed_jobs, conn_config.REED_KEYWORDS)),
+        ("greenhouse", lambda: _fetch_ats_source(fetch_greenhouse_jobs, conn_config.GREENHOUSE_BOARD_TOKENS, kw)),
+        ("lever", lambda: _fetch_ats_source(fetch_lever_jobs, conn_config.LEVER_COMPANY_TOKENS, kw)),
+        ("ashby", lambda: _fetch_ats_source(fetch_ashby_jobs, conn_config.ASHBY_ORG_TOKENS, kw)),
     ):
-        source_jobs, trustworthy = _fetch_ats_source(fetcher, tokens, kw)
+        source_jobs, trustworthy, run = _isolate(source_name, fetch)
         all_jobs.extend(source_jobs)
+        runs.append(run)
         sweep_batches.append((source_name, source_jobs if trustworthy else []))
 
     # ADR-015 multi-source: the keyless public feeds. Reported per source rather
@@ -210,6 +292,7 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
         conn_config.ENABLED_FEEDS, conn_config.FEED_KEYWORDS
     )
     all_jobs.extend(feed_jobs)
+    runs.extend(_feed_report_rows(feed_report))
     # Each keyless feed returns its whole board in one fetch (no per-token
     # split), so the sweep scopes to source only — group this run's results
     # by source rather than re-fetching.
@@ -223,6 +306,8 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
         inserted, updated, skipped = upsert_jobs(db, all_jobs)
         for source, jobs in sweep_batches:
             _sweep_delisted(db, source, jobs)
+        for run in runs:
+            db.add(models.ConnectorRun(**run))
         backfill_job_embeddings(db)
 
     return {
