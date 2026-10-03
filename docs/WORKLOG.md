@@ -102,6 +102,81 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-10-03 (latest+67) — Job freshness: re-seen jobs update, `posted_at` is a real date, real company names, absence-based delisting
+
+**What changed.** Phase 1 of a job-collection plan, built as five tasks by one implementer each,
+every task reviewed by a separate agent, then a whole-branch review. Branch
+`phase1-ingestion-freshness`, 16 commits, 807 tests passing. ADR-017 records the decisions.
+
+- **Freshness is now possible at all.** `upsert_jobs` was insert-only: a re-seen job was counted
+  `skipped` and its row never touched, so `Job.last_seen_at` was written once at insert and never
+  read — dead data. It now UPDATEs a re-seen row (matched on `(source, external_id)`, not
+  `canonical_hash`), moving `last_seen_at`, clearing `delisted_at`, and filling fields only where
+  the incoming value is non-empty. Budget: 3 queries per batch (SELECT, bulk INSERT, bulk UPDATE).
+- **`posted_at` is a real datetime for every source.** Greenhouse was storing `updated_at` — a
+  modification date — which recency scoring reads at 15% weight over a 30-day decay. It now reads
+  `first_published` (present on 100% of jobs on all nine configured boards, surveyed per token) and
+  stores NULL when absent. New `normalize.coerce_posted_at` handles ISO with `Z`, ISO with an
+  offset converted to naive UTC, and garbage → NULL; it accepts strings only.
+- **Real company names** for greenhouse/lever/ashby, which previously stored the board *token*
+  (`grafanalabs`, `meesho`). That token fed `canonical_hash`, so cross-source dedupe could never
+  match a feed listing the same role under the real name. A curated token→name map wins over the
+  payload, because Greenhouse returns `"Rubrik Job Board"` for Rubrik and that suffix survives
+  `canonical_hash` normalization.
+- **Absence-based delisting.** `Job.delisted_at` (migration 0022) is set when a source was fetched
+  successfully and a job was not in the payload. Never by age. Delisted jobs are excluded from
+  `matching/filters.py`, `matching/service.py`'s candidate query, `campaigns._in_bounds`,
+  `GET /jobs`, and the embedding backfill.
+- **`canonical_hash` is no longer UNIQUE.** See "Problems hit" — this was a run-killer.
+
+**Why.** "Find the latest jobs" was not implementable: nothing tracked whether a job was still
+listed, and two sources' copies of one role could not dedupe. Adding more job portals on top of
+that would have multiplied the breakage instead of adding coverage.
+
+**Files changed.** `apps/api/connectors/{pipeline,normalize,greenhouse,lever,ashby,config,jobspy_connector}.py`,
+`apps/api/{models,main,campaigns,formplans}.py`, `apps/api/matching/{filters,service}.py`,
+`apps/api/workers/jobs.py`, `apps/api/alembic/versions/0022_job_delisted_at.py` (new), and tests
+including new `tests/{test_job_freshness,test_greenhouse,test_ashby,test_delisting_sweep}.py`.
+
+**Dependencies added.** None.
+
+**Tests.** 742 → 807. Red-before-green confirmed per test; three exceptions are disclosed in the
+fix report (two regression guards written after their fix, and the query-budget bound, proven to
+bind by temporarily making the update loop data-dependent and watching `assert 4 <= 3` fire).
+
+**Problems hit.** Reviews caught five things that implementers' green suites did not:
+1. **The query-budget test asserted nothing.** It wrapped `Session.execute`, which
+   `bulk_insert_mappings`/`bulk_update_mappings` bypass by calling `connection.execute` directly —
+   it saw 1 statement where 3 ran. Rebuilt on an Engine-level `before_cursor_execute` listener.
+   Its fixtures were also homogeneous, so the bound was held by construction rather than by the
+   test; one heterogeneous fixture now makes it bind.
+2. **`coerce_posted_at` took three rounds.** A magnitude floor, then a 1970-2100 calendar window,
+   each still returning wrong-but-plausible dates (`"20260909120000"` → year 2612;
+   `"20260230"` → 1970-08-23). The fix was deletion, not a fourth guard: epoch-as-a-string is a
+   shape no connector sends, and it was the sole source of every wrong date.
+3. **`canonical_hash` was UNIQUE while Task 4 rewrote it in place.** The first time a renamed ATS
+   row's hash equalled a feed row's, `IntegrityError` escaped `session_scope` and rolled back the
+   whole run — inserts, sweep, embeddings — recurring forever because the colliding pair stayed
+   stored. Dropped the constraint; dedupe is enforced in `upsert_jobs` anyway. Tombstones are now
+   excluded from that dedupe set, otherwise a tombstone permanently suppressed any live duplicate
+   or re-post.
+4. **The sweep would have expired by age.** Four of six feeds in the original sweepable set return
+   truncated listings, and remoteok/workingnomads turned out to be fixed and rolling windows. The
+   sweep is now ATS-only. Both this and (3) came from a brief naming a constant without the
+   implementer reading the code behind it — the process note for next time.
+5. **Two tasks collided invisibly.** Real company names broke the sweep's `Job.company == <token>`
+   scoping: zero rows matched, nothing ever delisted, and its own tests still passed. Found by the
+   other task's implementer, not by either review.
+
+Also: `models.py` lacked `index=True` on the two columns migration 0022 indexes, so the next
+`--autogenerate` would have dropped them and silently reverted the work.
+
+**Next.** Phase 2 of the plan: per-source error isolation (one failing source currently aborts the
+whole discovery run — remotive and reed `raise_for_status()`), `ConnectorRun` health rows (ingestion
+writes none today, so `/sources` infers health from job counts), per-host pacing, then adding
+portals from ADR-015's tier list. Before relying on feed freshness, paginate those fetchers to
+exhaustion. Migration 0022 has never run against a real Postgres — watch the first `alembic upgrade`.
+
 ### 2026-09-30 (latest+66) — Multi-page forms (Workday first); optional fields that can't be set no longer block
 
 **What changed.** One agent planned the work and two built it in parallel worktrees. ADR-016 amendment 3 records the decision.

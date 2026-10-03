@@ -147,8 +147,19 @@ def find_job(db, ats: str, token: str, external_id: str):
     posting["canonical_hash"] = canonical_hash(posting["company"], posting["title"], posting.get("location"))
     upsert_jobs(db, [posting])
     db.commit()
-    # By hash, not (source, external_id): the same role from another source dedupes onto that row.
-    return db.query(models.Job).filter(models.Job.canonical_hash == posting["canonical_hash"]).first()
+    # Its own row if upsert_jobs inserted one; otherwise by hash, because the same
+    # role from another source dedupes onto that source's row. canonical_hash is
+    # not unique (a re-seen row's hash is rewritten in place), so several rows can
+    # match: prefer a still-listed one, then the most recently fetched.
+    return (
+        db.query(models.Job)
+        .filter(models.Job.source == ats, models.Job.external_id == external_id)
+        .first()
+        or db.query(models.Job)
+        .filter(models.Job.canonical_hash == posting["canonical_hash"])
+        .order_by(models.Job.delisted_at.isnot(None), models.Job.fetched_at.desc().nullslast())
+        .first()
+    )
 
 
 def _main(argv=None) -> None:

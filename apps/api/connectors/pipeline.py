@@ -3,11 +3,14 @@ import logging
 
 Fixes CODE-REVIEW.md H1 (was 1 SELECT + 1 INSERT per job, N+1) and H3 (dedupe
 was source+external_id only, so the same role from two sources landed twice).
-Two queries total regardless of batch size: one SELECT of existing hashes,
-one bulk INSERT of the new rows.
+At most three queries regardless of batch size: one SELECT of existing rows,
+one bulk INSERT of new rows, one bulk UPDATE of re-seen rows (Task 2,
+freshness — a re-seen job refreshes last_seen_at/delisted_at/fields instead
+of being silently skipped).
 """
 from datetime import datetime
 
+from sqlalchemy import or_, tuple_
 from sqlalchemy.orm import Session
 
 import models
@@ -16,21 +19,39 @@ from matching.filters import infer_seniority
 from matching.near_duplicate import simhash, is_near_duplicate
 from matching.skills import extract_skills
 
+# Fields refreshed on a re-seen job, filled from the incoming payload only
+# where it's non-empty (never overwrite a stored value with NULL/""). Matched
+# on (source, external_id) — not canonical_hash — because a connector can
+# change `company` (and therefore the hash) for a job already on file; hash
+# matching would duplicate that row instead of updating it.
+_UPDATE_FIELDS = ("title", "company", "location", "salary", "description", "apply_url", "posted_at", "canonical_hash")
 
-def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int]:
+
+def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int, int]:
     """jobs: dicts with all Job columns, including a precomputed canonical_hash
-    (connectors.normalize.canonical_hash). Returns (inserted, skipped_duplicates).
+    (connectors.normalize.canonical_hash). Returns (inserted, updated, skipped_duplicates).
     """
     if not jobs:
-        return 0, 0
+        return 0, 0, 0
 
     batch_hashes = [j["canonical_hash"] for j in jobs]
-    existing = {
-        row[0]
-        for row in db.query(models.Job.canonical_hash)
-        .filter(models.Job.canonical_hash.in_(batch_hashes))
+    batch_keys = [(j["source"], j["external_id"]) for j in jobs]
+    existing_rows = (
+        db.query(models.Job)
+        .filter(
+            or_(
+                models.Job.canonical_hash.in_(batch_hashes),
+                tuple_(models.Job.source, models.Job.external_id).in_(batch_keys),
+            )
+        )
         .all()
-    }
+    )
+    # Delisted rows are excluded on purpose: a tombstone must not suppress the
+    # same role arriving live from another source, nor a board re-posting a
+    # closed req under a new external_id. Both would otherwise be skipped
+    # forever, serving zero live rows for a job that is open.
+    existing_hashes = {row.canonical_hash for row in existing_rows if row.delisted_at is None}
+    existing_by_key = {(row.source, row.external_id): row for row in existing_rows}
 
     seen_in_batch: set[str] = set()
     # (company, simhash) for jobs already accepted this batch — catches a
@@ -40,12 +61,23 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int]:
     # needs its own index/architecture call, not made here.
     accepted_fingerprints: list[tuple[str, int]] = []
     to_insert = []
+    to_update = []
+    updated = 0
     skipped = 0
     now = datetime.utcnow()
 
     for job in jobs:
+        existing = existing_by_key.get((job["source"], job["external_id"]))
+        if existing is not None:
+            mapping = {"id": existing.id, "last_seen_at": now, "delisted_at": None}
+            for field in _UPDATE_FIELDS:
+                mapping[field] = job.get(field) or getattr(existing, field)
+            to_update.append(mapping)
+            updated += 1
+            continue
+
         h = job["canonical_hash"]
-        if h in existing or h in seen_in_batch:
+        if h in existing_hashes or h in seen_in_batch:
             skipped += 1
             continue
 
@@ -67,6 +99,9 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int]:
             "last_seen_at": now,
         })
 
+    if to_update:
+        db.bulk_update_mappings(models.Job, to_update)
+
     if to_insert:
         try:
             embeddings = embed_texts(
@@ -82,9 +117,11 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int]:
             for job, embedding in zip(to_insert, embeddings):
                 job["embedding"] = embedding
         db.bulk_insert_mappings(models.Job, to_insert)
+
+    if to_insert or to_update:
         db.commit()
 
-    return len(to_insert), skipped
+    return len(to_insert), updated, skipped
 
 
 # ponytail: ~4 chars/token guess keeps one request under Voyage's free-tier
@@ -106,8 +143,11 @@ def backfill_job_embeddings(db, limit: int = 50, only_ids=None) -> int:
     minute's budget is spent) ends the pass, keeping what was embedded — the
     rest waits for the next discover run rather than sleeping in the worker.
     Returns how many were embedded."""
-    # Newest first: on a 3 RPM free tier the backlog clears slowly, and fresh postings matter most.
-    query = db.query(models.Job).filter(models.Job.embedding.is_(None))
+    # Newest first, still-listed only: on a 3 RPM free tier the backlog clears
+    # slowly, so the budget must not go to jobs that are already dead.
+    query = db.query(models.Job).filter(
+        models.Job.embedding.is_(None), models.Job.delisted_at.is_(None)
+    )
     if only_ids is not None:
         query = query.filter(models.Job.id.in_(only_ids))
     pending = query.order_by(models.Job.fetched_at.desc().nullslast()).limit(limit).all()

@@ -19,6 +19,7 @@ import subprocess
 import sys
 
 from connectors import config
+from connectors.normalize import coerce_posted_at
 
 _TOOLS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "tools")
 _JOBSPY_PYTHON = os.path.join(_TOOLS_DIR, ".venv-jobspy", "Scripts", "python.exe")
@@ -63,6 +64,6 @@ def fetch_jobspy_jobs(search_term: str, results_wanted: int = 20,
             "company": r.get("company", ""),
             "location": r.get("location"),
             "apply_url": url,
-            "posted_at": r.get("date_posted"),
+            "posted_at": coerce_posted_at(r.get("date_posted")),
         })
     return jobs

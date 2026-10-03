@@ -2,11 +2,12 @@ from matching.filters import infer_seniority, blocks_visa_sponsorship, passes_ha
 
 
 class _Job:
-    def __init__(self, location=None, remote=False, seniority=None, description=""):
+    def __init__(self, location=None, remote=False, seniority=None, description="", delisted_at=None):
         self.location = location
         self.remote = remote
         self.seniority = seniority
         self.description = description
+        self.delisted_at = delisted_at
 
 
 def test_infer_seniority_detects_senior():
@@ -58,6 +59,19 @@ def test_passes_hard_filters_remote_job_fails_onsite_only_pref():
 def test_passes_hard_filters_missing_location_data_does_not_exclude():
     job = _Job(location=None, remote=False)
     assert passes_hard_filters({"locations": ["Bengaluru"]}, job) is True
+
+
+def test_passes_hard_filters_excludes_delisted_job():
+    from datetime import datetime
+    job = _Job(delisted_at=datetime(2026, 1, 1))
+    assert passes_hard_filters({}, job) is False
+
+
+def test_passes_hard_filters_null_delisted_at_still_passes():
+    """Module's own rule (filters.py docstring): missing data never excludes
+    a job. NULL delisted_at means "still listed", so it must pass."""
+    job = _Job(delisted_at=None)
+    assert passes_hard_filters({}, job) is True
 
 
 def test_passes_hard_filters_seniority_mismatch_fails():

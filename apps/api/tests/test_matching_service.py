@@ -23,10 +23,11 @@ def _profile(db, fact_centroid=None):
     return profile
 
 
-def _job(db, title, embedding=None, skills=None):
+def _job(db, title, embedding=None, skills=None, delisted_at=None):
     job = models.Job(
         source="remotive", external_id=title, canonical_hash=title, title=title,
         company="Acme", apply_url="https://x", embedding=embedding, skills=skills or [],
+        delisted_at=delisted_at,
     )
     db.add(job)
     db.commit()
@@ -62,6 +63,15 @@ def test_build_matches_upserts_not_duplicates():
     build_matches(db, profile)
 
     assert db.query(models.Match).count() == 1
+
+
+def test_build_matches_excludes_delisted_jobs():
+    from datetime import datetime
+    db = _db()
+    profile = _profile(db, fact_centroid=[1.0] + [0.0] * 511)
+    _job(db, "Backend Engineer", embedding=[1.0] + [0.0] * 511, delisted_at=datetime(2026, 1, 1))
+
+    assert build_matches(db, profile) == []
 
 
 def test_build_matches_writes_match_new_event_once_not_on_rebuild():

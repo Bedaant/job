@@ -208,6 +208,34 @@ def test_find_job_fetches_and_upserts_only_the_matching_posting(_embed, _plan, d
     assert db_session.query(models.Job).count() == 1
 
 
+@patch("formplans.plan_job", return_value=None)
+@patch("connectors.pipeline.embed_texts", side_effect=RuntimeError("offline"))
+def test_find_job_never_returns_a_tombstone_when_rows_share_a_canonical_hash(_embed, _plan, db_session):
+    """canonical_hash is no longer UNIQUE (final review C1), so the by-hash
+    lookup can match several rows. The posting here dedupes onto an existing
+    row (no row of its own is created), and a delisted row sharing the hash is
+    stored first — a bare .first() returned that tombstone."""
+    from datetime import datetime
+
+    from connectors.normalize import canonical_hash
+
+    h = canonical_hash("Acme", "Engineer", "Remote")
+    db_session.add(models.Job(source="remoteok", external_id="r1", canonical_hash=h, title="Engineer",
+                              company="Acme", location="Remote", apply_url="https://x/r1",
+                              delisted_at=datetime(2026, 1, 1)))
+    db_session.add(models.Job(source="workingnomads", external_id="w1", canonical_hash=h, title="Engineer",
+                              company="Acme", location="Remote", apply_url="https://x/w1"))
+    db_session.commit()
+
+    posting = {"source": "greenhouse", "external_id": "42", "title": "Engineer", "company": "Acme",
+               "location": "Remote", "apply_url": GH_URL}
+    with patch.dict(formplans.FETCHERS, {"greenhouse": lambda token: [posting]}):
+        job = formplans.find_job(db_session, "greenhouse", "acme", "42")
+
+    assert job.delisted_at is None
+    assert job.external_id == "w1"
+
+
 # ---- API wiring --------------------------------------------------------------
 
 def _plan_row(SessionLocal, job_id, status="ok"):

@@ -4,6 +4,7 @@ Docs: https://github.com/lever/postings-api
 """
 import httpx
 
+from connectors.config import TOKEN_COMPANY_NAMES
 from connectors.feeds import _epoch
 
 BASE_URL = "https://api.lever.co/v0/postings/{token}"
@@ -25,7 +26,7 @@ def fetch_lever_jobs(company_token: str):
             "source": "lever",
             "external_id": j.get("id", ""),
             "title": j.get("text", ""),
-            "company": company_token,
+            "company": TOKEN_COMPANY_NAMES.get(company_token, company_token),
             "location": location,
             "remote": "remote" in (location or "").lower(),
             "salary": None,

@@ -4,6 +4,7 @@ runs in a worker process instead.
 """
 import logging
 import time
+from datetime import datetime
 from functools import lru_cache
 
 from redis import Redis
@@ -39,6 +40,118 @@ CAMPAIGN_SWEEP_INTERVAL_SECONDS = 60 * 60
 # One embedding pass every 2 minutes: ~6 jobs a pass on Voyage's free tier (3 RPM / 10K TPM).
 EMBED_BACKLOG_INTERVAL_SECONDS = 2 * 60
 
+# Task 5 (freshness, phase 1): sources that return a FULL listing per fetch —
+# a job's absence from this run's payload is real signal it left the board.
+# remotive and reed always fetch a keyword slice (connectors/config.py) —
+# absence there means "not in that search", not "gone" — so they never
+# qualify and must never appear here. jobspy isn't wired into ingestion at
+# all (main.py), so it's moot.
+#
+# A feed that returns only the newest N listings does not qualify either:
+# absence from a newest-N window IS age, and this phase expires by source
+# absence, never by age. Verified against live responses (2026-10-03) — five
+# of the six keyless feeds are truncated and were removed:
+#   remoteok       fixed 100-row payload (99 jobs), limit/offset ignored
+#   himalayas      capped at 20/page server-side; totalCount 115415, nextCursor
+#   jobicy         `count` parameter; response carries hasMore + nextCursor
+#   arbeitnow      page 1 only (meta.current_page, links.next -> page=2)
+#   weworkremotely RSS, latest ~90 items
+#   workingnomads  one bare JSON list, no cursor/page/count knob, but its age
+#                  distribution is [1, 1, 2, 3, ..., 28, 28, 29] days -- a
+#                  rolling ~30-day window, nothing at or beyond 30. A job
+#                  aging past 30 days would vanish from the payload while
+#                  still live, which is age, not absence. Whether Working
+#                  Nomads itself expires postings at 30 days is unverified
+#                  either way -- unproven absence does not qualify.
+# greenhouse/lever/ashby each hit one unpaginated board endpoint per token.
+# Paginating the truncated fetchers to exhaustion is new ingestion work, not
+# this phase; until then all six feeds accumulate stale rows. workingnomads
+# keeps being ingested (ENABLED_FEEDS), it just stops being swept.
+# tests/test_delisting_sweep.py pins this set so re-adding a disqualified
+# source cannot be quiet.
+SWEEPABLE_SOURCES = {"greenhouse", "lever", "ashby"}
+
+
+def _sweep_delisted(db, source: str, jobs: list[dict]) -> None:
+    """Set delisted_at=now on currently-listed (NULL) rows for `source` that
+    are absent from `jobs` — this run's fetched (and keyword-filtered)
+    payload for that source (see _fetch_ats_source for how an ATS source's
+    per-token fetches are combined into one trustworthy-or-nothing `jobs`
+    list before this is called). One bulk UPDATE, not per-row.
+
+    Traps this guards against:
+    - A non-qualifying or unrecognized source is a no-op, defense in depth
+      against a caller passing one by mistake (remotive/reed never should).
+    - An EMPTY `jobs` list is treated as "no signal", never as "the board is
+      actually empty". greenhouse.py/lever.py/ashby.py return [] on a
+      non-200 exactly like a genuinely empty board — the two are
+      indistinguishable from an empty list alone — so sweeping on empty
+      would delist every still-open job the first time a source has a bad
+      day. This is the whole reason the sweep is safe without the
+      per-source error isolation / ConnectorRun health rows that Phase 2
+      adds; that work is explicitly out of scope here.
+    - A payload entry with no external_id is dropped from the comparison
+      set rather than left in as a bare None, which would otherwise put a
+      NULL into the NOT IN list and make every row's comparison NULL (SQL's
+      NOT IN + NULL trap) instead of a real id check. If nothing in `jobs`
+      carries an external_id, there's nothing to compare against: no
+      signal, no sweep.
+    """
+    if source not in SWEEPABLE_SOURCES or not jobs:
+        return
+    seen_ids = {j["external_id"] for j in jobs if j.get("external_id") is not None}
+    if not seen_ids:
+        return
+    db.query(models.Job).filter(
+        models.Job.source == source,
+        models.Job.delisted_at.is_(None),
+        models.Job.external_id.notin_(seen_ids),
+    ).update({"delisted_at": datetime.utcnow()}, synchronize_session=False)
+
+
+def _fetch_ats_source(fetcher, tokens: list[str], keywords: list[str]) -> tuple[list[dict], bool]:
+    """Fetch every token's board for one ATS source (greenhouse/lever/ashby)
+    and say whether the combined result is trustworthy enough to sweep.
+
+    Per-token delisting needs a stable per-token identity on the stored row.
+    Task 4 made `Job.company` a display name resolved from the API payload
+    or a token->name map (connectors/config.py) — not the raw token — and it
+    can legitimately vary in formatting (seen live: a trailing space on one
+    board, "Rubrik Job Board" instead of "Rubrik" on another), so it is not
+    a safe key to filter a delisting UPDATE on: a mismatch there would
+    either silently sweep nothing (filter matches zero rows) or, worse,
+    nothing stable to tell one company's rows apart from another's at all.
+
+    What IS stable: `external_id` is unique per `source` across every
+    company (models.Job's uq_job_source_external_id spans the whole source,
+    and greenhouse/lever/ashby ids are platform-wide, not per-token), so a
+    SOURCE-wide sweep using every token's combined ids is safe — PROVIDED
+    every token this run actually returned something. If even one token
+    came back empty (a dead board, or a config.py token that's gone 404 —
+    indistinguishable from each other, same empty-payload trap as any other
+    source), the whole source is marked untrustworthy for this run: callers
+    must not sweep using jobs from an untrustworthy fetch, because an empty
+    token's rows would otherwise look "absent" from the combined id set and
+    get delisted by mistake. This trades per-token availability (one flaky
+    board no longer blocks delisting for only that board) for correctness
+    (never cross-contaminate between companies) — the next run picks it back
+    up once the flaky token recovers. See task-5-report.md for the schema
+    constraint this works around (no persisted token column on Job).
+
+    Trust is judged on the RAW fetch, before keyword filtering: a board that
+    responded but has no role matching FEED_KEYWORDS is a working fetch, not a
+    dead one. Judging it after filtering meant all nine Greenhouse tokens had to
+    have an open PM role in the same run or nothing was ever delisted.
+    """
+    source_jobs = []
+    trustworthy = True
+    for token in tokens:
+        raw = fetcher(token)
+        if not raw:
+            trustworthy = False
+        source_jobs.extend(filter_by_keywords(raw, keywords))
+    return source_jobs, trustworthy
+
 
 @lru_cache(maxsize=1)
 def get_redis_connection() -> Redis:
@@ -70,6 +183,10 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
             return {"skipped": True, "reason": "already claimed"}
 
     all_jobs = []
+    # Task 5: (source, jobs) per source this run fetched a qualifying,
+    # trustworthy full listing for — swept for delistings after upsert_jobs,
+    # below. remotive/reed never go in here (see SWEEPABLE_SOURCES).
+    sweep_batches: list[tuple[str, list[dict]]] = []
 
     for kw in conn_config.REMOTIVE_KEYWORDS:
         all_jobs.extend(fetch_remotive_jobs(kw))
@@ -77,12 +194,14 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
         all_jobs.extend(fetch_reed_jobs(kw))
     # A company board returns every opening; keep the target titles only (FEED_KEYWORDS).
     kw = conn_config.FEED_KEYWORDS
-    for token in conn_config.GREENHOUSE_BOARD_TOKENS:
-        all_jobs.extend(filter_by_keywords(fetch_greenhouse_jobs(token), kw))
-    for token in conn_config.LEVER_COMPANY_TOKENS:
-        all_jobs.extend(filter_by_keywords(fetch_lever_jobs(token), kw))
-    for token in conn_config.ASHBY_ORG_TOKENS:
-        all_jobs.extend(filter_by_keywords(fetch_ashby_jobs(token), kw))
+    for source_name, tokens, fetcher in (
+        ("greenhouse", conn_config.GREENHOUSE_BOARD_TOKENS, fetch_greenhouse_jobs),
+        ("lever", conn_config.LEVER_COMPANY_TOKENS, fetch_lever_jobs),
+        ("ashby", conn_config.ASHBY_ORG_TOKENS, fetch_ashby_jobs),
+    ):
+        source_jobs, trustworthy = _fetch_ats_source(fetcher, tokens, kw)
+        all_jobs.extend(source_jobs)
+        sweep_batches.append((source_name, source_jobs if trustworthy else []))
 
     # ADR-015 multi-source: the keyless public feeds. Reported per source rather
     # than merged into one count — with six boards, "0 inserted" has to be
@@ -91,17 +210,25 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
         conn_config.ENABLED_FEEDS, conn_config.FEED_KEYWORDS
     )
     all_jobs.extend(feed_jobs)
+    # Each keyless feed returns its whole board in one fetch (no per-token
+    # split), so the sweep scopes to source only — group this run's results
+    # by source rather than re-fetching.
+    for name in conn_config.ENABLED_FEEDS:
+        sweep_batches.append((name, [j for j in feed_jobs if j["source"] == name]))
 
     for j in all_jobs:
         j["canonical_hash"] = canonical_hash(j["company"], j["title"], j.get("location"))
 
     with session_scope() as db:
-        inserted, skipped = upsert_jobs(db, all_jobs)
+        inserted, updated, skipped = upsert_jobs(db, all_jobs)
+        for source, jobs in sweep_batches:
+            _sweep_delisted(db, source, jobs)
         backfill_job_embeddings(db)
 
     return {
         "fetched": len(all_jobs),
         "inserted": inserted,
+        "updated": updated,
         "skipped_duplicates": skipped,
         "feeds": feed_report,
     }

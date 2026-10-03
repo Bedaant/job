@@ -657,3 +657,70 @@ The scorer was fixed to match radio/checkbox groups by their question. Re-scored
   sections, and steppers where Next is a real form submit (iCIMS, Taleo). These stop as needs_human.
 - **Evidence:** a local Workday-like fixture and a guarded check on 3 real Workday sites
   (`WORKLOG latest+66`).
+
+---
+
+## ADR-017 — Job freshness: expiry by source absence, never by age; `canonical_hash` is not unique
+
+**Date:** 2026-10-03 · **Status:** Accepted · **Decided by:** product owner
+
+**Context.** ADR-015 §1 put multi-source discovery in scope but said nothing about how a job
+stops being current. Nothing in the codebase did either: `upsert_jobs` was insert-only, so a
+re-seen job was counted as `skipped` and its row untouched; `Job.last_seen_at` was written once
+at insert and never read, making it dead data; Greenhouse stored `updated_at` (a modification
+date) in `posted_at`, which recency scoring reads at 15% weight with a 30-day decay; and
+greenhouse/lever/ashby stored the board *token* in `company`, which feeds `canonical_hash` and
+therefore defeated the cross-source dedupe that hash exists for. A job that closed on its board
+stayed in the DB forever, kept being matched, and (per ADR-016) kept consuming form-planner runs.
+
+**Decision.**
+1. **Expiry is by source absence, never by age.** A job is delisted when its source was fetched
+   successfully and the job was not in that payload. No age or staleness cutoff anywhere: an age
+   rule deletes still-open roles and keeps closed ones.
+2. **Only a source that returns a complete listing may be swept.** `SWEEPABLE_SOURCES` is
+   `{greenhouse, lever, ashby}`. Every keyword-slice source (remotive, reed) and every truncated
+   feed is excluded, because absence from a "newest N" window *is* age. Measured: remoteok returns
+   a fixed 100-row window (`?limit=500&offset=100` returns the identical id set, ages spanning
+   2-64 days); himalayas caps at 100; jobicy at 50; arbeitnow reads page 1 of N; weworkremotely is
+   latest-N RSS; workingnomads has no pagination knob but a rolling ~30-day window (observed max
+   age 29 days), and whether the source itself expires at 30 days is unverified — so it does not
+   qualify either. Consequence accepted: the six feeds accumulate stale rows until their fetchers
+   paginate to exhaustion. Stale beats tombstoning live jobs.
+3. **A failed or empty fetch delists nothing.** greenhouse/lever/ashby silently return `[]` on a
+   non-200, so empty and dead are indistinguishable; empty is treated as no signal. Trust is
+   judged on the *unfiltered* fetch — an empty board after keyword filtering is not a failed
+   fetch. The ATS sweep is source-wide over all tokens' combined `external_id`s, so one token
+   returning empty skips that whole source's sweep for the run. Failing to delist is recoverable;
+   wrongly delisting hides a live job.
+4. **`delisted_at` is a tombstone, not a delete.** NULL means listed. `upsert_jobs` clears it when
+   a job is seen again. Rows are never deleted — analytics (PRD F14) needs the history. Delisted
+   jobs are excluded from `matching/filters.py`, the candidate query in `matching/service.py`,
+   `campaigns._in_bounds`, `GET /jobs`, and the embedding backfill.
+5. **`canonical_hash` is no longer `UNIQUE`** (dropped in migration 0022; `models.py` no longer
+   declares it). Resolving real company names changes the hash of existing rows, and `upsert_jobs`
+   rewrites it in place (matched on `(source, external_id)`). With the constraint in place, the
+   first time a renamed ATS row's new hash equalled a feed row's hash, `bulk_update_mappings`
+   raised `IntegrityError`, which escaped `session_scope` and rolled back the entire discovery run
+   — permanently, since the colliding pair stayed on disk. The constraint bought nothing: dedupe
+   is enforced in `upsert_jobs` by selecting existing hashes and skipping. Tombstoned rows are
+   excluded from that dedupe set, so a tombstone cannot suppress a live duplicate from another
+   source or a re-post under a new `external_id`.
+
+**Consequences.**
+- Freshness is real for the three ATS sources. For the six feeds, jobs go stale rather than
+  flapping in and out of results — the honest statement of coverage, not "all sources".
+- Removing a board token from `connectors/config.py` tombstones that board's entire inventory on
+  the next run, because the sweep has no per-token identity left. Documented at the token lists;
+  the structural fix is a `board_token` column, deferred.
+- Editing `FEED_KEYWORDS` would tombstone a swept source's inventory for the same reason. Moot
+  while only ATS sources are swept.
+- Two live rows can now share a `canonical_hash` (a live insert takes a tombstone's hash, then the
+  tombstone is re-seen). Strictly better than serving zero rows; nothing re-collapses such a pair.
+- Migration 0022 has never run against a real Postgres — no Docker, no local Postgres, and the
+  suite is in-memory SQLite. Its `create_index` calls are non-concurrent, so they take a SHARE
+  lock while building; negligible at current row counts, but run the first upgrade outside an
+  ingestion window.
+
+**Revisit when.** A feed's fetcher paginates to exhaustion — then it qualifies for sweeping and
+joins `SWEEPABLE_SOURCES`. Or when per-token delisting granularity is wanted, which needs the
+`board_token` column.

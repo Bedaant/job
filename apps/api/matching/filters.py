@@ -96,5 +96,10 @@ def _passes_visa(prefs: dict, job) -> bool:
 
 
 def passes_hard_filters(prefs: dict, job, country_code: str | None = None) -> bool:
+    # delisted_at is the one exception to "missing data never excludes a job"
+    # (module docstring above): NULL means still listed and must pass, but a
+    # set timestamp is a real signal the job is gone, not missing data.
+    if getattr(job, "delisted_at", None) is not None:
+        return False
     return (_passes_location(prefs, job) and _passes_seniority(prefs, job) and _passes_visa(prefs, job)
             and remote_open_to(job, country_code))

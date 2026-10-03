@@ -126,6 +126,11 @@ def select_candidates(db: Session, campaign: models.Campaign, limit: int) -> lis
 
 def _in_bounds(query, campaign: models.Campaign):
     """The campaign's job filters on a Match query already joined to Job."""
+    # Task 5: a job that's disappeared from its source is never a candidate,
+    # cap-hit or score-based skip reports and sweep_form_plans's embed-backlog
+    # query (workers/jobs.py) go through this same helper, so excluding it
+    # here covers all of them in one place.
+    query = query.filter(models.Job.delisted_at.is_(None))
     if campaign.remote_only:
         query = query.filter(models.Job.remote.is_(True))
     if campaign.sources:
