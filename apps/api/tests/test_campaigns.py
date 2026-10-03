@@ -203,6 +203,23 @@ def test_run_campaign_filters_by_roles_locations_and_sources(mock_prepare):
 
 
 @patch("campaigns.prepare_application_for_review")
+def test_run_campaign_does_not_submit_to_a_delisted_job(mock_prepare):
+    """Task 5: a campaign must never create an application against a posting
+    that has disappeared from its source."""
+    db = _session()
+    profile = _profile(db)
+    campaign = _campaign(db, profile, daily_cap=10)
+    _match(db, profile, _job(db, 1, delisted_at=datetime.utcnow()))
+    _match(db, profile, _job(db, 2))  # delisted_at=None, still listed
+
+    result = campaigns_mod.run_campaign(db, campaign)
+
+    assert result["created"] == 1
+    created = db.query(models.Application).filter(models.Application.campaign_id == campaign.id).one()
+    assert created.job.company == "Acme2"
+
+
+@patch("campaigns.prepare_application_for_review")
 def test_run_campaign_skips_jobs_already_applied_to(mock_prepare):
     db = _session()
     profile = _profile(db)

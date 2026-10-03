@@ -45,7 +45,11 @@ def build_matches(db: Session, profile: models.Profile, limit: int = 20) -> list
         return []
 
     prefs = profile.prefs or {}
-    embedded = db.query(models.Job).filter(models.Job.embedding.isnot(None))
+    # delisted_at excluded here too (Task 5) — cheaper in SQL than relying
+    # solely on passes_hard_filters below to drop it in Python.
+    embedded = db.query(models.Job).filter(
+        models.Job.embedding.isnot(None), models.Job.delisted_at.is_(None)
+    )
     # The top N is taken inside what the user's active campaigns ask for (roles, places,
     # sources); filtering after would let better-scoring out-of-bounds jobs starve them.
     from campaigns import _in_bounds  # campaigns imports this module's callers
