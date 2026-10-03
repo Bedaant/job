@@ -27,7 +27,14 @@ def fetch_greenhouse_jobs(board_token: str):
             "source": "greenhouse",
             "external_id": str(j["id"]),
             "title": j.get("title", ""),
-            "company": j.get("company_name") or TOKEN_COMPANY_NAMES.get(board_token, board_token),
+            # The curated map wins over the payload where both exist: Greenhouse's
+            # own company_name sometimes carries board-page cruft canonical_hash's
+            # suffix-strip doesn't cover (e.g. rubrik -> "Rubrik Job Board"), which
+            # would defeat cross-source dedupe against a feed's plain "Rubrik".
+            # The map is reviewed, clean text; the payload is Greenhouse's own
+            # copy and is only a fallback for a token the map doesn't cover
+            # (Fix round 1, Task 4 review).
+            "company": TOKEN_COMPANY_NAMES.get(board_token) or j.get("company_name") or board_token,
             "location": location,
             "remote": "remote" in (location or "").lower(),
             "salary": None,
