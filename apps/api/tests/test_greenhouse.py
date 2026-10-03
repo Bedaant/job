@@ -44,3 +44,40 @@ def test_posted_at_is_none_when_first_published_absent(mock_get):
     ]})
     jobs = fetch_greenhouse_jobs("acme")
     assert jobs[0]["posted_at"] is None
+
+
+@patch("connectors.greenhouse.httpx.get")
+def test_company_comes_from_payload_company_name_not_the_token(mock_get):
+    """Live board response (boards-api.greenhouse.io/v1/boards/grafanalabs/jobs,
+    fetched 2026-10-03) carries `company_name` ("Grafana Labs") on every job
+    object, distinct from the board token ("grafanalabs") used in the URL."""
+    mock_get.return_value = MagicMock(status_code=200, json=lambda: {"jobs": [
+        {
+            "id": 1,
+            "title": "Engineer",
+            "location": None,
+            "absolute_url": "https://x",
+            "content": "",
+            "company_name": "Grafana Labs",
+        },
+    ]})
+    jobs = fetch_greenhouse_jobs("grafanalabs")
+    assert jobs[0]["company"] == "Grafana Labs"
+
+
+@patch("connectors.greenhouse.httpx.get")
+def test_company_falls_back_to_token_map_when_company_name_absent(mock_get):
+    mock_get.return_value = MagicMock(status_code=200, json=lambda: {"jobs": [
+        {"id": 1, "title": "Engineer", "location": None, "absolute_url": "https://x", "content": ""},
+    ]})
+    jobs = fetch_greenhouse_jobs("okta")
+    assert jobs[0]["company"] == "Okta"
+
+
+@patch("connectors.greenhouse.httpx.get")
+def test_company_falls_back_to_the_raw_token_when_unmapped(mock_get):
+    mock_get.return_value = MagicMock(status_code=200, json=lambda: {"jobs": [
+        {"id": 1, "title": "Engineer", "location": None, "absolute_url": "https://x", "content": ""},
+    ]})
+    jobs = fetch_greenhouse_jobs("some-unmapped-token")
+    assert jobs[0]["company"] == "some-unmapped-token"

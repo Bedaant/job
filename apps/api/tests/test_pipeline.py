@@ -103,6 +103,28 @@ def test_upsert_clears_delisted_at_on_resee(_mock_embed):
 
 
 @patch("connectors.pipeline.embed_texts", return_value=None)
+def test_upsert_updates_company_and_canonical_hash_in_place_not_duplicated(_mock_embed):
+    """Task 4: a row stored under the old token-as-company value, re-ingested
+    with the real company name, ends as one row with the new company and new
+    canonical_hash -- not two rows. upsert_jobs matches on (source,
+    external_id), so this must update rather than insert a duplicate."""
+    db = _db()
+    old = _job("greenhouse", "42", company="grafanalabs", title="Engineer", location="Remote")
+    upsert_jobs(db, [old])
+
+    new = _job("greenhouse", "42", company="Grafana Labs", title="Engineer", location="Remote")
+    inserted, updated, skipped = upsert_jobs(db, [new])
+
+    assert inserted == 0
+    assert updated == 1
+    assert skipped == 0
+    assert db.query(models.Job).count() == 1
+    row = db.query(models.Job).one()
+    assert row.company == "Grafana Labs"
+    assert row.canonical_hash == canonical_hash("Grafana Labs", "Engineer", "Remote")
+
+
+@patch("connectors.pipeline.embed_texts", return_value=None)
 def test_upsert_does_not_erase_stored_salary_when_incoming_is_none(_mock_embed):
     db = _db()
     job = _job("remotive", "1")

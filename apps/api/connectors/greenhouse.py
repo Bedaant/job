@@ -4,6 +4,7 @@ Docs: https://developers.greenhouse.io/job-board.html
 """
 import httpx
 
+from connectors.config import TOKEN_COMPANY_NAMES
 from connectors.normalize import coerce_posted_at
 
 BASE_URL = "https://boards-api.greenhouse.io/v1/boards/{token}/jobs"
@@ -26,7 +27,7 @@ def fetch_greenhouse_jobs(board_token: str):
             "source": "greenhouse",
             "external_id": str(j["id"]),
             "title": j.get("title", ""),
-            "company": board_token,
+            "company": j.get("company_name") or TOKEN_COMPANY_NAMES.get(board_token, board_token),
             "location": location,
             "remote": "remote" in (location or "").lower(),
             "salary": None,

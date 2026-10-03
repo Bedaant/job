@@ -46,3 +46,26 @@ LEVER_COMPANY_TOKENS = [
 ASHBY_ORG_TOKENS = [
     "sarvam", "supabase",
 ]
+
+# Board token -> real company name (Task 4, canonical_hash dedupe). Greenhouse's
+# job payload already carries `company_name`, so this map is only a fallback for
+# it (unmapped/missing token); Lever and Ashby job payloads carry no company name
+# field at all, so their connectors always use this map. An unmapped token falls
+# back to the raw token string (connectors/greenhouse.py, lever.py, ashby.py).
+TOKEN_COMPANY_NAMES: dict[str, str] = {
+    "okta": "Okta",
+    "druva": "Druva",
+    "mongodb": "MongoDB",
+    "rubrik": "Rubrik",
+    "inmobi": "InMobi",
+    "databricks": "Databricks",
+    "twilio": "Twilio",
+    "gitlab": "GitLab",
+    "grafanalabs": "Grafana Labs",
+    "meesho": "Meesho",
+    "zeta": "Zeta",
+    "fampay": "Fam",
+    "mindtickle": "Mindtickle",
+    "sarvam": "Sarvam",
+    "supabase": "Supabase",
+}
