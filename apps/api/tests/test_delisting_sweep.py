@@ -51,15 +51,15 @@ def _payload(source, external_id, company="Acme", title=None):
 
 def test_sweep_delists_job_absent_from_this_runs_payload():
     db = _db()
-    _job(db, "workingnomads", "1")
-    _job(db, "workingnomads", "2")
-    _job(db, "workingnomads", "3")
+    _job(db, "greenhouse", "1")
+    _job(db, "greenhouse", "2")
+    _job(db, "greenhouse", "3")
 
     # This run's fetch only returned 1 and 2 — 3 fell off the board.
-    _sweep_delisted(db, "workingnomads", [_payload("workingnomads", "1"), _payload("workingnomads", "2")])
+    _sweep_delisted(db, "greenhouse", [_payload("greenhouse", "1"), _payload("greenhouse", "2")])
     db.commit()
 
-    by_id = {j.external_id: j for j in db.query(models.Job).filter(models.Job.source == "workingnomads")}
+    by_id = {j.external_id: j for j in db.query(models.Job).filter(models.Job.source == "greenhouse")}
     assert by_id["1"].delisted_at is None
     assert by_id["2"].delisted_at is None
     assert by_id["3"].delisted_at is not None
@@ -70,10 +70,10 @@ def test_sweep_does_not_redelist_an_already_delisted_row():
     delisted_at must not be overwritten with a later timestamp on every sweep."""
     db = _db()
     from datetime import datetime
-    _job(db, "workingnomads", "1")
-    stale = _job(db, "workingnomads", "2", delisted_at=datetime(2020, 1, 1))
+    _job(db, "greenhouse", "1")
+    stale = _job(db, "greenhouse", "2", delisted_at=datetime(2020, 1, 1))
 
-    _sweep_delisted(db, "workingnomads", [_payload("workingnomads", "1")])
+    _sweep_delisted(db, "greenhouse", [_payload("greenhouse", "1")])
     db.commit()
 
     assert db.query(models.Job).filter_by(external_id="2").one().delisted_at == datetime(2020, 1, 1)
@@ -83,9 +83,9 @@ def test_sweep_on_empty_payload_delists_nothing():
     """A failed fetch (greenhouse/lever/ashby return [] on non-200) must look
     identical, here, to a genuinely empty board — either way, no signal."""
     db = _db()
-    _job(db, "workingnomads", "1")
+    _job(db, "greenhouse", "1")
 
-    _sweep_delisted(db, "workingnomads", [])
+    _sweep_delisted(db, "greenhouse", [])
     db.commit()
 
     assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is None
@@ -98,12 +98,12 @@ def test_sweep_tolerates_a_payload_entry_missing_external_id():
     than landing a bare None in the NOT IN set (which would make every row's
     comparison NULL instead of a real id check)."""
     db = _db()
-    _job(db, "workingnomads", "1")
-    _job(db, "workingnomads", "2")
+    _job(db, "greenhouse", "1")
+    _job(db, "greenhouse", "2")
 
     # "1" is genuinely still present; the malformed entry carries no id at all.
-    _sweep_delisted(db, "workingnomads", [{"source": "workingnomads", "title": "no id here"},
-                                      _payload("workingnomads", "1")])
+    _sweep_delisted(db, "greenhouse", [{"source": "greenhouse", "title": "no id here"},
+                                      _payload("greenhouse", "1")])
     db.commit()
 
     assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is None
@@ -113,9 +113,9 @@ def test_sweep_tolerates_a_payload_entry_missing_external_id():
 def test_sweep_tolerates_an_explicit_none_external_id():
     """Same as a missing key through .get(), but spelled out explicitly."""
     db = _db()
-    _job(db, "workingnomads", "1")
+    _job(db, "greenhouse", "1")
 
-    _sweep_delisted(db, "workingnomads", [{"source": "workingnomads", "external_id": None, "title": "no id here"}])
+    _sweep_delisted(db, "greenhouse", [{"source": "greenhouse", "external_id": None, "title": "no id here"}])
     db.commit()
 
     assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is None
@@ -125,9 +125,9 @@ def test_sweep_all_entries_missing_external_id_delists_nothing():
     """If nothing in this run's payload carries an external_id at all, there is
     no id to compare against — treat it exactly like an empty payload."""
     db = _db()
-    _job(db, "workingnomads", "1")
+    _job(db, "greenhouse", "1")
 
-    _sweep_delisted(db, "workingnomads", [{"source": "workingnomads", "title": "no id here"}])
+    _sweep_delisted(db, "greenhouse", [{"source": "greenhouse", "title": "no id here"}])
     db.commit()
 
     assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is None
@@ -166,8 +166,8 @@ def test_sweep_delists_a_job_stored_under_its_real_company_name():
 
 def test_sweepable_sources_is_pinned_to_the_complete_listing_sources():
     """Final review C2: absence from a newest-N window IS age, and expiry by
-    age is forbidden. Four of the six keyless feeds return a truncated
-    listing (evidence read off live responses on 2026-10-03):
+    age is forbidden. All six keyless feeds are disqualified (evidence read
+    off live responses on 2026-10-03):
 
     - remoteok: /api returns a fixed 100 rows (1 ToS notice + 99 jobs) and
       ignores limit/offset -- the same 99 ids come back either way.
@@ -178,18 +178,22 @@ def test_sweepable_sources_is_pinned_to_the_complete_listing_sources():
     - arbeitnow: page 1 of a paginated endpoint (meta.current_page,
       links.next -> page=2); nothing reads links/meta.
     - weworkremotely: RSS, latest 90 items observed.
-    - workingnomads: /api/exposed_jobs/ returns one bare JSON list (59 rows
-      observed) with no cursor, page or count parameter -- the whole board.
+    - workingnomads: no cursor/page/count knob, but its age distribution is
+      [1, 1, 2, 3, ..., 28, 28, 29] days -- a rolling ~30-day window, nothing
+      at or beyond 30. A job aging past 30 days would vanish from the
+      payload while still live; that's age, not absence. Whether the source
+      itself expires postings at 30 days is unverified -- unproven absence
+      doesn't qualify.
 
     greenhouse/lever/ashby each hit one unpaginated board endpoint per token
     and return every open posting. Pagination to exhaustion is new ingestion
-    work, deliberately not done in this phase, so a truncated feed must stay
-    out of the sweep rather than be swept on partial data. This assertion
-    exists so re-adding one cannot be quiet.
+    work, deliberately not done in this phase, so a disqualified source must
+    stay out of the sweep rather than be swept on partial/unproven data.
+    This assertion exists so re-adding one cannot be quiet.
     """
     from workers.jobs import SWEEPABLE_SOURCES
 
-    assert SWEEPABLE_SOURCES == {"greenhouse", "lever", "ashby", "workingnomads"}
+    assert SWEEPABLE_SOURCES == {"greenhouse", "lever", "ashby"}
 
 
 def test_sweep_ignores_a_truncated_feed():
@@ -199,6 +203,20 @@ def test_sweep_ignores_a_truncated_feed():
     _job(db, "himalayas", "1")
 
     _sweep_delisted(db, "himalayas", [_payload("himalayas", "999")])
+    db.commit()
+
+    assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is None
+
+
+def test_sweep_ignores_workingnomads():
+    """workingnomads is a rolling ~30-day window (observed ages 1..29 days,
+    nothing at or beyond 30), not a complete listing -- disqualified. A job
+    older than the window is still live and must not be tombstoned just for
+    falling off this run's payload."""
+    db = _db()
+    _job(db, "workingnomads", "1")
+
+    _sweep_delisted(db, "workingnomads", [_payload("workingnomads", "999")])
     db.commit()
 
     assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is None

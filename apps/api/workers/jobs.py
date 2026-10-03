@@ -49,19 +49,27 @@ EMBED_BACKLOG_INTERVAL_SECONDS = 2 * 60
 #
 # A feed that returns only the newest N listings does not qualify either:
 # absence from a newest-N window IS age, and this phase expires by source
-# absence, never by age. Verified against live responses (2026-10-03) — four
+# absence, never by age. Verified against live responses (2026-10-03) — five
 # of the six keyless feeds are truncated and were removed:
 #   remoteok       fixed 100-row payload (99 jobs), limit/offset ignored
 #   himalayas      capped at 20/page server-side; totalCount 115415, nextCursor
 #   jobicy         `count` parameter; response carries hasMore + nextCursor
 #   arbeitnow      page 1 only (meta.current_page, links.next -> page=2)
 #   weworkremotely RSS, latest ~90 items
-#   workingnomads  one bare JSON list, no cursor/page/count knob -> QUALIFIES
+#   workingnomads  one bare JSON list, no cursor/page/count knob, but its age
+#                  distribution is [1, 1, 2, 3, ..., 28, 28, 29] days -- a
+#                  rolling ~30-day window, nothing at or beyond 30. A job
+#                  aging past 30 days would vanish from the payload while
+#                  still live, which is age, not absence. Whether Working
+#                  Nomads itself expires postings at 30 days is unverified
+#                  either way -- unproven absence does not qualify.
 # greenhouse/lever/ashby each hit one unpaginated board endpoint per token.
 # Paginating the truncated fetchers to exhaustion is new ingestion work, not
-# this phase. tests/test_delisting_sweep.py pins this set so re-adding a
-# truncated source cannot be quiet.
-SWEEPABLE_SOURCES = {"greenhouse", "lever", "ashby", "workingnomads"}
+# this phase; until then all six feeds accumulate stale rows. workingnomads
+# keeps being ingested (ENABLED_FEEDS), it just stops being swept.
+# tests/test_delisting_sweep.py pins this set so re-adding a disqualified
+# source cannot be quiet.
+SWEEPABLE_SOURCES = {"greenhouse", "lever", "ashby"}
 
 
 def _sweep_delisted(db, source: str, jobs: list[dict]) -> None:
