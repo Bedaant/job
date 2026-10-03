@@ -144,6 +144,7 @@ class Job(Base):
     posted_at = Column(DateTime, nullable=True)
     fetched_at = Column(DateTime, default=datetime.utcnow)
     last_seen_at = Column(DateTime, default=datetime.utcnow)
+    delisted_at = Column(DateTime, nullable=True)     # NULL = still listed; set when source stops listing it
 
     applications = relationship("Application", back_populates="job")
     matches = relationship("Match", back_populates="job", cascade="all, delete-orphan")
