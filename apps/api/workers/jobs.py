@@ -96,12 +96,13 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
         j["canonical_hash"] = canonical_hash(j["company"], j["title"], j.get("location"))
 
     with session_scope() as db:
-        inserted, skipped = upsert_jobs(db, all_jobs)
+        inserted, updated, skipped = upsert_jobs(db, all_jobs)
         backfill_job_embeddings(db)
 
     return {
         "fetched": len(all_jobs),
         "inserted": inserted,
+        "updated": updated,
         "skipped_duplicates": skipped,
         "feeds": feed_report,
     }

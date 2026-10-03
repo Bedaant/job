@@ -69,7 +69,7 @@ def test_discover_without_job_id_runs_unguarded(mock_session_scope):
     assert result["fetched"] == 0
 
 
-@patch("workers.jobs.upsert_jobs", return_value=(1, 0))
+@patch("workers.jobs.upsert_jobs", return_value=(1, 0, 0))
 @patch("workers.jobs.backfill_job_embeddings")
 @patch("workers.jobs.session_scope")
 def test_ats_boards_keep_only_titles_matching_the_keywords(mock_scope, _embed, mock_upsert):

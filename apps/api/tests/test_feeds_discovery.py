@@ -47,7 +47,7 @@ def test_fetch_enabled_feeds_ignores_unknown_source_names():
 
 @patch("workers.jobs.get_redis_connection")
 @patch("workers.jobs.session_scope")
-@patch("workers.jobs.upsert_jobs", return_value=(1, 0))
+@patch("workers.jobs.upsert_jobs", return_value=(1, 0, 0))
 def test_discover_jobs_task_ingests_feed_jobs_and_reports_per_source(
     mock_upsert, mock_session_scope, mock_get_redis
 ):

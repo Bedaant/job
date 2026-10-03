@@ -1,3 +1,4 @@
+from datetime import datetime
 from unittest.mock import patch
 
 from sqlalchemy import create_engine
@@ -32,8 +33,9 @@ def _job(source, external_id, company="Acme", title="Backend Engineer", location
 @patch("connectors.pipeline.embed_texts", return_value=None)
 def test_upsert_inserts_new_jobs(_mock_embed):
     db = _db()
-    inserted, skipped = upsert_jobs(db, [_job("remotive", "1"), _job("remotive", "2", title="Frontend Engineer")])
+    inserted, updated, skipped = upsert_jobs(db, [_job("remotive", "1"), _job("remotive", "2", title="Frontend Engineer")])
     assert inserted == 2
+    assert updated == 0
     assert skipped == 0
     assert db.query(models.Job).count() == 2
 
@@ -47,25 +49,93 @@ def test_upsert_dedupes_same_job_from_different_sources_in_one_batch(_mock_embed
         _job("remotive", "r1", company="Acme Corp Inc"),
         _job("greenhouse", "acme-42", company="Acme Corp, Inc."),  # same job, different source
     ]
-    inserted, skipped = upsert_jobs(db, jobs)
+    inserted, updated, skipped = upsert_jobs(db, jobs)
     assert inserted == 1
+    assert updated == 0
     assert skipped == 1
     assert db.query(models.Job).count() == 1
 
 
 @patch("connectors.pipeline.embed_texts", return_value=None)
-def test_upsert_skips_jobs_already_in_db_across_runs(_mock_embed):
+def test_upsert_updates_reseen_job_and_inserts_new_one_across_runs(_mock_embed):
+    """A job already in the DB (matched by source+external_id) is refreshed,
+    not silently ignored — it must surface as `updated`, not `skipped`."""
     db = _db()
     upsert_jobs(db, [_job("remotive", "1")])
-    inserted, skipped = upsert_jobs(db, [_job("remotive", "1"), _job("remotive", "2", title="Frontend Engineer")])
+    inserted, updated, skipped = upsert_jobs(db, [_job("remotive", "1"), _job("remotive", "2", title="Frontend Engineer")])
     assert inserted == 1
-    assert skipped == 1
+    assert updated == 1
+    assert skipped == 0
     assert db.query(models.Job).count() == 2
 
 
 @patch("connectors.pipeline.embed_texts", return_value=None)
-def test_upsert_uses_at_most_two_queries_regardless_of_batch_size(_mock_embed):
-    """Fixes H1: was 1 SELECT + 1 INSERT per job (N+1). Must not scale with batch size."""
+def test_upsert_reseeing_same_job_moves_last_seen_at_forward_without_duplicating(_mock_embed):
+    db = _db()
+    job = _job("remotive", "1")
+    with patch("connectors.pipeline.datetime") as mock_dt:
+        mock_dt.utcnow.return_value = datetime(2024, 1, 1)
+        upsert_jobs(db, [job])
+        first_seen = db.query(models.Job).one().last_seen_at
+
+        mock_dt.utcnow.return_value = datetime(2024, 1, 2)
+        inserted, updated, skipped = upsert_jobs(db, [job])
+
+    assert db.query(models.Job).count() == 1
+    assert inserted == 0
+    assert updated == 1
+    assert skipped == 0
+    assert db.query(models.Job).one().last_seen_at > first_seen
+
+
+@patch("connectors.pipeline.embed_texts", return_value=None)
+def test_upsert_clears_delisted_at_on_resee(_mock_embed):
+    db = _db()
+    job = _job("remotive", "1")
+    upsert_jobs(db, [job])
+    row = db.query(models.Job).one()
+    row.delisted_at = datetime.utcnow()
+    db.commit()
+
+    upsert_jobs(db, [job])
+
+    assert db.query(models.Job).one().delisted_at is None
+
+
+@patch("connectors.pipeline.embed_texts", return_value=None)
+def test_upsert_does_not_erase_stored_salary_when_incoming_is_none(_mock_embed):
+    db = _db()
+    job = _job("remotive", "1")
+    job["salary"] = "$100k"
+    upsert_jobs(db, [job])
+
+    reseen = _job("remotive", "1")
+    reseen["salary"] = None
+    upsert_jobs(db, [reseen])
+
+    assert db.query(models.Job).one().salary == "$100k"
+
+
+@patch("connectors.pipeline.embed_texts", return_value=None)
+def test_upsert_updates_row_when_company_change_alters_canonical_hash(_mock_embed):
+    """Task 4 changes `company` for three connectors, which changes canonical_hash.
+    Matching must stay on (source, external_id) or this duplicates the row."""
+    db = _db()
+    upsert_jobs(db, [_job("remotive", "1", company="Acme")])
+
+    inserted, updated, skipped = upsert_jobs(db, [_job("remotive", "1", company="Acme Renamed")])
+
+    assert inserted == 0
+    assert updated == 1
+    assert skipped == 0
+    assert db.query(models.Job).count() == 1
+    assert db.query(models.Job).one().company == "Acme Renamed"
+
+
+@patch("connectors.pipeline.embed_texts", return_value=None)
+def test_upsert_uses_at_most_three_queries_regardless_of_batch_size(_mock_embed):
+    """Fixes H1: was 1 SELECT + 1 INSERT per job (N+1). Must not scale with batch size.
+    Raised from 2 to 3 (Task 2, freshness): one SELECT, one bulk INSERT, one bulk UPDATE."""
     db = _db()
     query_count = 0
     original_execute = db.execute
@@ -78,8 +148,7 @@ def test_upsert_uses_at_most_two_queries_regardless_of_batch_size(_mock_embed):
     db.execute = counting_execute
     jobs = [_job("remotive", str(i), title=f"Role {i}") for i in range(50)]
     upsert_jobs(db, jobs)
-    # generous ceiling — the point is O(1), not O(n); 50 jobs must not mean ~100 queries
-    assert query_count <= 5
+    assert query_count <= 3
 
 
 @patch("matching.embeddings.get_settings")
@@ -111,8 +180,9 @@ def test_upsert_skips_near_duplicate_reworded_title_same_company(_mock_embed):
         _job("remotive", "1", company="Acme", title="Senior Backend Engineer - Python/FastAPI - Remote"),
         _job("greenhouse", "2", company="Acme", title="Backend Engineer (Senior) - Python & FastAPI - Remote"),
     ]
-    inserted, skipped = upsert_jobs(db, jobs)
+    inserted, updated, skipped = upsert_jobs(db, jobs)
     assert inserted == 1
+    assert updated == 0
     assert skipped == 1
     assert db.query(models.Job).count() == 1
 
@@ -139,7 +209,7 @@ def test_an_embedding_outage_never_loses_discovered_jobs(_mock_embed):
     the insert, so the whole discovery run was lost. Jobs are saved without an
     embedding instead (matching skips un-embedded jobs until they're backfilled)."""
     db = _db()
-    inserted, _ = upsert_jobs(db, [_job("remotive", "1"), _job("remotive", "2", title="Frontend Engineer")])
+    inserted, _, _ = upsert_jobs(db, [_job("remotive", "1"), _job("remotive", "2", title="Frontend Engineer")])
     assert inserted == 2
     assert db.query(models.Job).count() == 2
     assert all(j.embedding is None for j in db.query(models.Job).all())
