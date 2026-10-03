@@ -102,6 +102,88 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-10-03 (latest+68) — Phase 2: a failing source no longer aborts discovery; `connector_runs` gets written; jobicy paged to exhaustion
+
+**What changed.** Phase 2 of the job-collection plan, items 1-3 in full plus item 4a.
+Branch `phase2-source-isolation`. 807 → 820 tests passing.
+
+- **Per-source error isolation (item 1).** `fetch_remotive_jobs` and `fetch_reed_jobs` call
+  `raise_for_status()` and nothing in `discover_jobs_task` caught it, so a single Remotive 503
+  threw away *every other source's* jobs, the delisting sweep and the embedding backfill for the
+  whole run. Every source now goes through `workers/jobs.py::_isolate`, which catches, logs, and
+  returns a row. A failed source is never `trustworthy`, so absence from it still delists nothing
+  (ADR-017 §3).
+- **`connector_runs` health rows (item 2).** One row per source per run:
+  `fetched`/`failed`/`error`/`duration_ms`. The six keyless feeds reuse `fetch_enabled_feeds`'
+  existing per-source report rather than a second reporting path. `inserted` stays 0 on purpose —
+  dedupe is batch-wide in `upsert_jobs`, which returns totals, so there is no honest per-source
+  insert count without attributing the batch. `GET /sources` now reports a source whose *latest*
+  run failed as disabled, instead of inferring health from job counts (which cannot tell "fetched
+  nothing this run" from "has never run").
+- **Per-host pacing (item 3).** `HOST_PACING_SECONDS` (1s) between requests inside one source's
+  loop — nine Greenhouse tokens were nine back-to-back requests to one host. Pacing sits at the
+  loop rather than in a shared HTTP client because those loops are the only bursts that exist and
+  no two share a host. An autouse conftest fixture zeroes it so the suite doesn't sleep ~15s per
+  discovery test.
+- **jobicy paged to exhaustion, and is now sweepable (item 4a).** `fetch_jobicy_jobs` follows
+  `nextCursor`/`hasMore` to the end: **633 jobs in 7 requests, 12.9s**, verified live, 633 unique
+  ids, `posted_at` on 100% of rows, 21 surviving `FEED_KEYWORDS`. It was fetching `count=50`
+  before. Being a *complete* listing is what qualifies it for the delisting sweep under ADR-017 §2,
+  so `SWEEPABLE_SOURCES` is now `{greenhouse, lever, ashby, jobicy}` — the first non-ATS source
+  with real freshness. A mid-pagination failure raises and discards the partial listing
+  deliberately: a partial payload would make every job on the pages that never arrived look
+  absent from the board.
+
+**Why.** Phase 1 made freshness *possible*; it did not make ingestion survivable. One source's bad
+day cost the entire run, and nothing recorded which source had the bad day.
+
+**Files changed.** `apps/api/workers/jobs.py`, `apps/api/connectors/feeds.py`, `apps/api/main.py`
+(`/sources`), `apps/api/tests/conftest.py`, new `apps/api/tests/test_source_isolation.py` and
+`apps/api/tests/test_feed_pagination.py`, `apps/api/tests/test_delisting_sweep.py` (pinned set).
+
+**Dependencies added.** None.
+
+**Tests.** 807 → 820. Red-before-green confirmed for all 13 new tests.
+
+**Problems hit.**
+1. **"Paginate those fetchers to exhaustion" turned out to be viable for exactly one of six.**
+   Re-probed live, 1s pacing: jobicy exhausts in 7 requests/633 jobs. **himalayas reports
+   `totalCount` 115,729 at a server-*forced* 20 per page — `limit=100` is ignored — so exhausting
+   it is 5,786 requests per run.** arbeitnow returned HTTP **429 at page 21** (>2,450 jobs, and its
+   own `meta.terms` says "please do not abuse"). remoteok/weworkremotely/workingnomads are
+   structurally truncated with no knob at all. So five of six stay non-sweepable *by decision with
+   a number behind it*, not by omission. The measurements are in
+   `tests/test_feed_pagination.py`'s docstring and the `SWEEPABLE_SOURCES` comment — don't re-probe.
+2. **A test patched a name that `FEED_FETCHERS` binds by reference.** `FEED_FETCHERS` captures
+   function objects at import, so `patch("connectors.feeds.fetch_jobicy_jobs")` is invisible to
+   `fetch_enabled_feeds` — the test silently made a real network call and passed a wrong
+   assertion. Patch `_get` instead. Worth knowing for any future feed test.
+3. **`/sources` nearly read the wrong row.** Taking "newest first, set the reason if the source
+   has none yet" lets an *older* failed run override a newer successful one. Fixed by keeping only
+   the first row per source (`setdefault`) before applying any of them.
+4. A pre-existing order-dependent failure in
+   `test_campaigns.py::test_run_campaign_does_not_rereport_jobs_it_already_looked_at` showed up in
+   the baseline run (passes in isolation) and has not reappeared since. Not chased; noted so the
+   next session doesn't think it's new.
+
+**Not done — item 4b (new portals) is blocked on decisions, not on code.** None of the three
+portals left on ADR-015's tier list is a keyless structured feed, checked live:
+- **YC WaaS** — `workatastartup.com/jobs` returns **HTTP 406** to a non-browser client; the job
+  list is behind a login. Would need authenticated scraping.
+- **Wellfound** — serves a Cloudflare Turnstile challenge. Would need bot-challenge evasion.
+- **HN "Who is hiring"** — the Algolia API (`hn.algolia.com/api/v1`) is keyless and works, but the
+  postings are free-text comments with no company/title/apply_url fields. Structuring them needs
+  an LLM call per comment, and a regex would put junk companies into `canonical_hash` and the
+  match pool.
+Each is a new decision (authenticated scraping / challenge evasion / per-comment LLM spend) that
+needs the owner's approval and an ADR, same as ADR-016 got. **The cheap coverage win meanwhile is
+more board tokens in `connectors/config.py`** — greenhouse/lever/ashby are already exhaustible,
+already swept, and need no code at all; which companies is the owner's call.
+
+**Next.** Owner decides on item 4b (the three portals above, or more ATS tokens instead). Then:
+`ConnectorRun` rows are written but nothing prunes them (~14 rows/hour); migration 0022 still has
+never run against a real Postgres — watch the first `alembic upgrade`.
+
 ### 2026-10-03 (latest+67) — Job freshness: re-seen jobs update, `posted_at` is a real date, real company names, absence-based delisting
 
 **What changed.** Phase 1 of a job-collection plan, built as five tasks by one implementer each,

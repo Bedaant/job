@@ -678,7 +678,12 @@ stayed in the DB forever, kept being matched, and (per ADR-016) kept consuming f
    successfully and the job was not in that payload. No age or staleness cutoff anywhere: an age
    rule deletes still-open roles and keeps closed ones.
 2. **Only a source that returns a complete listing may be swept.** `SWEEPABLE_SOURCES` is
-   `{greenhouse, lever, ashby}`. Every keyword-slice source (remotive, reed) and every truncated
+   `{greenhouse, lever, ashby}` — **amended 2026-10-03 (Phase 2, WORKLOG latest+68): `jobicy`
+   joins it.** `fetch_jobicy_jobs` now follows `nextCursor`/`hasMore` to exhaustion (7 requests,
+   633 jobs, measured live), which makes its payload a complete listing and satisfies this rule
+   as written. The other five feeds were re-probed and still fail it: himalayas needs 5,786
+   requests (`totalCount` 115,729 at a server-forced 20/page), arbeitnow returns HTTP 429 at
+   page 21, and remoteok/weworkremotely/workingnomads have no pagination knob at all. Every keyword-slice source (remotive, reed) and every truncated
    feed is excluded, because absence from a "newest N" window *is* age. Measured: remoteok returns
    a fixed 100-row window (`?limit=500&offset=100` returns the identical id set, ages spanning
    2-64 days); himalayas caps at 100; jobicy at 50; arbeitnow reads page 1 of N; weworkremotely is
@@ -707,7 +712,8 @@ stayed in the DB forever, kept being matched, and (per ADR-016) kept consuming f
    source or a re-post under a new `external_id`.
 
 **Consequences.**
-- Freshness is real for the three ATS sources. For the six feeds, jobs go stale rather than
+- Freshness is real for the three ATS sources, and since the Phase 2 amendment above, for jobicy
+  too. For the remaining five feeds, jobs go stale rather than
   flapping in and out of results — the honest statement of coverage, not "all sources".
 - Removing a board token from `connectors/config.py` tombstones that board's entire inventory on
   the next run, because the sweep has no per-token identity left. Documented at the token lists;
