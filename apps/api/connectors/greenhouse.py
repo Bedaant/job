@@ -4,6 +4,8 @@ Docs: https://developers.greenhouse.io/job-board.html
 """
 import httpx
 
+from connectors.normalize import coerce_posted_at
+
 BASE_URL = "https://boards-api.greenhouse.io/v1/boards/{token}/jobs"
 
 
@@ -31,6 +33,8 @@ def fetch_greenhouse_jobs(board_token: str):
             "description": j.get("content", ""),
             "apply_url": j.get("absolute_url", ""),
             "tags": [],
-            "posted_at": j.get("updated_at"),
+            # first_published is the genuine publish date; updated_at is a
+            # modification date bumped on any edit (see tests/test_greenhouse.py).
+            "posted_at": coerce_posted_at(j.get("first_published")),
         })
     return jobs

@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 
@@ -17,8 +18,18 @@ def test_fetch_jobspy_jobs_parses_subprocess_json(mock_run):
         "company": "Acme",
         "location": "Remote",
         "apply_url": "https://x",
-        "posted_at": "2026-08-16",
+        "posted_at": datetime(2026, 8, 16),
     }]
+
+
+@patch("connectors.jobspy_connector.subprocess.run")
+def test_fetch_jobspy_jobs_posted_at_none_when_date_posted_missing(mock_run):
+    payload = [{"title": "PM", "company": "Acme", "site": "google", "job_url": "https://y", "location": "Remote", "date_posted": None}]
+    mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(payload))
+
+    from connectors.jobspy_connector import fetch_jobspy_jobs
+    jobs = fetch_jobspy_jobs("pm", results_wanted=5)
+    assert jobs[0]["posted_at"] is None
 
 
 @patch("connectors.jobspy_connector.subprocess.run")

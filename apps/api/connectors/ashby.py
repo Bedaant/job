@@ -4,6 +4,8 @@ Docs: https://developers.ashbyhq.com/reference/jobpostingapi
 """
 import httpx
 
+from connectors.normalize import coerce_posted_at
+
 BASE_URL = "https://api.ashbyhq.com/posting-api/job-board/{token}"
 
 
@@ -27,6 +29,6 @@ def fetch_ashby_jobs(org_token: str):
             "description": j.get("descriptionPlain", ""),
             "apply_url": j.get("applyUrl") or j.get("jobUrl", ""),
             "tags": j.get("department") and [j["department"]] or [],
-            "posted_at": j.get("publishedAt"),
+            "posted_at": coerce_posted_at(j.get("publishedAt")),
         })
     return jobs
