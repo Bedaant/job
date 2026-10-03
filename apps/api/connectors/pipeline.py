@@ -46,7 +46,11 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int, int]:
         )
         .all()
     )
-    existing_hashes = {row.canonical_hash for row in existing_rows}
+    # Delisted rows are excluded on purpose: a tombstone must not suppress the
+    # same role arriving live from another source, nor a board re-posting a
+    # closed req under a new external_id. Both would otherwise be skipped
+    # forever, serving zero live rows for a job that is open.
+    existing_hashes = {row.canonical_hash for row in existing_rows if row.delisted_at is None}
     existing_by_key = {(row.source, row.external_id): row for row in existing_rows}
 
     seen_in_batch: set[str] = set()

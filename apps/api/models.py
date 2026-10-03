@@ -129,7 +129,12 @@ class Job(Base):
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
     source = Column(String, nullable=False)          # remotive | greenhouse | lever | ashby
     external_id = Column(String, nullable=False)      # id from the source, for dedupe
-    canonical_hash = Column(String, nullable=False, unique=True)   # cross-source dedupe key, SPEC.md §3.1
+    # Cross-source dedupe key (SPEC.md §3.1). Deliberately NOT unique: a re-seen
+    # row's `company` is refreshed in place (connectors/pipeline.py), so its hash
+    # can be rewritten into one another source already stored for the same role.
+    # Duplicate suppression happens in upsert_jobs, not in the schema; a UNIQUE
+    # here turned that rewrite into a run-killing IntegrityError (migration 0022).
+    canonical_hash = Column(String, nullable=False)
     title = Column(String, nullable=False)
     company = Column(String, nullable=False)
     location = Column(String, nullable=True)

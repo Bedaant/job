@@ -125,6 +125,92 @@ def test_upsert_updates_company_and_canonical_hash_in_place_not_duplicated(_mock
 
 
 @patch("connectors.pipeline.embed_texts", return_value=None)
+def test_upsert_rewrites_a_hash_that_already_belongs_to_another_sources_row(_mock_embed):
+    """Final review C1: `canonical_hash` must NOT be unique. Task 4 rewrites
+    `company` (and therefore the hash) in place on a re-seen row, and the new
+    hash can legitimately equal a row another source already stored for the
+    same role -- the exact case canonical_hash exists to recognise. Under a
+    UNIQUE constraint the bulk UPDATE raised IntegrityError, which escaped
+    upsert_jobs and session_scope and rolled back the whole discovery run,
+    every run, because the colliding pair stays stored.
+    """
+    db = _db()
+    upsert_jobs(db, [_job("remoteok", "r1", company="Fam", title="Product Manager")])
+    upsert_jobs(db, [_job("lever", "42", company="fampay", title="Product Manager")])
+
+    # lever/42 re-seen, now resolving to the real company name -> same hash as remoteok/r1.
+    inserted, updated, skipped = upsert_jobs(db, [_job("lever", "42", company="Fam", title="Product Manager")])
+
+    assert (inserted, updated, skipped) == (0, 1, 0)
+    assert db.query(models.Job).count() == 2
+    hashes = {j.canonical_hash for j in db.query(models.Job).all()}
+    assert len(hashes) == 1  # both rows now carry the same hash, and that is allowed
+
+
+@patch("connectors.pipeline.embed_texts", return_value=None)
+def test_upsert_hash_collision_inside_one_batch_does_not_raise(_mock_embed):
+    """Same C1 collision, but the UPDATE and the INSERT are in the same batch
+    (the bulk UPDATE runs first, so the constraint fired here too)."""
+    db = _db()
+    upsert_jobs(db, [_job("lever", "42", company="fampay", title="Product Manager")])
+
+    inserted, updated, skipped = upsert_jobs(db, [
+        _job("lever", "42", company="Fam", title="Product Manager"),      # update, hash -> Fam's
+        _job("remoteok", "r1", company="Fam", title="Product Manager"),   # insert, same hash
+    ])
+
+    assert updated == 1
+    assert inserted + skipped == 1  # the new row dedupes against the rewritten hash
+    assert db.query(models.Job).count() in (1, 2)
+
+
+@patch("connectors.pipeline.embed_texts", return_value=None)
+def test_upsert_inserts_a_live_duplicate_when_the_only_matching_row_is_delisted(_mock_embed):
+    """Final review I1: a tombstone must not suppress a live posting. The
+    greenhouse row is delisted; the same role arriving live from a feed has to
+    be stored, or zero live rows are served for that role forever."""
+    db = _db()
+    upsert_jobs(db, [_job("greenhouse", "42", company="Acme", title="Product Manager")])
+    db.query(models.Job).one().delisted_at = datetime(2026, 1, 1)
+    db.commit()
+
+    inserted, updated, skipped = upsert_jobs(db, [_job("remoteok", "r1", company="Acme", title="Product Manager")])
+
+    assert (inserted, updated, skipped) == (1, 0, 0)
+    live = db.query(models.Job).filter(models.Job.delisted_at.is_(None)).all()
+    assert [j.source for j in live] == ["remoteok"]
+
+
+@patch("connectors.pipeline.embed_texts", return_value=None)
+def test_upsert_reingests_a_repost_under_a_new_external_id_after_delisting(_mock_embed):
+    """Final review I1, second half: a board that closes a req and re-opens it
+    under a new external_id must be re-ingestable. With delisted rows counted
+    in existing_hashes the re-post was skipped forever."""
+    db = _db()
+    upsert_jobs(db, [_job("greenhouse", "req-1", company="Acme", title="Product Manager")])
+    db.query(models.Job).one().delisted_at = datetime(2026, 1, 1)
+    db.commit()
+
+    inserted, updated, skipped = upsert_jobs(db, [_job("greenhouse", "req-2", company="Acme", title="Product Manager")])
+
+    assert (inserted, updated, skipped) == (1, 0, 0)
+    assert db.query(models.Job).filter(models.Job.delisted_at.is_(None)).one().external_id == "req-2"
+
+
+@patch("connectors.pipeline.embed_texts", return_value=None)
+def test_upsert_still_skips_a_duplicate_of_a_still_listed_row(_mock_embed):
+    """The other side of I1: excluding delisted rows must not weaken dedupe
+    against rows that are still listed."""
+    db = _db()
+    upsert_jobs(db, [_job("greenhouse", "42", company="Acme", title="Product Manager")])
+
+    inserted, updated, skipped = upsert_jobs(db, [_job("remoteok", "r1", company="Acme", title="Product Manager")])
+
+    assert (inserted, updated, skipped) == (0, 0, 1)
+    assert db.query(models.Job).count() == 1
+
+
+@patch("connectors.pipeline.embed_texts", return_value=None)
 def test_upsert_does_not_erase_stored_salary_when_incoming_is_none(_mock_embed):
     db = _db()
     job = _job("remotive", "1")
