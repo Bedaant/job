@@ -111,6 +111,96 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-10-04 (latest+72) — COLLECT-C: Workday connector live; a pagination bug that would have tombstoned 486 live jobs
+
+**What changed.** ADR-018 accepted ("do workday first") and the connector built.
+`connectors/workday.py`, wired into discovery, in `SWEEPABLE_SOURCES`. 824 → 839 tests.
+
+- **Two steps per board, and the split is the design.** List endpoint paginated to exhaustion
+  (`limit` caps at 20 — 50+ is HTTP 400), then **only `FEED_KEYWORDS` matches are
+  detail-fetched**. Hydrating a whole board would be 527 extra requests for Adobe alone.
+  `searchText` can't carry the filter: it filters a single word ("engineer" cut adobe 527→343)
+  but returns everything ranked for a phrase ("product manager" → all 527).
+- **`locationsText` from the list payload is never stored** — it is frequently a count
+  ("5 Locations", "3 Locations"), which would poison `canonical_hash` and silently defeat the
+  India filter. Locations come from the detail endpoint.
+- **`startDate` is `posted_at`.** It tracked `postedOn` with an exact, constant one-day offset
+  across six jobs with six different `postedOn` values; a role start date wouldn't track it at
+  all. `postedOn` prose is never parsed ("Posted 30+ Days Ago" is unbounded).
+- **Tenants: adobe and cisco**, both verified live with an India-located product role.
+  `target`/`micron`/`paypal`/`shell`/`qualcomm` excluded with their measurements in
+  `config.py`.
+- **Workday is fetched every 6th hour, not every run** (`WORKDAY_INTERVAL_HOURS`). Measured:
+  adobe ~95s + cisco 165s = **~4.3 minutes**. Discovery is hourly on a single `SimpleWorker`,
+  so fetching every run would park the only worker while campaign runs queue behind it.
+
+**Why.** COLLECT-C's measurement (latest+71) found Workday is the only candidate that both
+reaches India product roles and has a clean compliance position.
+
+**Files changed.** New `apps/api/connectors/workday.py`, new `apps/api/tests/test_workday.py`;
+`connectors/config.py`, `workers/jobs.py`, `main.py` (`/sources`), `tests/conftest.py`,
+`tests/{test_discover_idempotency,test_source_isolation,test_board_tokens,test_delisting_sweep,test_feed_pagination}.py`;
+`docs/DECISIONS.md` (ADR-018), `docs/PLAN-JOB-COLLECTION.md`.
+
+**Dependencies added.** None. **Tests.** 824 → 839, red-before-green throughout.
+
+**Problems hit — the first one is the serious one.**
+
+1. **`total` is only reported on the FIRST page; later pages return `total: 0`.** The termination
+   check `len(rows) >= total` was therefore trivially true at `40 >= 0`, so `_list_board`
+   returned **40 of 526 rows** and called it a complete board. Because Workday is in
+   `SWEEPABLE_SOURCES`, that short listing would have gone to the delisting sweep and
+   **tombstoned the other 486 live jobs.** Caught only by comparing the live row count against
+   the API's own `total` — the 3-vs-40 PM count looked plausible on its own. `total` is now read
+   from page 0 only, and an empty page before the end raises instead of being read as
+   "end of board" (ADR-017 §3's empty-fetch trap).
+2. **My own test passed while the code was broken**, because every fixture page carried `total` —
+   the "fixtures homogeneous, so the bound holds by construction" mistake from Phase 1's review,
+   repeated. Fixtures now mirror reality (page 1 has `total`, later pages have `0`).
+3. **The suite started making real network calls and blew a 10-minute timeout.** Workday went
+   into `discover_jobs_task` without being added to the stub lists in
+   `test_discover_idempotency._patch_connectors` and `test_source_isolation._offline`. This has
+   now happened twice in this repo, so there is a guard: an autouse conftest fixture blocks
+   `httpx.HTTPTransport.handle_request` and the async equivalent, failing fast with a message
+   instead of hanging. `TestClient` uses `ASGITransport`, so API tests are unaffected.
+4. **Site discovery attempt 1 was wasted (~30 min).** It fetched the career-site root and read
+   the redirect; the root returns **HTTP 406** to a non-browser UA, so every tenant "failed",
+   including adobe which demonstrably works. Spoofing a browser UA was rejected. The working
+   method uses the CXS status codes: `404` = tenant+wd right and site wrong (keep guessing),
+   `422` = wrong host, `200` = correct.
+5. Even so, **7 tenants resolved to a `wd` host but no site matched a 15-candidate guess list**
+   (mastercard, visa, autodesk, ebay, philips, unilever, lowes) — recorded in `config.py`.
+6. A shell heredoc mangled backslashes in a test edit, which is the lesson already in latest+64.
+   Use the file tools for anything with escapes.
+
+**Next.** Owner still has to rule on the SmartRecruiters `robots.txt` (ADR-018 §7) — that is the
+only route to Swiggy. Then COLLECT-D (`board_token` column), which now has a third consumer:
+removing a Workday tenant tombstones that employer's inventory exactly like a board token.
+
+### 2026-10-03 (latest+71) — COLLECT-C measurement: five platforms probed; the entry latest+70's PR owed
+
+**What changed.** Docs only — `docs/harness-reports/collect-c-platforms.md`, plus
+`PLAN-JOB-COLLECTION.md`'s COLLECT-C section and `GAPS.md` 6.5 closed. **This entry was missing
+from the PR that added those files**, which is a break of this file's own "every change gets an
+entry" rule; written up here after the fact.
+
+**What it found.** Of the 19 Indian consumer-tech companies with no greenhouse/lever/ashby
+board, **exactly one is reachable: Swiggy, on SmartRecruiters** (168 live postings). Workday
+reaches India product roles at multinational GCCs. Workable has 17 of the 19 as accounts, every
+one with `jobs: []`. Keka failed TLS (expired certificate) on every host. Darwinbox serves an
+empty SPA shell.
+
+**The reframing:** none of these platforms offers cross-company search — they are all
+per-company-identifier APIs, so adding one adds no reach by itself. **Company→platform discovery
+is the binding constraint**, which is why measuring `connectors/discovery.py`'s unmeasured F5
+classifier may be worth more than another connector.
+
+**Problems hit.** A control test changed the conclusion: 17 of 19 Workable slugs returned HTTP
+200 with a plausible company name, which looked like Workable solved the gap. Nonsense slugs
+return 404, so the accounts are real — but all have zero jobs. Separately, three of four
+SmartRecruiters hits had the *correct* company name with postings from 2016/2018/2021: a new
+trap where **existence is not liveness**, so new sources gate on posting recency.
+
 ### 2026-10-03 (latest+70) — Gap register; the job-collection plan gets a doc; stages are named, not numbered
 
 **What changed.** Documentation only, no code.

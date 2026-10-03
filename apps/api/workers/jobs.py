@@ -20,6 +20,7 @@ from connectors.normalize import canonical_hash
 from connectors.pipeline import backfill_job_embeddings, upsert_jobs
 from connectors.reed import fetch_reed_jobs
 from connectors.remotive import fetch_remotive_jobs
+from connectors.workday import fetch_workday_jobs
 from core.config import get_settings
 from database import session_scope
 
@@ -71,7 +72,7 @@ EMBED_BACKLOG_INTERVAL_SECONDS = 2 * 60
 # (ENABLED_FEEDS), just never swept. Don't re-probe them; the numbers are in
 # tests/test_feed_pagination.py's docstring, which pins this set so re-adding
 # a disqualified source cannot be quiet.
-SWEEPABLE_SOURCES = {"greenhouse", "lever", "ashby", "jobicy"}
+SWEEPABLE_SOURCES = {"greenhouse", "lever", "ashby", "jobicy", "workday"}
 
 
 def _sweep_delisted(db, source: str, jobs: list[dict]) -> None:
@@ -124,6 +125,26 @@ def _pace(index: int) -> None:
     """Wait before every request in a loop except the first."""
     if index:
         time.sleep(HOST_PACING_SECONDS)
+
+
+def _workday_tokens() -> list[str]:
+    """Workday's tenants, but only on runs where it is due.
+
+    It is by far the most request-hungry source: a board costs
+    `ceil(jobs/20)` list requests plus one detail fetch per keyword match, and
+    the two configured boards measured ~4.3 minutes live. Discovery runs hourly
+    and this machine runs a single RQ `SimpleWorker` (no `os.fork` on Windows),
+    so fetching Workday every run would park the only worker for minutes every
+    hour while campaign runs queue behind it.
+
+    Skipping is safe, not a freshness hole: an empty token list gives an empty
+    payload, and `_sweep_delisted` no-ops on empty, so a skipped run delists
+    nothing rather than tombstoning the whole source.
+    """
+    every = getattr(conn_config, "WORKDAY_INTERVAL_HOURS", 1) or 1
+    if every > 1 and datetime.utcnow().hour % every:
+        return []
+    return list(conn_config.WORKDAY_BOARDS)
 
 
 def _isolate(source: str, fetch) -> tuple[list[dict], bool, dict]:
@@ -281,6 +302,11 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
         ("greenhouse", lambda: _fetch_ats_source(fetch_greenhouse_jobs, conn_config.GREENHOUSE_BOARD_TOKENS, kw)),
         ("lever", lambda: _fetch_ats_source(fetch_lever_jobs, conn_config.LEVER_COMPANY_TOKENS, kw)),
         ("ashby", lambda: _fetch_ats_source(fetch_ashby_jobs, conn_config.ASHBY_ORG_TOKENS, kw)),
+        # COLLECT-C: one tenant per employer, same per-token shape as the three
+        # ATS boards. fetch_workday_jobs already filters on FEED_KEYWORDS before
+        # its detail fetches (it must, to avoid hydrating a whole 527-job board),
+        # so _fetch_ats_source's filter here is a harmless second pass.
+        ("workday", lambda: _fetch_ats_source(fetch_workday_jobs, _workday_tokens(), kw)),
     ):
         source_jobs, trustworthy, run = _isolate(source_name, fetch)
         all_jobs.extend(source_jobs)

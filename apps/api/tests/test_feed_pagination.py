@@ -104,6 +104,6 @@ def test_only_exhaustible_sources_are_sweepable():
     """Pins the measured outcome (see this module's docstring). Adding a source
     here has to be a deliberate edit with a measurement behind it.
     """
-    assert SWEEPABLE_SOURCES == {"greenhouse", "lever", "ashby", "jobicy"}
+    assert SWEEPABLE_SOURCES == {"greenhouse", "lever", "ashby", "jobicy", "workday"}
     for truncated in ("remoteok", "himalayas", "arbeitnow", "weworkremotely", "workingnomads"):
         assert truncated not in SWEEPABLE_SOURCES, truncated
