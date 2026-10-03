@@ -71,7 +71,7 @@ that must change to match. **It has not changed.**
 | 6.2 | **Migration 0022 has never run against a real Postgres.** | VERIFIED — ADR-017 consequences; no Docker, suite is SQLite. | Its `create_index` calls are non-concurrent and take a SHARE lock while building. Run the first `alembic upgrade` outside an ingestion window. |
 | 6.3 | **`form_plans` routing is Greenhouse-only, and Lever/Ashby measured no gain.** latest+59: re-measured, "no gain on required fields". | DOC-CLAIM | `PLAN-MULTI-ATS.md` Phase 3 ("platforms by data") rests on a premise its own measurement undercut. **That plan needs revisiting before it is executed.** |
 | 6.4 | **None of the PLAN-MULTI-ATS §5 success metrics has been measured on a real platform** (0 wrong values, ≥95% required fields, ≥70% reaching submit, <60s median). | DOC-CLAIM | No platform can honestly be called "supported". |
-| 6.5 | **`worktree-agent-af607b1d421ec69ae` is an un-reviewed leftover branch**, superseded by master's `launchCampaign`. | VERIFIED — still in `git branch`. | Unknown whether it holds anything unmerged. Look, then delete. |
+| 6.5 | ~~Un-reviewed leftover worktree branch.~~ **CLOSED 2026-10-03** — reviewed and deleted. All four of its changes were already on master in better form (incl. the `PATCH status:"active"` it listed as BLOCKED, and the `score * 100` "8200%" fix). | VERIFIED | Nothing lost. |
 
 ## 7. Documentation gaps
 

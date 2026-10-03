@@ -84,9 +84,32 @@ what each actually costs:
 | **Company career pages directly** | Per-company work; the ATS-discovery classifier (F5, `connectors/discovery.py`) already proposes patterns. | Doesn't scale without the classifier being good, and that is unmeasured. |
 | **Accept the ceiling** | Nothing. Be explicit that coverage is global-remote plus a few India offices. | Honest, and leaves the owner's actual search underserved. |
 
-**First task, before any ADR: measure.** Probe one company per candidate platform for a public
-JSON endpoint (the way COLLECT-B probed feed pagination), and write
-`docs/harness-reports/collect-c-platforms.md`. An ADR written without that is a guess.
+**First task — DONE 2026-10-03: `docs/harness-reports/collect-c-platforms.md`.** All five
+platforms probed live. Headline: **only 1 of the 19 unreachable companies is reachable at all
+(Swiggy, on SmartRecruiters)**, and the measurement reframes the stage —
+
+- **No platform here offers cross-company search.** SmartRecruiters, Workday and Workable are
+  all per-company-identifier APIs, structurally identical to greenhouse/lever/ashby. Adding one
+  does not add reach by itself; **company→platform discovery is the actual work**, and it
+  inherits COLLECT-D's token problem.
+- **Workday reaches India PM roles at multinational GCCs** (verified: Adobe, Principal PM,
+  Bangalore) — a large currently-unserved slice — and its `robots.txt` explicitly allows the
+  career path. Cleanest option. `postedOn` is prose ("Posted 30+ Days Ago"), so `posted_at`
+  needs a detail fetch or stays NULL.
+- **SmartRecruiters has the best data contract** (real `releasedDate`, ISO country code) **but
+  its API host serves `robots.txt: Disallow: /`** — an owner decision, deliberately not resolved
+  in the report.
+- **New trap: dead accounts.** Three of four SmartRecruiters hits had the right company name and
+  postings from 2016/2018/2021. Existence is not liveness — **gate on posting recency**. Same
+  class of error as COLLECT-B's `slice`/`porter`/`navi` slugs.
+- Workable: 17 of 19 accounts exist, **all with `jobs: []`**. Caught only by a nonsense-slug
+  control; without it this stage would have "solved" the gap on a false positive.
+- Keka: every `*.kekahire.com` host failed TLS (expired certificate). Darwinbox: empty SPA shell.
+
+**Recommended next step (not yet decided):** ADR taking **Workday first** on compliance grounds,
+SmartRecruiters second gated on the robots call — **and seriously consider that measuring
+`connectors/discovery.py`'s unmeasured F5 ATS classifier may be worth more than either
+connector**, since discovery is the binding constraint.
 
 **Done when:** an ADR is accepted, one new source class is live behind the same connector
 contract, and it is either in `SWEEPABLE_SOURCES` with evidence or explicitly excluded with a
