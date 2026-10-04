@@ -111,6 +111,56 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-10-04 (latest+75) — CI exists; and the eval harness was measuring the wrong code path
+
+**What changed.** Two of `GAPS.md`'s headline items. 855 → 859 tests.
+
+**CI (closes `GAPS.md` 5.2).** `.github/workflows/ci.yml`, three jobs on every PR and push to
+main: **api** (pytest), **web** (vitest + `tsc --noEmit`), **extension** (node:test + typecheck).
+All three were run locally first, green, before the workflow was written — a red-on-arrival
+pipeline is worse than no pipeline. `Settings` has exactly three fields with no default
+(`database_url`, `anthropic_api_key`, `jwt_secret`); CI supplies obvious placeholders, which is
+safe because the suite runs on in-memory SQLite and `conftest.py` blocks real network. Not
+included, and said so in the file: the garak lane (needs a real provider key in repo secrets and
+a budget decision — a job that silently no-ops without one is worse than no job) and
+`next build`.
+
+**The eval harness (corrects `GAPS.md` 6.1, which I had diagnosed wrongly).**
+- The register claimed the harness was "pointed at Anthropic with a placeholder key". **It never
+  was.** `eval/providers/tailor_provider.py` calls the real engine, which reads
+  `LLM_PROVIDER=nvidia` from `.env`. A live golden row tailored fine through NIM in 5.7s.
+- **The real defect was worse.** `tailoring/engine.py:370` branches on
+  `llm_provider == "nvidia_smoke" or not known_fact_ids`, and `known_fact_ids` comes from the
+  `id` on each fact passed in. **All 30 golden rows' facts had no `id`**, so every eval row ran
+  the **unvalidated smoke path**: no `TailoredDraft` validation, no `source_fact_ids`
+  (min_length=1), no KB-existence check on cited ids. The harness has therefore never measured
+  the path production takes for a real profile, whose `ResumeFact` rows always carry a PK.
+- **Two visible symptoms, before the fix:** `source_fact_ids: []` on every bullet, and the
+  model's own citation markers leaking into user-facing text — `"Led backend rewrite from Flask
+  monolith to FastAPI microservices [0]"`. That bullet would have gone into a real application
+  with a literal `[0]` in it.
+- **Fix:** stable row-scoped ids (`r{row}f{n}`) on all 158 facts. The same two rows now return
+  4/4 and 6/6 bullets grounded with real ids and **no markers in the text**. Guarded by
+  `tests/test_eval_golden_set.py`, which is offline and calls no model.
+
+**Files changed.** New `.github/workflows/ci.yml`, new `apps/api/tests/test_eval_golden_set.py`;
+`eval/golden.csv` (158 fact ids added); `docs/{GAPS,WORKLOG}.md`.
+
+**Dependencies added.** None. **Tests.** 855 → 859.
+
+**Problems hit.**
+1. **My own register entry was the obstacle.** GAPS 6.1 said "wrong provider", so the obvious
+   action was to repoint the harness — which would have changed nothing. Running one real call
+   and reading the output is what found the actual cause. A gap description is a hypothesis, not
+   a finding.
+2. This is exactly what an eval harness is for, and it was switched off by a missing field in a
+   fixture rather than by anything in the product.
+
+**Next.** A full 30-row promptfoo run has still not been scored, so tailoring quality is now
+measured on a *sound* path but is not yet *quantified* — that is the remaining half of 6.1.
+`GAPS.md`'s other headline items: the ADR-015 contradiction still live in the extension (§2,
+per-item `claim-submission` machinery), and SMTP (§1.1, needs the owner's credentials).
+
 ### 2026-10-04 (latest+74) — COLLECT-E rejected on measurement; COLLECT-F done. Job collection is complete.
 
 **What changed.** The last two collection stages. **COLLECT-E is a rejection, not a build**

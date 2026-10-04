@@ -1,0 +1,100 @@
+name: CI
+
+# GAPS.md 5.2: there was no CI at all. 855 API tests, 140 web tests and the
+# extension's node tests existed, and nothing ran any of them on a pull request
+# — and this repo has no other review gate, so a PR was reviewed by reading.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push to the same PR cancels the previous run; nothing here is a deploy.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: api (pytest)
+    runs-on: ubuntu-latest
+    env:
+      # core/config.py's Settings has exactly three fields with no default:
+      # database_url, anthropic_api_key, jwt_secret. They only have to EXIST —
+      # the suite runs on in-memory SQLite and tests/conftest.py blocks the real
+      # network (httpx.HTTPTransport), so nothing here is ever dialled. Real
+      # secrets must never be needed to run the tests; if a test starts needing
+      # one, that test is reaching outside and should be stubbed instead.
+      DATABASE_URL: "sqlite:///./ci.db"
+      ANTHROPIC_API_KEY: "ci-placeholder-not-a-real-key"
+      JWT_SECRET: "ci-placeholder-not-a-real-secret"
+      # conftest.py pins this too, but set it here so a failure is about the
+      # code and never about a runner picking up some other provider.
+      LLM_PROVIDER: "anthropic"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          # Matches the dev machine (3.11.9).
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: apps/api/requirements.txt
+      - name: Install dependencies
+        working-directory: apps/api
+        run: pip install -r requirements.txt
+      - name: Run tests
+        working-directory: apps/api
+        run: python -m pytest -q
+
+  web:
+    name: web (vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # The dev machine is on 22.14.0. Note promptfoo is pinned to 0.120.19
+          # because >=0.120.20 needs Node >=22.22.0 (WORKLOG) — that pin is in
+          # eval/, which this job does not touch.
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm ci
+      - name: Run tests
+        working-directory: apps/web
+        run: npm test
+      - name: Typecheck
+        working-directory: apps/web
+        run: npx tsc --noEmit
+
+  extension:
+    name: extension (node:test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/extension/package-lock.json
+      - name: Install dependencies
+        working-directory: apps/extension
+        run: npm ci
+      - name: Run tests
+        working-directory: apps/extension
+        run: npm test
+      - name: Typecheck
+        working-directory: apps/extension
+        run: npm run typecheck
+
+# Deliberately NOT here yet:
+#
+# - `apps/api/requirements-ci.txt` (garak). The owner's decision was "skip the
+#   local install, run garak in CI only", but garak probes a live model, so the
+#   lane needs a real provider key in repository secrets and a budget decision.
+#   Adding it as a job that silently no-ops without a key would be worse than
+#   leaving it out visibly.
+# - `next build` for apps/web. The typecheck above covers the type surface; a
+#   full production build is slower and has caught nothing the tests didn't.
+#   Add it if a build-only break ever ships.
