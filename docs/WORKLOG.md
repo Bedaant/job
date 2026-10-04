@@ -156,6 +156,19 @@ a budget decision — a job that silently no-ops without one is worse than no jo
 2. This is exactly what an eval harness is for, and it was switched off by a missing field in a
    fixture rather than by anything in the product.
 
+**CI's first run immediately earned its keep — and it is red.** `apps/api/requirements.txt`
+**cannot be installed from scratch**: `presidio-analyzer==2.2.364` declares
+`pydantic<3.0.0,>=2.12.5` while the file pins `pydantic==2.9.2`, so pip exits
+`ResolutionImpossible` before a single test runs (PR #8, api job, 16s; web and extension pass).
+It works locally only because this venv was built incrementally — presidio does import and run
+fine against 2.9.2, so the pin's comment is right about *runtime* and silent about
+*installability*. That means a new dev machine or any deploy would have hit the same wall.
+Recorded as `GAPS.md` 5.7 and **blocked on the owner**, because both fixes change the dependency
+set: pin presidio to **2.2.358** (newest release declaring no pydantic requirement) or bump
+**pydantic to >=2.12.5** (bigger blast radius — fastapi, pydantic-settings, instructor, langfuse,
+anthropic all sit on it). I did not pick one, and did not work around it in the workflow: a
+green-by-workaround pipeline over a broken requirements file is worse than an honest red.
+
 **Next.** A full 30-row promptfoo run has still not been scored, so tailoring quality is now
 measured on a *sound* path but is not yet *quantified* — that is the remaining half of 6.1.
 `GAPS.md`'s other headline items: the ADR-015 contradiction still live in the extension (§2,

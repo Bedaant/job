@@ -63,6 +63,10 @@ that must change to match. **It has not changed.**
 | 5.5 | **ClamAV and LibreOffice never installed.** `clamd` client has no daemon; LibreOffice is a system installer. | DOC-CLAIM | Upload virus scanning and any LibreOffice-based conversion are inert. |
 | 5.6 | **`ENCRYPTION_KEY` is reserved but unset**; real KMS deferred. | VERIFIED — not among the `.env` keys. | Whatever was meant to be encrypted at rest is not. |
 
+| # | Gap | Evidence | Blocks |
+|---|---|---|---|
+| 5.7 | **`apps/api/requirements.txt` cannot be installed from scratch.** `presidio-analyzer==2.2.364` declares `pydantic<3.0.0,>=2.12.5`, while the file pins `pydantic==2.9.2`; pip exits `ResolutionImpossible`. It works locally only because this venv was built incrementally — presidio imports and runs fine against 2.9.2 at runtime, so the pin comment's "not a real runtime requirement" is correct about *runtime* and wrong about *installability*. | **VERIFIED — found by CI's very first run** (PR #8, api job failed in 16s at the install step, before any test ran). | Any clean environment: CI, a new dev machine, any deploy. **This is why the api CI job is currently red while web and extension are green.** Two fixes, both dependency changes needing the owner's approval: pin presidio to **2.2.358** (the newest release that declares no pydantic requirement, so it resolves against 2.9.2) or bump **pydantic to >=2.12.5** (keeps presidio current, but moves pydantic under fastapi/pydantic-settings/instructor/langfuse/anthropic — and WORKLOG already records one painful fastapi/starlette major bump). |
+
 ## 6. Verification gaps — things that have never been proven
 
 | # | Gap | Evidence | Blocks |
