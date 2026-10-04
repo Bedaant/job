@@ -161,33 +161,38 @@ itself. This also removes the "editing `FEED_KEYWORDS` would tombstone a swept s
 **Done when:** a token can be removed from config without tombstoning anything, proven by a
 test, and one flaky board no longer suppresses the whole source's sweep.
 
-## COLLECT-E — Liveness
+## COLLECT-E — Liveness · **REJECTED** (2026-10-04, ADR-019, WORKLOG latest+74)
 
-**Problem.** Five keyless feeds can never be swept (COLLECT-B measured why), so their rows go
-stale forever. ADR-017 accepts this, but it means "fresh jobs" is only true for
-greenhouse/lever/ashby/jobicy.
+Probing a stored job's own `apply_url` for 404/410 was measured and rejected
+(`docs/harness-reports/collect-e-liveness.md`). The bar was a false-positive rate of 0 on a
+sample of jobs that are live by construction. Measured instead:
 
-**Idea to evaluate, not yet decided:** probe a stored job's own `apply_url` and treat a 404/410
-as delisted. That is *direct evidence a posting is gone*, which is strictly stronger than
-inferring from absence — and it costs one request per stored job we hold (hundreds), not per job
-the feed has (115,729 for himalayas alone).
+| Feed | Codes on 8 live jobs | False positives |
+|---|---|---|
+| remoteok | `{200: 8}` | 0% |
+| arbeitnow | `{200: 8}` | 0% |
+| workingnomads | `{200: 5, 403: 3}` | **37.5%** |
+| himalayas | `{403: 8}` | **100%** |
+| weworkremotely | `{403: 8}` | **100%** |
 
-**It needs an ADR** because ADR-017 §1 frames expiry as absence-only; a liveness probe is a third
-mechanism, not a variant of absence. Open questions to answer first: how many of these feeds'
-`apply_url`s are stable permalinks rather than redirects; what a soft-404 (200 with "this job has
-closed") looks like per host; and the per-host request budget.
+The 100% failures are exactly the feeds with no pagination escape, so the mechanism yields
+nothing where there is no alternative; workingnomads is inconsistent on a single host, which is
+noise rather than a special-casable rule; and a 404/410-only rule reads 403 as "no signal", so
+those feeds gain zero for several hundred requests a run. UA spoofing and a headless browser per
+job were both rejected (ADR-019).
 
-**Done when:** either the probe is live with a measured false-positive rate of 0 on a sample, or
-the ADR records why it was rejected.
+**The five truncated feeds stay stale by decision, with a number behind it.** The productive
+path is more complete-listing sources (ADR-018's Workday), not cleverer expiry — a sweepable
+source needs no probe.
 
-## COLLECT-F — Hygiene
+## COLLECT-F — Hygiene · **DONE** (2026-10-04, WORKLOG latest+74)
 
-Small, independent, each with a test. No ADR needed.
+Two items built, two decided and documented.
 
-- **`connector_runs` retention.** ~14 rows/hour, inserted since COLLECT-B, nothing prunes them. `/sources` reads the newest 200. Add a bounded delete to the discovery run.
-- **Remote-country filtering beyond India.** `matching.filters.remote_open_to` covers India only; an unknown `country_code` is not filtered at all, so a non-India user gets US-only "remote" roles (`GAPS.md` 4.4).
-- **Decide JobSpy's fate.** The connector exists, is not wired into ingestion, and `/sources` tells users it "Currently returns no results". Either wire it or delete it and drop it from `/sources` — shipping a dead source to the UI is worse than not having it.
-- **Duplicate `canonical_hash` reconciliation.** Two live rows can now share a hash (ADR-017 §5) and nothing re-collapses such a pair. Decide whether that ever needs fixing or is permanently accepted.
+- **`connector_runs` retention — DONE.** One bulk DELETE per discovery run, 30-day window (`RUN_RETENTION_DAYS`). **F5's ATS-classifier rows are never pruned:** `models.ConnectorRun`'s docstring calls them the owner's review surface for proposed ATS patterns, so age-pruning them would destroy an un-reviewed decision queue. Pinned by a test.
+- **Remote-country filtering — NOT BUILT, and the gap was described wrongly.** `_OPEN_WORDS` already filters "Remote - United States" correctly for *any* known country; `_COUNTRY_NAMES` only needs the user's own country, not a world list. The real hole is a profile with **`country_code` unset** (it is optional, parsed from the resume), which disables the filter entirely. A 200-country table is YAGNI with one India-based user and would need a new dependency (`pycountry`/`babel` — none installed, and adding one needs the owner's approval). **The product fix is making country required at onboarding**, which is the owner's call.
+- **JobSpy — DONE, dropped from the UI.** `jobspy_google` is gone from `/sources`: it was advertising a source that `discover_jobs_task` has never fetched. The connector and its isolated venv stay (reviving it is a separate decision), it is just no longer offered to users. A new test pins the invariant **both ways** — every advertised source must be fetched, and every fetched source must be advertised.
+- **Duplicate `canonical_hash` — DECIDED: permanently accepted.** Two live rows can share a hash (ADR-017 §5) and nothing re-collapses the pair. Re-collapsing means picking a winner and rewriting or tombstoning the loser, which is the destructive direction for a cosmetic problem: the cost is one duplicate card in a list, the risk is deleting the row a user already applied through. Not worth it. If duplicates ever become visibly annoying, de-duplicate at **read** time in the matches query, never by mutating rows.
 
 ---
 

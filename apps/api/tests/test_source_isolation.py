@@ -233,6 +233,28 @@ def test_sources_reports_a_source_whose_last_run_failed(client):
     assert by_id["jobicy"]["enabled"] is True and by_id["jobicy"]["reason"] is None
 
 
+def test_sources_only_advertises_sources_discovery_actually_fetches():
+    """COLLECT-F: `/sources` listed `jobspy_google` with the note "Currently
+    returns no results" — JobSpy is built but has never been wired into
+    `discover_jobs_task`, so the UI was offering users a source that cannot
+    contribute anything. Showing a dead source is worse than not having it.
+
+    This pins the invariant both ways, so the next source added to discovery has
+    to be given a label, and a label can't outlive its fetcher.
+    """
+    from connectors import config as conn_config
+    from main import _SOURCE_LABELS
+
+    fetched = (
+        {"remotive", "reed", "greenhouse", "lever", "ashby", "workday"}
+        | set(conn_config.ENABLED_FEEDS)
+    )
+    assert set(_SOURCE_LABELS) == fetched, (
+        "every advertised source must be fetched by discover_jobs_task, and "
+        "every fetched source must be advertised"
+    )
+
+
 def test_sources_uses_only_the_most_recent_run_of_a_source(client):
     """A source that failed an hour ago and succeeded since is healthy."""
     from datetime import datetime, timedelta

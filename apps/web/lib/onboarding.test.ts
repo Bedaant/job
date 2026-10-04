@@ -271,7 +271,7 @@ describe("sources come from GET /sources", () => {
     const { defaultSources } = await import("./onboarding");
     const list = [
       { id: "remoteok", label: "Remote OK", note: "", enabled: true, reason: null, job_count: 3 },
-      { id: "jobspy_google", label: "Google Jobs", note: "", enabled: false, reason: "Currently returns no results.", job_count: 0 },
+      { id: "workday", label: "Workday", note: "", enabled: false, reason: "No company boards added yet.", job_count: 0 },
     ];
     expect(defaultSources(list)).toEqual(["remoteok"]);
   });

@@ -101,8 +101,15 @@ def test_sources_lists_the_live_feeds_and_marks_dead_ones(client):
     assert by_id["remoteok"]["job_count"] == 1
     assert by_id["himalayas"]["job_count"] == 0
 
-    google = by_id["jobspy_google"]
-    assert google["enabled"] is False and google["reason"]
+    # `jobspy_google` used to be listed here with reason "Currently returns no
+    # results" — JobSpy was never wired into discover_jobs_task, so the UI was
+    # offering a source that could not contribute anything. COLLECT-F removed it;
+    # tests/test_source_isolation.py pins that /sources only advertises sources
+    # discovery actually fetches.
+    assert "jobspy_google" not in by_id
+
+    # Workday is advertised, and reports disabled until a tenant is configured.
+    assert by_id["workday"]["label"]
 
 
 def test_sources_requires_auth(client):
