@@ -111,6 +111,60 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-10-04 (latest+78) — GAPS 6.7 re-measured: the cause was the opposite of what latest+77 said
+
+**What changed.** Measurement and documentation only. No code. Tests unchanged at 864.
+
+**latest+77 named the wrong half of the truth-check, and it was already merged.** It said every
+flag came from `deterministic_unsupported`, "pass 2's model-free half". Measured properly, by
+calling the two halves separately on 5 rows:
+
+| half | flags |
+|---|---|
+| `deterministic_unsupported` (model-free) | **0** |
+| model checker (`STRICT_CHECK_SYSTEM`) | **31** |
+
+The deterministic half is clean; the model checker produces **100%** of the flags. The inference
+error: both halves build their flag strings in the same `"<claim> [not in facts: …]"` format, so
+the suffix proves nothing about origin. I read a format and called it a cause.
+
+**And the model checker is not misbehaving — it is following its instructions exactly.**
+`STRICT_CHECK_SYSTEM` tells it to flag "added outcomes or purposes", "scope or scale", and
+"domains, tools, numbers, **titles**, durations and **praise adjectives**". So flagging
+`"Senior Backend Engineer with expertise in Python, FastAPI…"` and `"Proven ability to design
+high-performance backend systems"` is correct behaviour under its own spec.
+
+**The real finding is a specification conflict between the two passes.** Pass 1 is asked for "a
+2-sentence professional summary" and a cover letter — prose that inherently carries titles, scope
+and evaluative framing — while pass 2 is instructed to flag precisely those. The gate is not
+accidentally strict; **the two prompts disagree about what a résumé sentence may contain.**
+
+**One option is now measured and eliminated.** A/B on the same 10 rows, augmenting only the
+tailor prompt (the truth-check prompt untouched, or the test would be circular): adding an
+explicit "do not name any tool or number not in the KB" rule for the summary and cover letter
+changed **nothing** — 10/10 rows flagged in both arms, ~5.5 flags/row both arms, mean summary
+length 200 → 206 chars. A one-line constraint does not move this.
+
+Remaining options are recorded in `GAPS.md` 6.7 and the corrected report. The one I would look at
+first is making the **deterministic half the hard gate** and the model half advisory: it had zero
+false positives across these rows and is precise about the fabrication that actually gets
+applications binned (unlisted tools and numbers). The cost is explicit in its own docstring — it
+cannot see an invented outcome in plain words.
+
+**Files changed.** `docs/harness-reports/adr014-first-eval-run.md` (correction block at the top of
+the affected section, original text left intact beneath it), `docs/GAPS.md` (6.7 cause + options),
+this entry.
+
+**Problems hit.** This is the **fourth** wrong diagnosis I have put in writing on this project,
+and the **second inside a document that was already merged and presented** — after 6.1, 4.4 and
+§2. The pattern is identical every time: I read one signal (a file's presence, a placeholder key,
+a flag's string format) and wrote a cause from it. The correction is kept visible rather than
+silently edited, because the wrong version had already been acted on.
+
+**Next.** 6.7 is still the owner's decision and still the highest-value open question — it decides
+whether applications can be sent at all. It is now a precise decision rather than a vague one, and
+one of its four options is eliminated by measurement.
+
 ### 2026-10-04 (latest+77) — ADR-014's harness completed a run for the first time, and it found something
 
 **What changed.** The eval harness runs end to end and produced the project's first tailoring
