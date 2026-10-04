@@ -812,7 +812,7 @@ search. COLLECT-C probed five candidate platforms live; the full measurement is
    `Disallow: /`, which is a judgement with no technically correct answer: read as binding,
    SmartRecruiters is out and Swiggy goes with it; read as crawler-directed and inapplicable to a
    per-company API read, it is in and the owner takes that position knowingly. Our rails require a
-   ToS check before a new source (ADR-016 §4), so this does not get decided by default.
+   ToS check before a new source (ADR-016 §4), so this does not get decided by default. **Evidence gathered 2026-10-04 in `docs/smartrecruiters-decision-brief.md`**, including the vendor's own docs (the Posting API is published as unauthenticated and intended for partner widgets, 10 req/s) and the one unverified link in the chain: SmartRecruiters APIs are governed by the **SAP API Policy**, which has not been read and is what actually settles this. The brief also records that the realistic yield is Swiggy alone.
 8. **Workable is not implemented** (nothing to fetch), **Keka is to be re-probed** before being
    ruled out permanently (expired certs may be transient), and **Darwinbox stays out** until
    something cheaper than a headless browser per employer exists.
