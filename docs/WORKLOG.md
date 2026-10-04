@@ -111,6 +111,64 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-10-04 (latest+73) — COLLECT-D: `Job.board_token`, so removing a board from config is no longer destructive
+
+**What changed.** Migration **0023** adds `jobs.board_token` (indexed, nullable), and delisting
+is now scoped per board instead of per source. 839 → 850 tests.
+
+- `_sweep_delisted(db, source, token, jobs)` — `token=None` means a source with no per-board
+  concept (the keyless feeds), and then only its NULL-token rows are in scope.
+- `_fetch_ats_source` returns **one `(token, jobs)` batch per board that answered**, replacing
+  the single all-or-nothing `trustworthy` flag. `_isolate` and `discover_jobs_task` carry batches
+  through.
+- greenhouse / lever / ashby / workday connectors stamp the token or tenant;
+  `pipeline._UPDATE_FIELDS` includes it, so pre-migration rows pick it up when their board next
+  lists them.
+
+**Why.** Two consequences ADR-017 recorded and left open:
+1. **Removing a token from `connectors/config.py` tombstoned that board's entire live
+   inventory** on the next run. Editing config was a destructive data operation.
+2. **One flaky board blocked delisting for the whole source** — if any token returned empty, the
+   source was marked untrustworthy, because an empty board's rows would otherwise look absent
+   from the combined id set.
+Both are now fixed. `Job.company` could never do this job: Phase 1 made it a curated display
+name whose formatting varies ("Rubrik Job Board", a trailing space).
+
+**Files changed.** New `alembic/versions/0023_job_board_token.py`, new
+`tests/test_board_token.py`; `models.py`, `workers/jobs.py`, `connectors/{greenhouse,lever,ashby,workday,pipeline,config}.py`,
+`tests/test_delisting_sweep.py`; `docs/{DECISIONS,GAPS,PLAN-JOB-COLLECTION}.md`.
+
+**Dependencies added.** None. **Tests.** 839 → 850, red-before-green on all 11 new ones.
+
+**Problems hit.**
+1. **I had to deliberately invert an assertion Phase 1 wrote.**
+   `test_fetch_ats_source_is_untrustworthy_if_any_token_returns_empty` asserted that one dead
+   board disables delisting for the whole source — correct while the sweep was source-wide, wrong
+   now. It is renamed `test_an_empty_board_contributes_no_batch_and_the_others_still_sweep`, and
+   the end-to-end counterpart likewise. Both carry a note saying the old behaviour was replaced
+   on purpose, so a future reader doesn't "restore" it.
+2. **I corrected a wrong claim in my own plan doc.** `PLAN-JOB-COLLECTION.md`'s COLLECT-D section
+   said this would also remove the "editing `FEED_KEYWORDS` tombstones a swept source" hazard.
+   **It does not** — narrowing `FEED_KEYWORDS` still drops stored jobs out of the filtered
+   payload the sweep compares against. Independent of board identity, still open, now stated
+   correctly in the plan, `config.py` and ADR-017.
+3. A scripted splice of the test file left an orphaned test with one of its two decorators,
+   which surfaced as `fixture 'mock_get_redis' not found`. Removed properly. Editing Python by
+   index arithmetic is a bad trade; the file tools would have been faster.
+4. Updating fixtures token-by-token, my bulk replacement only tokenized the *first* `_job` call
+   in two tests, leaving siblings at NULL — which the new code then correctly skipped. The tests
+   failed for the right reason and the fixtures were wrong, not the code.
+
+**Accepted residue.** An ATS job that closed *before* migration 0023 keeps `board_token = NULL`,
+is never re-seen, and so is never tombstoned. Stale beats tombstoning live jobs (ADR-017 §3); a
+one-off script can clear those if the count ever matters. **Migration 0023 has not run against a
+real Postgres** — same caveat as 0022, and its `create_index` is non-concurrent, so run the
+upgrade outside an ingestion window.
+
+**Next.** COLLECT-E (liveness probing) and COLLECT-F (hygiene) are the remaining collection
+stages; both are described in the plan. The SmartRecruiters `robots.txt` ruling (ADR-018 §7) is
+still the open owner decision.
+
 ### 2026-10-04 (latest+72) — COLLECT-C: Workday connector live; a pagination bug that would have tombstoned 486 live jobs
 
 **What changed.** ADR-018 accepted ("do workday first") and the connector built.

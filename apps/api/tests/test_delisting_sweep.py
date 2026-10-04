@@ -30,10 +30,14 @@ def _db():
     return sessionmaker(bind=engine)()
 
 
-def _job(db, source, external_id, company="Acme", title=None, delisted_at=None):
+def _job(db, source, external_id, company="Acme", title=None, delisted_at=None,
+         board_token=None):
+    """COLLECT-D: `board_token` scopes the sweep. None means a source with no
+    per-board concept (a feed), or a row stored before migration 0023."""
     title = title or f"Job {external_id}"
     job = models.Job(
         source=source, external_id=external_id, company=company, title=title,
+        board_token=board_token,
         canonical_hash=canonical_hash(company, title, None), apply_url=f"https://x/{external_id}",
         delisted_at=delisted_at,
     )
@@ -51,12 +55,12 @@ def _payload(source, external_id, company="Acme", title=None):
 
 def test_sweep_delists_job_absent_from_this_runs_payload():
     db = _db()
-    _job(db, "greenhouse", "1")
-    _job(db, "greenhouse", "2")
-    _job(db, "greenhouse", "3")
+    _job(db, "greenhouse", "1", board_token="acme")
+    _job(db, "greenhouse", "2", board_token="acme")
+    _job(db, "greenhouse", "3", board_token="acme")
 
     # This run's fetch only returned 1 and 2 — 3 fell off the board.
-    _sweep_delisted(db, "greenhouse", [_payload("greenhouse", "1"), _payload("greenhouse", "2")])
+    _sweep_delisted(db, "greenhouse", "acme", [_payload("greenhouse", "1"), _payload("greenhouse", "2")])
     db.commit()
 
     by_id = {j.external_id: j for j in db.query(models.Job).filter(models.Job.source == "greenhouse")}
@@ -70,10 +74,10 @@ def test_sweep_does_not_redelist_an_already_delisted_row():
     delisted_at must not be overwritten with a later timestamp on every sweep."""
     db = _db()
     from datetime import datetime
-    _job(db, "greenhouse", "1")
+    _job(db, "greenhouse", "1", board_token="acme")
     stale = _job(db, "greenhouse", "2", delisted_at=datetime(2020, 1, 1))
 
-    _sweep_delisted(db, "greenhouse", [_payload("greenhouse", "1")])
+    _sweep_delisted(db, "greenhouse", "acme", [_payload("greenhouse", "1")])
     db.commit()
 
     assert db.query(models.Job).filter_by(external_id="2").one().delisted_at == datetime(2020, 1, 1)
@@ -83,9 +87,9 @@ def test_sweep_on_empty_payload_delists_nothing():
     """A failed fetch (greenhouse/lever/ashby return [] on non-200) must look
     identical, here, to a genuinely empty board — either way, no signal."""
     db = _db()
-    _job(db, "greenhouse", "1")
+    _job(db, "greenhouse", "1", board_token="acme")
 
-    _sweep_delisted(db, "greenhouse", [])
+    _sweep_delisted(db, "greenhouse", "acme", [])
     db.commit()
 
     assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is None
@@ -98,12 +102,12 @@ def test_sweep_tolerates_a_payload_entry_missing_external_id():
     than landing a bare None in the NOT IN set (which would make every row's
     comparison NULL instead of a real id check)."""
     db = _db()
-    _job(db, "greenhouse", "1")
-    _job(db, "greenhouse", "2")
+    _job(db, "greenhouse", "1", board_token="acme")
+    _job(db, "greenhouse", "2", board_token="acme")
 
     # "1" is genuinely still present; the malformed entry carries no id at all.
-    _sweep_delisted(db, "greenhouse", [{"source": "greenhouse", "title": "no id here"},
-                                      _payload("greenhouse", "1")])
+    _sweep_delisted(db, "greenhouse", "acme", [{"source": "greenhouse", "title": "no id here"},
+                                               _payload("greenhouse", "1")])
     db.commit()
 
     assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is None
@@ -113,9 +117,9 @@ def test_sweep_tolerates_a_payload_entry_missing_external_id():
 def test_sweep_tolerates_an_explicit_none_external_id():
     """Same as a missing key through .get(), but spelled out explicitly."""
     db = _db()
-    _job(db, "greenhouse", "1")
+    _job(db, "greenhouse", "1", board_token="acme")
 
-    _sweep_delisted(db, "greenhouse", [{"source": "greenhouse", "external_id": None, "title": "no id here"}])
+    _sweep_delisted(db, "greenhouse", "acme", [{"source": "greenhouse", "external_id": None, "title": "no id here"}])
     db.commit()
 
     assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is None
@@ -125,9 +129,9 @@ def test_sweep_all_entries_missing_external_id_delists_nothing():
     """If nothing in this run's payload carries an external_id at all, there is
     no id to compare against — treat it exactly like an empty payload."""
     db = _db()
-    _job(db, "greenhouse", "1")
+    _job(db, "greenhouse", "1", board_token="acme")
 
-    _sweep_delisted(db, "greenhouse", [{"source": "greenhouse", "title": "no id here"}])
+    _sweep_delisted(db, "greenhouse", "acme", [{"source": "greenhouse", "title": "no id here"}])
     db.commit()
 
     assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is None
@@ -140,11 +144,11 @@ def test_sweep_ignores_non_qualifying_source():
     db = _db()
     _job(db, "remotive", "1")
 
-    _sweep_delisted(db, "remotive", [])  # would look like "empty payload" too, but source itself disqualifies
+    _sweep_delisted(db, "remotive", None, [])  # would look like "empty payload" too, but source itself disqualifies
     db.commit()
     assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is None
 
-    _sweep_delisted(db, "remotive", [_payload("remotive", "999")])  # job "1" absent from this payload
+    _sweep_delisted(db, "remotive", None, [_payload("remotive", "999")])  # job "1" absent from this payload
     db.commit()
     assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is None
 
@@ -154,10 +158,10 @@ def test_sweep_delists_a_job_stored_under_its_real_company_name():
     the board token, and the sweep must not care — it never filters on
     company at all."""
     db = _db()
-    _job(db, "greenhouse", "1", company="Okta")   # absent this run
-    _job(db, "greenhouse", "2", company="Okta")   # re-seen this run
+    _job(db, "greenhouse", "1", company="Okta", board_token="okta")   # absent this run
+    _job(db, "greenhouse", "2", company="Okta", board_token="okta")   # re-seen this run
 
-    _sweep_delisted(db, "greenhouse", [_payload("greenhouse", "2", company="Okta")])
+    _sweep_delisted(db, "greenhouse", "okta", [_payload("greenhouse", "2", company="Okta")])
     db.commit()
 
     assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is not None
@@ -205,7 +209,7 @@ def test_sweep_ignores_a_truncated_feed():
     db = _db()
     _job(db, "himalayas", "1")
 
-    _sweep_delisted(db, "himalayas", [_payload("himalayas", "999")])
+    _sweep_delisted(db, "himalayas", None, [_payload("himalayas", "999")])
     db.commit()
 
     assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is None
@@ -219,7 +223,7 @@ def test_sweep_ignores_workingnomads():
     db = _db()
     _job(db, "workingnomads", "1")
 
-    _sweep_delisted(db, "workingnomads", [_payload("workingnomads", "999")])
+    _sweep_delisted(db, "workingnomads", None, [_payload("workingnomads", "999")])
     db.commit()
 
     assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is None
@@ -239,9 +243,11 @@ def test_fetch_ats_source_trusts_a_board_that_matches_no_keyword():
         return [{"source": "greenhouse", "external_id": f"{token}-1", "title": "Product Manager",
                  "company": token, "location": None}]
 
-    jobs, trustworthy = _fetch_ats_source(fetcher, ["okta", "druva"], ["product manager"])
+    jobs, batches = _fetch_ats_source(fetcher, ["okta", "druva"], ["product manager"])
 
-    assert trustworthy is True
+    # Both answered, so both get a batch -- druva's is empty after filtering,
+    # which still correctly means "this board listed nothing we want".
+    assert [t for t, _ in batches] == ["okta", "druva"]
     assert {j["external_id"] for j in jobs} == {"okta-1"}  # filtering still applies to what's kept
 
 
@@ -250,29 +256,35 @@ def test_fetch_ats_source_combines_every_tokens_jobs():
         return [{"source": "greenhouse", "external_id": f"{token}-1", "title": "Product Manager",
                   "company": token, "location": None}]
 
-    jobs, trustworthy = _fetch_ats_source(fetcher, ["okta", "druva"], ["product manager"])
+    jobs, batches = _fetch_ats_source(fetcher, ["okta", "druva"], ["product manager"])
 
-    assert trustworthy is True
+    assert [t for t, _ in batches] == ["okta", "druva"]
     assert {j["external_id"] for j in jobs} == {"okta-1", "druva-1"}
 
 
-def test_fetch_ats_source_is_untrustworthy_if_any_token_returns_empty():
-    """One dead/404 token must not make the whole source's sweep unsafe to
-    skip — it makes it unsafe to RUN: without a stable per-token identity on
-    the stored row (Task 4 removed it), a source-wide sweep using only the
-    tokens that did respond would wrongly delist the failed token's jobs
-    too. So the whole source is marked untrustworthy and the caller must not
-    sweep with these jobs this run."""
+def test_an_empty_board_contributes_no_batch_and_the_others_still_sweep():
+    """COLLECT-D REPLACED the old all-or-nothing rule here.
+
+    This test used to be `..._is_untrustworthy_if_any_token_returns_empty` and
+    asserted `trustworthy is False` -- one dead board disabled delisting for the
+    WHOLE source, because without a per-token key on the row a source-wide sweep
+    would have wrongly delisted the failed board's jobs too.
+
+    `Job.board_token` (migration 0023) removes that compromise: each board is
+    swept against its own payload, so an empty board simply contributes no batch
+    and nothing of its is touched, while every board that answered is still
+    swept. The old assertion is deliberately inverted, not accidentally broken.
+    """
     def fetcher(token):
         return [] if token == "druva" else [
             {"source": "greenhouse", "external_id": f"{token}-1", "title": "Product Manager",
              "company": token, "location": None}
         ]
 
-    jobs, trustworthy = _fetch_ats_source(fetcher, ["okta", "druva"], ["product manager"])
+    jobs, batches = _fetch_ats_source(fetcher, ["okta", "druva"], ["product manager"])
 
-    assert trustworthy is False
-    assert {j["external_id"] for j in jobs} == {"okta-1"}  # still collected, just not safe to sweep with
+    assert [t for t, _ in batches] == ["okta"], "druva answered nothing, so it is not swept"
+    assert {j["external_id"] for j in jobs} == {"okta-1"}
 
 
 # ---------- wiring: discover_jobs_task actually calls the sweep ----------
@@ -280,16 +292,15 @@ def test_fetch_ats_source_is_untrustworthy_if_any_token_returns_empty():
 @patch("workers.jobs.get_redis_connection")
 @patch("workers.jobs.session_scope")
 def test_discover_jobs_task_sweeps_delisted_jobs_end_to_end(mock_session_scope, mock_get_redis):
-    """Both okta and druva succeed this run (trustworthy), so the combined,
-    source-wide sweep runs: okta's missing job gets delisted, okta's re-seen
-    job and druva's job (different company, real display names, not tokens)
-    both survive untouched."""
+    """Both okta and druva answer this run, so each board is swept against its
+    OWN payload (COLLECT-D): okta's missing job gets delisted, okta's re-seen job
+    and druva's job both survive untouched."""
     from workers import jobs as worker_jobs
 
     db = _db()
-    _job(db, "greenhouse", "1", company="Okta")       # will be absent this run -> delisted
-    _job(db, "greenhouse", "5", company="Okta")        # re-seen this run -> stays listed
-    _job(db, "greenhouse", "2", company="Druva")       # different company, must survive untouched
+    _job(db, "greenhouse", "1", company="Okta", board_token="okta")   # absent this run -> delisted
+    _job(db, "greenhouse", "5", company="Okta", board_token="okta")   # re-seen -> stays listed
+    _job(db, "greenhouse", "2", company="Druva", board_token="druva")  # other board, untouched
     mock_session_scope.return_value.__enter__.return_value = db
     mock_session_scope.return_value.__exit__.return_value = False
     mock_get_redis.return_value = MagicMock()
@@ -329,29 +340,36 @@ def test_discover_jobs_task_sweeps_delisted_jobs_end_to_end(mock_session_scope, 
 
 @patch("workers.jobs.get_redis_connection")
 @patch("workers.jobs.session_scope")
-def test_discover_jobs_task_skips_the_whole_sources_sweep_when_one_token_fetch_is_empty(
+def test_one_empty_board_no_longer_blocks_the_other_boards_sweep(
     mock_session_scope, mock_get_redis
 ):
-    """druva's board returns nothing this run (a dead board, or a config.py
-    token with no real signal either way — the two are indistinguishable).
-    Without a stable per-token key, the whole greenhouse source must be
-    skipped for delisting this run: okta's genuinely-absent job must NOT be
-    delisted, because sweeping with only okta's+druva's(empty) combined ids
-    would be sweeping on an untrustworthy fetch."""
+    """COLLECT-D CHANGED THIS BEHAVIOUR DELIBERATELY.
+
+    The previous version of this test was
+    `..._skips_the_whole_sources_sweep_when_one_token_fetch_is_empty`, and it
+    asserted that okta's genuinely-absent job must NOT be delisted when druva's
+    board returned nothing. That was the only safe option while the sweep was
+    source-wide: with no per-token key on the row, sweeping with the responding
+    boards' combined ids would have tombstoned the silent board's live jobs.
+
+    With `Job.board_token` (migration 0023) each board is swept on its own, so:
+      - okta answered and no longer lists job "1" -> that IS real signal, delist it;
+      - druva returned nothing -> no batch, so its job is left alone.
+    """
     from workers import jobs as worker_jobs
 
     db = _db()
-    _job(db, "greenhouse", "1", company="Okta")   # genuinely absent this run, but must NOT be delisted
+    _job(db, "greenhouse", "1", company="Okta", board_token="okta")    # absent from okta -> delisted now
+    _job(db, "greenhouse", "7", company="Druva", board_token="druva")  # druva silent -> must survive
     mock_session_scope.return_value.__enter__.return_value = db
     mock_session_scope.return_value.__exit__.return_value = False
     mock_get_redis.return_value = MagicMock()
 
     def _fetch_greenhouse(token):
-        # okta succeeds (and no longer lists job "1" -- it looks gone); druva fails outright.
         if token == "okta":
             return [{"source": "greenhouse", "external_id": "999", "title": "Product Manager",
-                      "company": "Okta", "location": None, "remote": False, "salary": None,
-                      "description": "", "apply_url": "https://x/999", "tags": [], "posted_at": None}]
+                     "company": "Okta", "location": None, "remote": False, "salary": None,
+                     "description": "", "apply_url": "https://x/999", "tags": [], "posted_at": None}]
         return []
 
     patches = [
@@ -361,18 +379,19 @@ def test_discover_jobs_task_skips_the_whole_sources_sweep_when_one_token_fetch_i
         patch("workers.jobs.fetch_greenhouse_jobs", side_effect=_fetch_greenhouse),
         patch("workers.jobs.fetch_lever_jobs", return_value=[]),
         patch("workers.jobs.fetch_ashby_jobs", return_value=[]),
+        patch("workers.jobs.fetch_workday_jobs", return_value=[]),
         patch("workers.jobs.fetch_enabled_feeds", return_value=([], {})),
-        patch("connectors.pipeline.embed_texts", return_value=None),
     ]
-    for p in patches:
-        p.start()
+    for p_ in patches:
+        p_.start()
     try:
         worker_jobs.discover_jobs_task()
     finally:
-        for p in patches:
-            p.stop()
+        for p_ in patches:
+            p_.stop()
 
-    assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is None
+    assert db.query(models.Job).filter_by(external_id="1").one().delisted_at is not None,         "okta answered without it, so its absence is real signal"
+    assert db.query(models.Job).filter_by(external_id="7").one().delisted_at is None,         "druva returned nothing; a silent board delists nothing"
 
 
 # ---------- GET /jobs must not serve a delisted job ----------

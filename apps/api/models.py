@@ -153,6 +153,17 @@ class Job(Base):
     fetched_at = Column(DateTime, default=datetime.utcnow)
     last_seen_at = Column(DateTime, default=datetime.utcnow, index=True)
     delisted_at = Column(DateTime, nullable=True)     # NULL = still listed; set when source stops listing it
+    # Which board within the source this came from: a greenhouse/lever/ashby
+    # token, or a Workday tenant. NULL for sources with no per-board concept
+    # (the keyless feeds, remotive, reed) and for rows stored before migration
+    # 0023. COLLECT-D: the delisting sweep scopes on this, so that removing a
+    # token from config no longer tombstones that board's whole live inventory,
+    # and one flaky board no longer blocks delisting for the rest of the source.
+    # `company` cannot serve: it is a curated display name whose formatting
+    # varies ("Rubrik Job Board", a trailing space), and a mismatch there
+    # silently sweeps nothing. index=True — migration 0023 creates
+    # ix_jobs_board_token and env.py autogenerates against this metadata.
+    board_token = Column(String, nullable=True, index=True)
 
     applications = relationship("Application", back_populates="job")
     matches = relationship("Match", back_populates="job", cascade="all, delete-orphan")

@@ -21,6 +21,7 @@ def fetch_ashby_jobs(org_token: str):
     for j in data.get("jobs", []):
         jobs.append({
             "source": "ashby",
+            "board_token": org_token,  # COLLECT-D, see greenhouse.py
             "external_id": j.get("id", ""),
             "title": j.get("title", ""),
             "company": TOKEN_COMPANY_NAMES.get(org_token, org_token),

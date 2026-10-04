@@ -25,6 +25,9 @@ def fetch_greenhouse_jobs(board_token: str):
 
         jobs.append({
             "source": "greenhouse",
+            # COLLECT-D: which board this came from, so the delisting sweep can
+            # scope to it. `company` is a curated display name and cannot serve.
+            "board_token": board_token,
             "external_id": str(j["id"]),
             "title": j.get("title", ""),
             # The curated map wins over the payload where both exist: Greenhouse's

@@ -715,11 +715,15 @@ stayed in the DB forever, kept being matched, and (per ADR-016) kept consuming f
 - Freshness is real for the three ATS sources, and since the Phase 2 amendment above, for jobicy
   too. For the remaining five feeds, jobs go stale rather than
   flapping in and out of results — the honest statement of coverage, not "all sources".
-- Removing a board token from `connectors/config.py` tombstones that board's entire inventory on
-  the next run, because the sweep has no per-token identity left. Documented at the token lists;
-  the structural fix is a `board_token` column, deferred.
-- Editing `FEED_KEYWORDS` would tombstone a swept source's inventory for the same reason. Moot
-  while only ATS sources are swept.
+- ~~Removing a board token from `connectors/config.py` tombstones that board's entire inventory on
+  the next run, because the sweep has no per-token identity left.~~ **Fixed by COLLECT-D
+  (2026-10-04, migration 0023):** `Job.board_token` scopes the sweep per board, so an unfetched
+  board is simply not swept. The same change replaced the all-or-nothing trust rule — one silent
+  board no longer blocks delisting for the rest of its source. Its jobs now go *stale* rather
+  than being tombstoned, which is the intended direction.
+- **Still true, and board_token does NOT fix it:** narrowing `FEED_KEYWORDS` tombstones stored
+  jobs whose titles no longer match, because they drop out of the keyword-filtered payload the
+  sweep compares against. Widening it is safe. Documented at `FEED_KEYWORDS`.
 - Two live rows can now share a `canonical_hash` (a live insert takes a tombstone's hash, then the
   tombstone is re-seen). Strictly better than serving zero rows; nothing re-collapses such a pair.
 - Migration 0022 has never run against a real Postgres — no Docker, no local Postgres, and the
@@ -804,9 +808,10 @@ search. COLLECT-C probed five candidate platforms live; the full measurement is
   schedule before growing it** — a dozen large tenants would add ~10 minutes to every run. The
   obvious cheap fix (fetch only the newest pages) is not available: a truncated listing cannot be
   swept, and sweeping is why the source qualifies for freshness at all.
-- `WORKDAY_BOARDS` is a curated list, and **removing a tenant tombstones that employer's whole
-  inventory**, exactly as for the board tokens (COLLECT-D's `board_token` column is the
-  structural fix for both).
+- `WORKDAY_BOARDS` is a curated list. Removing a tenant **used to** tombstone that employer's
+  whole inventory, exactly as for the board tokens; **COLLECT-D (migration 0023) fixed both** —
+  the sweep is now scoped by `Job.board_token`, and the Workday connector stamps the tenant into
+  it.
 - Both segments of `"wd<N>/<site>"` are per-employer and unguessable; adding a tenant is manual
   work, which is the point item 1 of the Context makes. **The binding constraint on reach is
   company→platform discovery, not connectors** — `connectors/discovery.py`'s F5 ATS classifier

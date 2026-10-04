@@ -24,7 +24,10 @@ from matching.skills import extract_skills
 # on (source, external_id) — not canonical_hash — because a connector can
 # change `company` (and therefore the hash) for a job already on file; hash
 # matching would duplicate that row instead of updating it.
-_UPDATE_FIELDS = ("title", "company", "location", "salary", "description", "apply_url", "posted_at", "canonical_hash")
+# board_token is refreshed too (COLLECT-D): rows stored before migration 0023
+# carry NULL, and a token-scoped sweep deliberately skips NULL rows, so they
+# stay unsweepable until their board lists them again and fills it in.
+_UPDATE_FIELDS = ("title", "company", "location", "salary", "description", "apply_url", "posted_at", "canonical_hash", "board_token")
 
 
 def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int, int]:

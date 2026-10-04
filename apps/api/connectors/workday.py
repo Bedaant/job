@@ -154,6 +154,7 @@ def fetch_workday_jobs(tenant: str) -> list[dict]:
         req_id = info.get("jobReqId") or (listed.get("bulletFields") or [None])[0]
         jobs.append({
             "source": "workday",
+            "board_token": tenant,  # COLLECT-D, see greenhouse.py
             # Req ids are unique per tenant, not per source, and
             # uq_job_source_external_id spans the whole source.
             "external_id": f"{tenant}:{req_id}",
