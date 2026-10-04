@@ -75,12 +75,25 @@ EMBED_BACKLOG_INTERVAL_SECONDS = 2 * 60
 SWEEPABLE_SOURCES = {"greenhouse", "lever", "ashby", "jobicy", "workday"}
 
 
-def _sweep_delisted(db, source: str, jobs: list[dict]) -> None:
-    """Set delisted_at=now on currently-listed (NULL) rows for `source` that
-    are absent from `jobs` — this run's fetched (and keyword-filtered)
-    payload for that source (see _fetch_ats_source for how an ATS source's
-    per-token fetches are combined into one trustworthy-or-nothing `jobs`
-    list before this is called). One bulk UPDATE, not per-row.
+def _sweep_delisted(db, source: str, token: str | None, jobs: list[dict]) -> None:
+    """Set delisted_at=now on currently-listed (NULL) rows for one BOARD that
+    are absent from `jobs` — this run's fetched (and keyword-filtered) payload
+    for that board. One bulk UPDATE, not per-row.
+
+    COLLECT-D: `token` scopes the sweep to a single board within the source
+    (`Job.board_token`). `token=None` means the source has no per-board concept
+    (jobicy), and then only its NULL-token rows are considered.
+
+    Scoping per board is what makes two things safe that were not:
+    - **Removing a token from config no longer tombstones that board.** Its
+      jobs simply are not swept this run, because nothing swept them.
+    - **A flaky board no longer blocks the rest of the source.** Only boards
+      that answered get a batch (see _fetch_ats_source).
+
+    A token-scoped sweep deliberately does NOT touch rows whose `board_token`
+    is NULL: those predate migration 0023 and there is no way to tell which
+    board they came from. `upsert_jobs` fills the token in the next time their
+    board lists them, and they become sweepable then.
 
     Traps this guards against:
     - A non-qualifying or unrecognized source is a no-op, defense in depth
@@ -89,10 +102,7 @@ def _sweep_delisted(db, source: str, jobs: list[dict]) -> None:
       actually empty". greenhouse.py/lever.py/ashby.py return [] on a
       non-200 exactly like a genuinely empty board — the two are
       indistinguishable from an empty list alone — so sweeping on empty
-      would delist every still-open job the first time a source has a bad
-      day. This is the whole reason the sweep is safe without the
-      per-source error isolation / ConnectorRun health rows that Phase 2
-      adds; that work is explicitly out of scope here.
+      would delist every still-open job the first time a board has a bad day.
     - A payload entry with no external_id is dropped from the comparison
       set rather than left in as a bare None, which would otherwise put a
       NULL into the NOT IN list and make every row's comparison NULL (SQL's
@@ -105,8 +115,13 @@ def _sweep_delisted(db, source: str, jobs: list[dict]) -> None:
     seen_ids = {j["external_id"] for j in jobs if j.get("external_id") is not None}
     if not seen_ids:
         return
+    scope = (
+        models.Job.board_token == token if token is not None
+        else models.Job.board_token.is_(None)
+    )
     db.query(models.Job).filter(
         models.Job.source == source,
+        scope,
         models.Job.delisted_at.is_(None),
         models.Job.external_id.notin_(seen_ids),
     ).update({"delisted_at": datetime.utcnow()}, synchronize_session=False)
@@ -151,14 +166,16 @@ def _isolate(source: str, fetch) -> tuple[list[dict], bool, dict]:
     """Phase 2 items 1+2 — run one source's whole fetch, isolated, and describe
     the outcome as a `connector_runs` row.
 
-    `fetch` returns `(jobs, trustworthy)`; this returns that plus the row.
+    `fetch` returns `(jobs, batches)` — the jobs to upsert, and one
+    `(token, jobs)` sweep batch per board that answered (empty for sources with
+    no per-board concept). This returns those plus the row.
     Nothing a connector raises may escape: `fetch_remotive_jobs` and
     `fetch_reed_jobs` call `raise_for_status()`, which used to propagate out of
     `discover_jobs_task` and throw away every OTHER source's jobs, the delisting
     sweep and the embedding backfill for the entire run.
 
-    A failed source returns no payload and is never trustworthy, so absence
-    from it can't delist anything (ADR-017 §3: a failed fetch delists nothing).
+    A failed source returns no payload and no batches, so absence from it can't
+    delist anything (ADR-017 §3: a failed fetch delists nothing).
 
     `inserted` stays 0: dedupe happens across all sources at once in
     `upsert_jobs`, which returns batch totals, so there is no honest per-source
@@ -168,13 +185,13 @@ def _isolate(source: str, fetch) -> tuple[list[dict], bool, dict]:
     """
     started = time.monotonic()
     try:
-        jobs, trustworthy = fetch()
+        jobs, batches = fetch()
         error = None
     except Exception as exc:  # network, auth, JSON/XML shape drift
-        jobs, trustworthy = [], False
+        jobs, batches = [], []
         error = f"{type(exc).__name__}: {exc}"
         logger.exception("discovery source %s failed", source)
-    return jobs, trustworthy, {
+    return jobs, batches, {
         "source": source,
         "fetched": len(jobs),
         "failed": 1 if error else 0,
@@ -197,61 +214,54 @@ def _feed_report_rows(report: dict) -> list[dict]:
     } for name, outcome in report.items()]
 
 
-def _fetch_keyword_source(fetcher, keywords: list[str]) -> tuple[list[dict], bool]:
+def _fetch_keyword_source(fetcher, keywords: list[str]) -> tuple[list[dict], list]:
     """Remotive/Reed: one request per configured keyword, same host each time.
-    Never trustworthy for the sweep — a keyword slice is not a full listing
+    Contributes no sweep batch — a keyword slice is not a full listing
     (ADR-017 §2), which `SWEEPABLE_SOURCES` enforces independently.
     """
     jobs: list[dict] = []
     for i, keyword in enumerate(keywords):
         _pace(i)
         jobs.extend(fetcher(keyword))
-    return jobs, False
+    return jobs, []
 
 
-def _fetch_ats_source(fetcher, tokens: list[str], keywords: list[str]) -> tuple[list[dict], bool]:
-    """Fetch every token's board for one ATS source (greenhouse/lever/ashby)
-    and say whether the combined result is trustworthy enough to sweep.
+def _fetch_ats_source(
+    fetcher, tokens: list[str], keywords: list[str]
+) -> tuple[list[dict], list[tuple[str, list[dict]]]]:
+    """Fetch every token's board for one per-board source (greenhouse / lever /
+    ashby / workday). Returns `(all_jobs, batches)`, where `batches` has one
+    `(token, jobs)` entry per board that ACTUALLY ANSWERED this run.
 
-    Per-token delisting needs a stable per-token identity on the stored row.
-    Task 4 made `Job.company` a display name resolved from the API payload
-    or a token->name map (connectors/config.py) — not the raw token — and it
-    can legitimately vary in formatting (seen live: a trailing space on one
-    board, "Rubrik Job Board" instead of "Rubrik" on another), so it is not
-    a safe key to filter a delisting UPDATE on: a mismatch there would
-    either silently sweep nothing (filter matches zero rows) or, worse,
-    nothing stable to tell one company's rows apart from another's at all.
+    COLLECT-D replaced an all-or-nothing trust flag with this. Before
+    `Job.board_token` existed the sweep had to be source-wide, which forced two
+    compromises:
+      - if any one token returned empty, the whole source was untrustworthy and
+        nothing was delisted anywhere, because an empty token's rows would look
+        absent from the combined id set;
+      - and removing a token from config tombstoned that board's inventory.
+    Now each board is swept against its own payload, so a board that returned
+    nothing simply gets no batch and nothing of its is touched.
 
-    What IS stable: `external_id` is unique per `source` across every
-    company (models.Job's uq_job_source_external_id spans the whole source,
-    and greenhouse/lever/ashby ids are platform-wide, not per-token), so a
-    SOURCE-wide sweep using every token's combined ids is safe — PROVIDED
-    every token this run actually returned something. If even one token
-    came back empty (a dead board, or a config.py token that's gone 404 —
-    indistinguishable from each other, same empty-payload trap as any other
-    source), the whole source is marked untrustworthy for this run: callers
-    must not sweep using jobs from an untrustworthy fetch, because an empty
-    token's rows would otherwise look "absent" from the combined id set and
-    get delisted by mistake. This trades per-token availability (one flaky
-    board no longer blocks delisting for only that board) for correctness
-    (never cross-contaminate between companies) — the next run picks it back
-    up once the flaky token recovers. See task-5-report.md for the schema
-    constraint this works around (no persisted token column on Job).
+    An empty board still contributes no batch: a 404'd or dead board and a
+    genuinely empty one are indistinguishable from an empty list (ADR-017 §3),
+    and guessing wrong tombstones live jobs.
 
     Trust is judged on the RAW fetch, before keyword filtering: a board that
     responded but has no role matching FEED_KEYWORDS is a working fetch, not a
-    dead one. Judging it after filtering meant all nine Greenhouse tokens had to
-    have an open PM role in the same run or nothing was ever delisted.
+    dead one. Judging it after filtering meant every board had to have an open
+    matching role in the same run or nothing was ever delisted.
     """
-    source_jobs = []
-    trustworthy = True
+    source_jobs: list[dict] = []
+    batches: list[tuple[str, list[dict]]] = []
     for i, token in enumerate(tokens):
         _pace(i)
         raw = fetcher(token)
-        if not raw:
-            trustworthy = False
-        source_jobs.extend(filter_by_keywords(raw, keywords))
-    return source_jobs, trustworthy
+        kept = filter_by_keywords(raw, keywords)
+        source_jobs.extend(kept)
+        if raw:
+            batches.append((token, kept))
+    return source_jobs, batches
 
 
 @lru_cache(maxsize=1)
@@ -284,10 +294,12 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
             return {"skipped": True, "reason": "already claimed"}
 
     all_jobs = []
-    # Task 5: (source, jobs) per source this run fetched a qualifying,
-    # trustworthy full listing for — swept for delistings after upsert_jobs,
-    # below. remotive/reed never go in here (see SWEEPABLE_SOURCES).
-    sweep_batches: list[tuple[str, list[dict]]] = []
+    # (source, board_token, jobs) per BOARD this run got a qualifying, complete
+    # listing for — swept for delistings after upsert_jobs, below. COLLECT-D
+    # made this per board rather than per source; `board_token` is None for
+    # sources with no per-board concept (the keyless feeds). remotive/reed never
+    # go in here (see SWEEPABLE_SOURCES).
+    sweep_batches: list[tuple[str, str | None, list[dict]]] = []
     # Phase 2 item 2: one connector_runs row per source per run, written in the
     # same transaction as the upsert below. Ingestion wrote none before, so
     # /sources had to infer health from job counts — which cannot tell "fetched
@@ -308,10 +320,10 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
         # so _fetch_ats_source's filter here is a harmless second pass.
         ("workday", lambda: _fetch_ats_source(fetch_workday_jobs, _workday_tokens(), kw)),
     ):
-        source_jobs, trustworthy, run = _isolate(source_name, fetch)
+        source_jobs, batches, run = _isolate(source_name, fetch)
         all_jobs.extend(source_jobs)
         runs.append(run)
-        sweep_batches.append((source_name, source_jobs if trustworthy else []))
+        sweep_batches.extend((source_name, token, jobs) for token, jobs in batches)
 
     # ADR-015 multi-source: the keyless public feeds. Reported per source rather
     # than merged into one count — with six boards, "0 inserted" has to be
@@ -321,19 +333,20 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
     )
     all_jobs.extend(feed_jobs)
     runs.extend(_feed_report_rows(feed_report))
-    # Each keyless feed returns its whole board in one fetch (no per-token
-    # split), so the sweep scopes to source only — group this run's results
-    # by source rather than re-fetching.
+    # Each keyless feed returns its whole board in one fetch and has no
+    # per-board split, so its batch carries board_token=None and the sweep
+    # scopes to that source's NULL-token rows. Group this run's results by
+    # source rather than re-fetching.
     for name in conn_config.ENABLED_FEEDS:
-        sweep_batches.append((name, [j for j in feed_jobs if j["source"] == name]))
+        sweep_batches.append((name, None, [j for j in feed_jobs if j["source"] == name]))
 
     for j in all_jobs:
         j["canonical_hash"] = canonical_hash(j["company"], j["title"], j.get("location"))
 
     with session_scope() as db:
         inserted, updated, skipped = upsert_jobs(db, all_jobs)
-        for source, jobs in sweep_batches:
-            _sweep_delisted(db, source, jobs)
+        for source, token, jobs in sweep_batches:
+            _sweep_delisted(db, source, token, jobs)
         for run in runs:
             db.add(models.ConnectorRun(**run))
         backfill_job_embeddings(db)

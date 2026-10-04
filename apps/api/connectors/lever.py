@@ -24,6 +24,7 @@ def fetch_lever_jobs(company_token: str):
 
         jobs.append({
             "source": "lever",
+            "board_token": company_token,  # COLLECT-D, see greenhouse.py
             "external_id": j.get("id", ""),
             "title": j.get("text", ""),
             "company": TOKEN_COMPANY_NAMES.get(company_token, company_token),

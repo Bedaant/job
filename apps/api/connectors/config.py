@@ -35,13 +35,17 @@ REED_KEYWORDS = ["product manager", "associate product manager"]
 # 2026-09-29: PM roles in India or globally remote, each token checked live against
 # the ATS's public API (boards whose "remote" PM roles were US-only were left out).
 #
-# REMOVING A TOKEN IS A DELISTING. The delisting sweep (workers/jobs.py) is
-# source-wide, not per-board — `Job` has no board_token column — so the next
-# trustworthy run marks every job from a removed board delisted, even though
-# they are all still live. That is expiry by config edit, so drop a token only
-# when you mean its jobs to disappear. To stop fetching a board without
-# tombstoning its inventory, there is no switch today; a `board_token` column is
-# the structural fix and is deferred to a later phase.
+# Removing a token is SAFE since COLLECT-D (migration 0023): `Job.board_token`
+# scopes the delisting sweep per board, so a board that isn't fetched simply
+# isn't swept and its jobs stay listed. It used to tombstone that board's entire
+# live inventory on the next run, because the sweep was source-wide.
+# Its jobs do go stale rather than disappearing — nothing delists them once we
+# stop asking — which is the deliberate trade (ADR-017: stale beats tombstoning
+# live jobs).
+#
+# Still true, and NOT fixed by board_token: narrowing FEED_KEYWORDS tombstones
+# stored jobs whose titles no longer match, because they drop out of the
+# keyword-filtered payload the sweep compares against. Widening is safe.
 # 2026-10-03 (Phase 2 item 4b): 117 candidate slugs probed live across all three
 # platforms; 42 had a live board, and these are the ones with a PM-track role
 # actually reachable from India. THREE PLAUSIBLE SLUGS WERE A DIFFERENT COMPANY

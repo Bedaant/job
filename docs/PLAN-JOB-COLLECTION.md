@@ -125,7 +125,24 @@ connector**, since discovery is the binding constraint.
 contract, and it is either in `SWEEPABLE_SOURCES` with evidence or explicitly excluded with a
 measured reason.
 
-## COLLECT-D — Board identity · should land **with or before** COLLECT-C
+## COLLECT-D — Board identity · **DONE** (2026-10-04, migration 0023, WORKLOG latest+73)
+
+`Job.board_token` ships, stamped by the greenhouse/lever/ashby/workday connectors and refreshed
+on re-seen rows. `_sweep_delisted(db, source, token, jobs)` scopes per board, and
+`_fetch_ats_source` now returns one batch per board that answered instead of an all-or-nothing
+trust flag. Removing a token or tenant from config is no longer destructive, and one silent
+board no longer blocks delisting for the rest of its source. 839 → 850 tests.
+
+**Correction to what this section originally claimed:** it said this "also removes the
+'editing `FEED_KEYWORDS` would tombstone a swept source' hazard". **It does not.** Narrowing
+`FEED_KEYWORDS` still drops stored jobs out of the keyword-filtered payload the sweep compares
+against, so they get tombstoned. That is independent of board identity and remains open.
+
+**Residue:** an ATS job that closed *before* migration 0023 keeps `board_token = NULL`, is never
+re-seen, and so is never tombstoned. Stale beats tombstoning live jobs; a one-off script can
+clear those if the count matters.
+
+The original scope, for the record:
 
 **Why it's coupled to C.** `Job` has no `board_token` column, so the delisting sweep is
 source-wide. **Removing a token from `connectors/config.py` tombstones that board's entire
