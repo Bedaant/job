@@ -177,6 +177,14 @@ new `docs/harness-reports/collect-e-liveness.md`; `workers/jobs.py`, `main.py`,
    timeout.** Use the search tool, not shell `grep -r`, in this tree.
 3. **I had mis-stated GAPS 4.4** when compiling the register, and only found it by reading
    `remote_open_to` properly rather than trusting my own earlier summary.
+4. **I pushed this branch without a verified green suite.** The verify command ended in
+   `pytest -q | tail -3`, so the pipeline's exit status came from `tail`, not pytest, and a
+   failing run (`test_activity::test_today_counts`,
+   `AttributeError: 'float' object has no attribute ...`) did not stop the commit. The test then
+   passed in isolation and across four consecutive full 855-test runs, so it is an unreproduced
+   flake rather than a regression — but the masking is the real defect. Never end a gating
+   command in a pipe. Both observed flakes are now recorded as `GAPS.md` 6.6, with the note to
+   capture a traceback next time instead of re-running until green.
 
 **Collection is now complete: COLLECT-A…F are all closed** (C partly, see below). Sources with
 real freshness: `greenhouse, lever, ashby, jobicy, workday`.
