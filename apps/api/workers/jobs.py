@@ -4,7 +4,7 @@ runs in a worker process instead.
 """
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import lru_cache
 
 from redis import Redis
@@ -140,6 +140,28 @@ def _pace(index: int) -> None:
     """Wait before every request in a loop except the first."""
     if index:
         time.sleep(HOST_PACING_SECONDS)
+
+
+# COLLECT-F — `connector_runs` retention. COLLECT-B started writing one row per
+# source per run (~14/hour) and nothing removed them. `/sources` reads only the
+# newest rows, so older ones are pure growth.
+RUN_RETENTION_DAYS = 30
+# F5's ATS classifier writes its proposed patterns to the same table, and
+# `models.ConnectorRun`'s docstring calls those rows **the review surface the
+# owner promotes proposals from** (decided as "no new table, no admin UI, this
+# is it"). They are a human decision queue, not a log, so they are never pruned
+# — age-pruning them would destroy the only copy of an un-reviewed proposal.
+CLASSIFIER_SOURCE = "ats_discovery_classify"
+
+
+def _prune_connector_runs(db) -> None:
+    """Drop ingestion health rows older than the retention window. One bulk
+    DELETE, and never the classifier's proposals."""
+    cutoff = datetime.utcnow() - timedelta(days=RUN_RETENTION_DAYS)
+    db.query(models.ConnectorRun).filter(
+        models.ConnectorRun.ran_at < cutoff,
+        models.ConnectorRun.source != CLASSIFIER_SOURCE,
+    ).delete(synchronize_session=False)
 
 
 def _workday_tokens() -> list[str]:
@@ -349,6 +371,7 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
             _sweep_delisted(db, source, token, jobs)
         for run in runs:
             db.add(models.ConnectorRun(**run))
+        _prune_connector_runs(db)
         backfill_job_embeddings(db)
 
     return {

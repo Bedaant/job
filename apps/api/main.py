@@ -1000,7 +1000,6 @@ _SOURCE_LABELS = {
     "lever": ("Lever", "Company career pages"),
     "ashby": ("Ashby", "Company career pages"),
     "workday": ("Workday", "Enterprise career sites, incl. India GCCs"),
-    "jobspy_google": ("Google Jobs", "Aggregated listings"),
 }
 
 
@@ -1016,8 +1015,6 @@ def list_sources(db: Session = Depends(get_db), _user: models.User = Depends(get
         "lever": None if conn_config.LEVER_COMPANY_TOKENS else "No company boards added yet.",
         "ashby": None if conn_config.ASHBY_ORG_TOKENS else "No company boards added yet.",
         "workday": None if conn_config.WORKDAY_BOARDS else "No company boards added yet.",
-        # JobSpy isn't part of discovery, and its Google scrape returns nothing (latest+6).
-        "jobspy_google": "Currently returns no results.",
     }
     for feed in _SOURCE_LABELS:
         reasons.setdefault(feed, None if feed in conn_config.ENABLED_FEEDS else "Not searched right now.")

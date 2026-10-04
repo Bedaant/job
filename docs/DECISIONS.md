@@ -823,3 +823,58 @@ search. COLLECT-C probed five candidate platforms live; the full measurement is
 
 **Revisit when.** The owner rules on the SmartRecruiters `robots.txt`; or Keka's certificates are
 valid again; or the F5 classifier is measured and changes what "add a source" should mean.
+
+---
+
+## ADR-019 — COLLECT-E: liveness probing is rejected; the truncated feeds stay stale by decision
+
+**Date:** 2026-10-04 · **Status:** Accepted (rejection) · **Decided by:** measurement, see
+`docs/harness-reports/collect-e-liveness.md`
+
+**Context.** Five of the six keyless feeds cannot be paginated to exhaustion (COLLECT-B:
+himalayas needs 5,786 requests/run, arbeitnow returns HTTP 429 at page 21, remoteok/
+weworkremotely/workingnomads have no pagination knob), so they can never enter
+`SWEEPABLE_SOURCES` and their rows go stale forever. ADR-017 §1 fixes expiry to source absence,
+so the proposal was a third mechanism: probe each stored job's own `apply_url` and treat 404/410
+as removed — direct evidence rather than inference, at one request per job we hold rather than
+per job the feed has.
+
+**Decision. Rejected.** `PLAN-JOB-COLLECTION.md`'s bar for this stage was "a measured
+false-positive rate of 0 on a sample". Probing jobs each feed is listing *right now* — live by
+construction, so any non-200 is a false positive — gave:
+
+| Feed | Codes on 8 live jobs | False positives |
+|---|---|---|
+| remoteok | `{200: 8}` | 0% |
+| arbeitnow | `{200: 8}` | 0% |
+| workingnomads | `{200: 5, 403: 3}` | **37.5%** |
+| himalayas | `{403: 8}` | **100%** |
+| weworkremotely | `{403: 8}` | **100%** |
+
+**Why it is not fixable by narrowing the rule.**
+1. The 100% failures are **exactly** the feeds with no pagination escape, so the mechanism yields
+   nothing where there is no alternative.
+2. workingnomads is inconsistent on one host across eight sequential requests — noise, not a
+   special-casable rule.
+3. A 404/410-only rule reads those 403s as "no signal", so the three feeds gain *zero* while
+   paying several hundred requests per run.
+4. For remoteok and arbeitnow the yield is unverified and likely near zero: aggregators keep job
+   pages up for SEO after a role closes. Proving otherwise needs known-dead URLs, and neither
+   feed has ever been sweepable, so nothing has been tombstoned to calibrate against.
+
+**Also rejected along the way.** Spoofing a browser User-Agent to clear the 403s — same grounds
+as ADR-018 §9; a 403 is the host declining automated access. And a headless browser per job,
+which destroys the cost argument the idea rested on.
+
+**Consequences.**
+- The five truncated feeds keep accumulating stale rows. This is ADR-017's existing position,
+  now with a measurement behind the decision not to fix it this way.
+- Freshness remains real for the five complete-listing sources: `greenhouse, lever, ashby,
+  jobicy, workday`.
+- **The productive path is more complete-listing sources, not cleverer expiry.** A sweepable
+  source needs no liveness probe; ADR-018 (Workday) is that path, and jobicy joined for free the
+  moment its cursor API made exhaustion cheap.
+
+**Revisit when.** A feed ships a cursor/offset API that makes exhaustion affordable (then it
+simply becomes sweepable), or one of these hosts stops 403ing automated reads — neither is
+something to wait on.

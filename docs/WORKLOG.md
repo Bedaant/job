@@ -111,6 +111,82 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-10-04 (latest+74) — COLLECT-E rejected on measurement; COLLECT-F done. Job collection is complete.
+
+**What changed.** The last two collection stages. **COLLECT-E is a rejection, not a build**
+(ADR-019); COLLECT-F is two small builds and two decisions. 850 → 855 API tests, web 140/140.
+
+**COLLECT-E — liveness probing, REJECTED.** The idea was to probe each stored job's own
+`apply_url` and treat 404/410 as removed, so the five feeds that cannot be paginated to
+exhaustion could get real freshness. The plan's bar was *a false-positive rate of 0*. Measured
+against jobs each feed is listing right now — live by construction, so any non-200 is a false
+positive:
+
+| Feed | Codes on 8 live jobs | False positives |
+|---|---|---|
+| remoteok | `{200: 8}` | 0% |
+| arbeitnow | `{200: 8}` | 0% |
+| workingnomads | `{200: 5, 403: 3}` | **37.5%** |
+| himalayas | `{403: 8}` | **100%** |
+| weworkremotely | `{403: 8}` | **100%** |
+
+Not fixable by narrowing: the 100% failures are exactly the feeds with no pagination escape;
+workingnomads is inconsistent on one host across eight sequential requests, which is noise rather
+than a special-casable rule; and a 404/410-only rule reads 403 as "no signal", so those feeds
+gain zero for several hundred requests a run. UA spoofing (would likely clear the 403s) and a
+headless browser per job were both rejected — the first on ADR-018 §9's grounds, the second
+because it destroys the cost argument the idea rested on. Evidence:
+`docs/harness-reports/collect-e-liveness.md`.
+
+**COLLECT-F — hygiene.**
+- **`connector_runs` retention (built).** One bulk DELETE per discovery run, 30-day window.
+  **F5's ATS-classifier rows are never pruned** — `models.ConnectorRun`'s own docstring calls
+  them the owner's review surface for proposed ATS patterns, so blind age-pruning would have
+  destroyed an un-reviewed decision queue. Caught while writing the test, not after.
+- **JobSpy dropped from `/sources` (built).** It advertised a source `discover_jobs_task` has
+  never fetched, with the note "Currently returns no results". The connector and its isolated
+  venv stay; it is simply no longer offered. A new test pins the invariant **both ways**: every
+  advertised source must be fetched, and every fetched source must be advertised.
+- **Remote-country filtering — not built, and I had described the gap wrongly.** `_OPEN_WORDS`
+  already filters "Remote - United States" correctly for any *known* country, so only the user's
+  own country is needed, not a world list. The real hole is a profile with **`country_code`
+  unset** (it is optional, parsed from the resume), which disables the filter entirely. A
+  200-country table is YAGNI at one India-based user and needs a dependency none of which is
+  installed (`pycountry`/`babel`) — and adding one needs the owner's approval. The fix is
+  product-side: make country required at onboarding. `GAPS.md` 4.4 is corrected.
+- **Duplicate `canonical_hash` — decided: permanently accepted.** Re-collapsing a pair means
+  picking a winner and rewriting or tombstoning the loser: the destructive direction, for a
+  cosmetic problem. Cost of leaving it is one duplicate card; risk of fixing it is deleting a row
+  a user already applied through. If it ever becomes visibly annoying, de-duplicate at **read**
+  time in the matches query, never by mutating rows.
+
+**Files changed.** New `tests/test_connector_run_retention.py`,
+new `docs/harness-reports/collect-e-liveness.md`; `workers/jobs.py`, `main.py`,
+`tests/{test_source_isolation,test_onboarding_endpoints}.py`,
+`apps/web/lib/onboarding.test.ts`; `docs/{DECISIONS,GAPS,PLAN-JOB-COLLECTION}.md`.
+
+**Dependencies added.** None — and one deliberately *not* added (see the country-filter item).
+
+**Tests.** 850 → 855 API, web 140/140. Red-before-green on all 5 new tests.
+
+**Problems hit.**
+1. **The retention trap.** `connector_runs` looks like a pure log but holds F5's proposed ATS
+   patterns, which are a human review queue with no other copy. A 30-day age sweep would have
+   silently deleted un-reviewed proposals. The test pins it.
+2. **A recursive `grep` over the repo root walked `.venv` and `node_modules` and hit the command
+   timeout.** Use the search tool, not shell `grep -r`, in this tree.
+3. **I had mis-stated GAPS 4.4** when compiling the register, and only found it by reading
+   `remote_open_to` properly rather than trusting my own earlier summary.
+
+**Collection is now complete: COLLECT-A…F are all closed** (C partly, see below). Sources with
+real freshness: `greenhouse, lever, ashby, jobicy, workday`.
+
+**Next.** One owner decision is still open and deliberately not taken: **the SmartRecruiters
+`robots.txt: Disallow: /` ruling** (ADR-018 §7), which is the only route to Swiggy. Beyond
+collection, `GAPS.md`'s remaining headline items are the ADR-015 contradiction still live in the
+extension (§2), the eval harness pointing at the wrong provider (§6.1), no CI (§5.2) and no SMTP
+(§1.1).
+
 ### 2026-10-04 (latest+73) — COLLECT-D: `Job.board_token`, so removing a board from config is no longer destructive
 
 **What changed.** Migration **0023** adds `jobs.board_token` (indexed, nullable), and delisting
