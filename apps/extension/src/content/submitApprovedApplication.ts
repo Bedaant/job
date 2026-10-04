@@ -1,15 +1,22 @@
-// Sub-project #4 (gated batch execution) — the ONE explicitly reviewed
-// exception to ADR-001's guard, registered by exact file path in
-// architectureInvariants.test.mjs's ALLOWLIST. This file exists to make
-// that exception narrow and auditable rather than a blanket carve-out:
-// it does nothing except (1) call the real backend claim endpoint, which
-// atomically checks the application is genuinely `approved` (a human
-// already clicked "Approve" in the review queue) and flips it to
-// `applied` in one locked transaction, and (2) only if that call returns
-// 200, invoke the ORIGINAL native form.requestSubmit() captured in
-// formFill.content.ts before the guard patched it. If the backend claim
-// fails for any reason — already claimed, not approved, network error,
-// anything — this throws and the native submit is never reached.
+// The ONE reviewed path that may fire a real submit, registered by exact file
+// path in architectureInvariants.test.mjs's ALLOWLIST so the carve-out stays
+// narrow and auditable. It does nothing except (1) call the backend claim
+// endpoint, which takes a row lock and moves the application `approved ->
+// submitting` in one transaction, and (2) only if that returns 200, invoke the
+// ORIGINAL native form.requestSubmit() captured in formFill.content.ts before
+// the guard patched it. If the claim fails for any reason — already claimed,
+// not approved, network error — this throws and the native submit is never
+// reached.
+//
+// DO NOT remove the claim call to "finish the ADR-015 pivot" (amended
+// 2026-10-04; ADR-015's own "code to remove" bullet reads that way and is
+// wrong). `approved` no longer implies a human clicked Approve on this item —
+// campaigns.run_campaign sets it directly when campaign.auto_submit is true,
+// which IS ADR-015 §2's campaign-level approval, already implemented. What the
+// claim provides is different and still required: the at-most-once guarantee
+// for an irreversible outward-facing action (a real application to a real
+// employer), plus the per-submission accounting ADR-015's daily-caps rail
+// depends on. Pinned by test_claim_submission_still_cannot_fire_twice.
 //
 // Not live-browser-tested this session (no Playwright/loaded-extension
 // access, same standing limitation as the rest of F11's content-script

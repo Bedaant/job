@@ -551,6 +551,28 @@ boards beyond LinkedIn/Indeed are permissive or feed-friendly; most LinkedIn/agg
   `submitApprovedApplication` gating; the `claim-submission` per-item flow; JobSpy's
   Google-only restriction; the review-queue-as-mandatory-gate framing (becomes optional
   review, not a hard gate).
+
+  > **⚠ AMENDED 2026-10-04 — this bullet is dangerous as written, and is now done.**
+  > Audited against the code: **§2 is already implemented.** `campaigns.run_campaign`
+  > sets an application straight to `approved` when `campaign.auto_submit` is true and
+  > leaves it `ready_for_review` otherwise (`campaigns.py`, pinned by
+  > `test_run_campaign_marks_approved_when_auto_submit_true` and its `auto_submit=False`
+  > counterpart). Campaign-level approval replaced the per-item human gate; the review
+  > queue is already optional. JobSpy's Google-only restriction was lifted too
+  > (`JOBSPY_SITES`).
+  >
+  > **`claim-submission` must NOT be removed.** It is not a human-approval gate. It is a
+  > `with_for_update()` row lock plus an `approved -> submitting` transition, closed by
+  > `POST /applications/{id}/submission-result` — i.e. the **at-most-once guarantee for an
+  > irreversible, outward-facing action** (a real application to a real employer), pinned by
+  > `test_claim_submission_still_cannot_fire_twice`. Deleting it would permit duplicate
+  > applications and would also destroy the per-submission accounting this ADR's own
+  > non-negotiable rail ("daily submission caps + a digest") depends on.
+  >
+  > What ADR-001 actually contributed, and what is gone, is the *precondition that a human
+  > clicked Approve on that specific item*. The mechanism that enforces "exactly once"
+  > stays. Likewise the harness no-submit guard (`guard.py`) is a different thing again and
+  > is explicitly kept by ADR-016 §4, "no exceptions" — do not conflate the three.
 - Coverage rises sharply; maintenance shifts to per-source adapters that fail visibly.
 
 **Revisit when.** A source's ToS enforcement or a spike in user account bans makes a given

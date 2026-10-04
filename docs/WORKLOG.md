@@ -111,6 +111,66 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-10-04 (latest+76) — Known-name redaction; and the "ADR-015 contradiction" was my own error
+
+**What changed.** 859 -> 864 tests. No behaviour removed.
+
+**`redact_pii` no longer depends on NER guessing a name (GAPS 5.8).** It takes `known_names`
+and matches them exactly via a presidio deny-list recognizer
+(`PatternRecognizer(supported_entity="PERSON", deny_list=[...])` passed to
+`analyze(ad_hoc_recognizers=...)` — signature read off the installed 2.2.358, not guessed).
+Verified live: the name that previously survived is now `<PERSON>`. Blank and duplicate entries
+are dropped, because a `deny_list` containing `""` would match everywhere — which a profile with
+no `full_name` would otherwise produce.
+
+**Found while doing it: PII redaction has no callers at all.** `redact_pii` appears only in its
+own tests. The features it was built for — F7 cached dossiers, F8 generation history — have **no
+storage in `models.py`**, and `research_company` is a pure function with no persistence. So
+presidio was installed ahead of its consumers. Giving it a home means building F7/F8 storage,
+which is scope nobody asked for; recorded rather than invented.
+
+**The "ADR-015 contradiction" (GAPS §2) does not exist. That section was my diagnostic error** —
+the third in that register, after 6.1 (eval provider) and 4.4 (remote-country filter). I inferred
+a contradiction from the *presence* of `claim-submission` and `submitApprovedApplication` without
+reading what they do or checking `campaigns.py`.
+
+- **ADR-015 §2 is already implemented.** `campaigns.run_campaign` sets an application straight to
+  `approved` when `campaign.auto_submit` is true, and leaves it `ready_for_review` otherwise —
+  campaign-level approval, with the review queue already optional. Pinned both ways by
+  `test_run_campaign_marks_approved_when_auto_submit_true` and its `auto_submit=False`
+  counterpart. JobSpy's Google-only restriction was lifted too.
+- **`claim-submission` is not a human-approval gate and must not be removed.** It is a
+  `with_for_update()` row lock plus an `approved -> submitting` transition closed by
+  `/submission-result`: the **at-most-once guarantee for an irreversible, outward-facing action**
+  (a real application to a real employer), pinned by
+  `test_claim_submission_still_cannot_fire_twice`. It is also the per-submission accounting that
+  ADR-015's own non-negotiable "daily submission caps + a digest" rail depends on.
+- **ADR-015's "Code to remove/change" bullet is dangerous as written** and is now amended in
+  place. Following it literally would delete duplicate-submit protection and the caps accounting.
+  Three different things were being conflated under "submit guard": ADR-001's per-item human
+  precondition (gone, correctly), the at-most-once claim (stays), and the harness no-submit guard
+  (`guard.py`, explicitly kept by ADR-016 §4 "no exceptions").
+- The comments in `submitApprovedApplication.ts` and `main.py::claim_submission` still framed the
+  mechanism in ADR-001 terms ("the human already approved once") — which is precisely what misled
+  me — and are reworded, each with an explicit "do not remove this to finish the pivot" note.
+
+**Files changed.** `apps/api/pii/redact.py`, `apps/api/main.py` (docstring),
+`apps/extension/src/content/submitApprovedApplication.ts` (comment), new
+`apps/api/tests/test_redact_known_names.py`, `apps/api/tests/test_redact.py`;
+`docs/{DECISIONS,GAPS}.md`.
+
+**Dependencies added.** None. **Tests.** 859 -> 864 API (red-before-green on all 5 new),
+extension 132, typecheck clean.
+
+**Problems hit.** My gap register has now been wrong three times, always the same way: I wrote a
+plausible cause from reading a symptom, and the entry then reads like a finding. Twice the
+register's implied action would have been actively harmful — repointing a harness that was
+already correct, and here, deleting a safety guarantee. **A GAPS entry is a hypothesis; verify it
+against the code before acting on it**, which is now stated at the top of each corrected entry.
+
+**Next.** SMTP (GAPS 1.1) still needs the owner's credentials — unchanged and unblockable from
+here. A full 30-row promptfoo scoring run remains the other open half of 6.1.
+
 ### 2026-10-04 (latest+75) — CI exists; and the eval harness was measuring the wrong code path
 
 **What changed.** Two of `GAPS.md`'s headline items. 855 → 859 tests.
