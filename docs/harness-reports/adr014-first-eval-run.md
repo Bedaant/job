@@ -48,6 +48,52 @@ to be pulled out of `results-run.json`; the CLI summary cannot express this.
 that call) is doing exactly its job, and the citation markers that leaked into bullet text on the
 smoke path are gone.
 
+> ## ⚠ CORRECTION (2026-10-04, same day) — this section named the wrong cause
+>
+> The text below says every failure comes from `deterministic_unsupported`, "pass 2's model-free
+> half". **That is wrong.** I inferred it from the `[not in facts: …]` suffix, not realising that
+> **both halves of pass 2 format their flags identically** (`engine.py` — `audit.unsupported`
+> and `deterministic_unsupported` build the same string).
+>
+> Measured properly by calling the two halves separately on 5 rows:
+>
+> | half | flags |
+> |---|---|
+> | `deterministic_unsupported` (model-free) | **0** |
+> | model checker (`STRICT_CHECK_SYSTEM`) | **31** |
+>
+> **The deterministic half is clean. The model checker produces 100% of the flags.**
+>
+> And it is not misbehaving — `STRICT_CHECK_SYSTEM` *explicitly* tells it to flag "added outcomes
+> or purposes", "scope or scale", "domains, tools, numbers, **titles**, durations and **praise
+> adjectives**". So it is working exactly as specified when it flags
+> `"Senior Backend Engineer with expertise in Python, FastAPI…"` or `"Proven ability to design
+> high-performance backend systems"`.
+>
+> **The real finding is a specification conflict between the two passes.** Pass 1 is asked for
+> "a 2-sentence professional summary" and a cover letter — prose that inherently carries titles,
+> scope and evaluative framing — while pass 2 is instructed to flag precisely those. The gate is
+> not too strict by accident; the two prompts disagree about what a résumé sentence may contain.
+>
+> **Option (a) from §3 has since been measured and eliminated.** Adding an explicit facts-only
+> instruction for the summary and cover letter changed nothing: **10/10 rows flagged before, 10/10
+> after** (~5.5 flags/row both arms), with mean summary length 200 → 206 chars. A one-line prompt
+> constraint does not move it.
+>
+> Revised options, with the diagnosis corrected:
+> 1. **Narrow `STRICT_CHECK_SYSTEM`** so titles/praise/scope framing are not claims — but those
+>    are real fabrication vectors ("Senior" when untrue, "enterprise" scale).
+> 2. **Make the model half advisory and the deterministic half the hard gate** — the deterministic
+>    half had zero false positives here and is precise about the fabrication that matters (unlisted
+>    tools and numbers). Cost: it cannot see invented outcomes in plain words, which its own
+>    docstring says it leaves to the model checker.
+> 3. **Rewrite pass 1's summary/cover-letter spec** to a form that survives pass 2 — stronger than
+>    the one-line attempt above.
+> 4. **Keep as-is** and accept that almost nothing sends.
+>
+> Everything below is left as originally written, with the cause corrected here rather than
+> silently edited, because the merged version was already presented and acted on.
+
 ### Pass 2 (truth-check) flags 29 of 30 — on the summary and cover letter, not the bullets
 
 Every failure comes from `deterministic_unsupported`, pass 2's model-free half, which flags any
