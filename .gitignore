@@ -34,3 +34,4 @@ Thumbs.db
 # fixture/config, these are per-run output
 eval/.promptfoo-state/
 eval/results.json
+eval/results-run.json

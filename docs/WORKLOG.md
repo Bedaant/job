@@ -111,6 +111,66 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-10-04 (latest+77) — ADR-014's harness completed a run for the first time, and it found something
+
+**What changed.** The eval harness runs end to end and produced the project's first tailoring
+quality measurement. Config-only; no engine change.
+
+**A third blocker had to be cleared.** latest+75 fixed the golden-set fact ids; this run hit
+another: **promptfoo spawns the Python provider with the system interpreter**, so `import
+instructor` inside `tailoring/engine.py` failed, the worker crash-looped 3x and the run stalled
+with no useful error. That was the 20-minute "hang" that looked like slow LLM calls. Pinned via
+`config.pythonExecutable` in `promptfooconfig.yaml` (the key is read by the python provider
+itself — confirmed by reading promptfoo 0.120.19's own bundle, not from docs). So ADR-014's
+harness had never completed a run since it was built.
+
+**The result — read per-assertion, not the headline.** promptfoo prints `0 passed, 30 failed`
+and that number is meaningless, because a row fails if *any* assertion fails and the rubric gate
+is broken (below). Per gate:
+
+- **Pass 1 (drafting) is clean: 107 bullets across 30 rows, every one citing a real fact id,
+  zero ungrounded.** `TailoredDraft`'s validation is doing its job.
+- **Pass 2 (truth-check) flags 29 of 30 rows** — every one from `deterministic_unsupported`,
+  the model-free half, firing on a technology name or number in the **summary or cover letter**.
+  Never on a bullet. The bullets cite facts; the prose generalises past them ("…real-time event
+  pipelines using Kafka and Py…").
+
+**Why that is the most useful thing the harness has produced.** `main.py:161` filters the
+ready/work queue to applications with **no** `flagged_unsupported_claims` — flagged means **not
+sent**. So on this golden set **~97% of applications would never be sent, while every bullet is
+correctly grounded.** Recorded as `GAPS.md` 6.7 and left as an **owner decision, not a quiet
+patch**: constrain summary/cover-letter language to facts-only, scope the hard gate to bullets
+and treat prose flags as warnings, or keep maximum safety and accept that almost nothing sends.
+Three different products; ADR-006/009 are deliberately strict and this is their trade-off with a
+number on it for the first time.
+
+**The rubric grader is removed, not left broken.** Pointing `llm-rubric` at NIM's
+OpenAI-compatible endpoint failed — 16x "No output", 4x "Could not extract JSON" — because
+`nemotron-3-super` does not reliably return the JSON promptfoo parses; it would also have been
+the same model grading its own output. A configured-but-broken grader fails every row for the
+wrong reason and hides the gate that works, which is the same class of mistake as a
+green-by-workaround pipeline. Removed with the reasoning in the config, and `GAPS.md` 6.8 records
+that the CLI pass rate is unusable until an independent grader key exists.
+
+**Files changed.** `eval/promptfooconfig.yaml`, new
+`docs/harness-reports/adr014-first-eval-run.md`, `docs/GAPS.md` (6.1 updated, 6.7/6.8 added).
+Eval output stays uncommitted (gitignored, as `eval/results.json` already was).
+
+**Dependencies added.** None. **Tests.** Unchanged at 864 — this run measures the engine, it does
+not alter it.
+
+**Problems hit.**
+1. The 20-minute "hang" diagnosed above. The lesson: a stalled run with no output is more likely
+   a crash-loop than slow work — check CPU time and open connections before waiting longer.
+2. promptfoo can sit on an interactive prompt with no stdin; `CI=true` and a closed stdin are
+   needed for an unattended run.
+3. The CLI's pass rate cannot express "one gate works, one is broken", so it reported 0% for a
+   pipeline whose drafting half is flawless. Any future reader must pull per-assertion results
+   out of `results-run.json`; that is now stated in the config, the report and GAPS.
+
+**Next.** 6.7 is the owner's call and is the highest-value open question in the product right now
+— it decides whether applications can be sent at all. SMTP (1.1) still needs credentials.
+
 ### 2026-10-04 (latest+76) — Known-name redaction; and the "ADR-015 contradiction" was my own error
 
 **What changed.** 859 -> 864 tests. No behaviour removed.
