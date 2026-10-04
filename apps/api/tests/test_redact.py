@@ -11,7 +11,12 @@ def test_redact_pii_replaces_detected_entities(mock_analyzer, mock_anonymizer):
     result = redact_pii("Contact John Smith at john@acme.com")
 
     assert result == "Contact <PERSON> at <EMAIL_ADDRESS>"
-    mock_analyzer.analyze.assert_called_once_with(text="Contact John Smith at john@acme.com", language="en")
+    # ad_hoc_recognizers is None on the default path (GAPS 5.8 added the
+    # known-name deny-list); tests/test_redact_known_names.py covers the
+    # case where a caller passes names.
+    mock_analyzer.analyze.assert_called_once_with(
+        text="Contact John Smith at john@acme.com", language="en", ad_hoc_recognizers=None
+    )
 
 
 @patch("pii.redact._anonymizer")

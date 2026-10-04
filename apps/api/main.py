@@ -301,18 +301,27 @@ def claim_submission(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    """Sub-project #4 — the ONLY gate that lets the extension's bounded
-    submit path (apps/extension/src/content/submitApprovedApplication.ts,
-    the single reviewed exception in the ADR-001 static guard's ALLOWLIST)
-    proceed. Real authority lives here, server-side — the extension-side
-    code is just the mechanical trigger; it always calls this first and
-    only touches the native submit API if this returns 200.
+    """The ONLY gate that lets the extension's bounded submit path
+    (apps/extension/src/content/submitApprovedApplication.ts, the single
+    reviewed entry in the static guard's ALLOWLIST) proceed. Real authority
+    lives here, server-side — the extension-side code is just the mechanical
+    trigger; it always calls this first and only touches the native submit API
+    if this returns 200.
 
     `with_for_update()` locks the row for the transaction so two concurrent
     claims on the same application can't both succeed — a real correctness
-    requirement, not decorative, since this is a one-time, irreversible
-    action (ADR-001: the human already approved once; this must fire at
-    most once per application, not be retriable into a duplicate send).
+    requirement, not decorative, because sending an application to an employer
+    is one-time and irreversible. **This must fire at most once per
+    application and never be retriable into a duplicate send.**
+
+    Note what `approved` means now (ADR-015, amended 2026-10-04): it no longer
+    implies a human clicked Approve on this item — `campaigns.run_campaign`
+    sets it directly when `campaign.auto_submit` is true, which is exactly
+    ADR-015 §2's campaign-level approval. So this endpoint is NOT the per-item
+    human gate the pivot removed, and must not be deleted as part of it: it is
+    the at-most-once guarantee (pinned by
+    test_claim_submission_still_cannot_fire_twice) and the per-submission
+    accounting the daily-caps rail depends on.
     """
     application = (
         db.query(models.Application)

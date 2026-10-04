@@ -21,16 +21,33 @@ re-checked here.
 | 1.4 | **The first real submit has never happened.** | DOC-CLAIM (latest+64, +65: "The first real submit, which the owner watches") | Every auto-apply path has been exercised with the no-submit guard on. The end of the funnel is unproven by design — the owner has to watch the first one. |
 | 1.5 | **No Workday account run.** | DOC-CLAIM (latest+66) | Workday multi-page step pages can't be captured, so Workday form support stays partial. |
 
-## 2. ADR-015's reversal is still not reflected in the code
+## 2. ~~ADR-015's reversal is still not reflected in the code~~ — **WRONG. Closed 2026-10-04.**
 
-ADR-015 (2026-09-26) reversed ADR-001's per-application approval. `DECISIONS.md` lists the code
-that must change to match. **It has not changed.**
+**This whole section was my diagnostic error**, and the third in this register (see also 6.1
+and 4.4). I inferred a contradiction from the *presence* of `claim-submission` and
+`submitApprovedApplication` in the extension without reading what they do or checking
+`campaigns.py`.
 
-| # | Gap | Evidence | Blocks |
-|---|---|---|---|
-| 2.1 | **Per-item claim/approve machinery is still in the extension.** `claim-submission` and `submitApprovedApplication` are still live routes and call sites. | VERIFIED — `apps/extension/src/background/apiProxyCore.mjs:16` allows `POST /applications/{uuid}/claim-submission`; `architectureInvariants.test.mjs:32-35` still pins `submitApprovedApplication.ts` as the single submit path. | The product's headline promise ("approve a campaign once, Maggie works autonomously") is contradicted by the code still gating every submission individually. |
-| 2.2 | **Review queue is still effectively a gate, not optional.** ADR-015 says it "becomes optional, not a hard gate". | DOC-CLAIM — `campaigns.py:205` shows a skipped/kept branch, but whether a campaign can run end to end with review off is untested. | Autonomy claim again. Needs one test proving a campaign completes with review disabled. |
-| 2.3 | **`auto_submit` exists but has never run true end to end.** | VERIFIED — `models.py:194` `auto_submit = Column(Boolean, default=False)`. | Combined with 1.4: the automatic mode is schema-only. |
+Audited against the code:
+
+| Was claimed | Actually |
+|---|---|
+| 2.1 "Per-item claim/approve machinery still gates every submission" | **§2 is implemented.** `campaigns.run_campaign` sets `approved` directly when `campaign.auto_submit` is true (`campaigns.py`), so campaign-level approval already replaced the per-item human gate. |
+| 2.2 "Review queue is still effectively a hard gate" | **Already optional**, and pinned both ways by `test_run_campaign_marks_approved_when_auto_submit_true` and `..._leaves_applications_ready_for_review_when_auto_submit_false`. |
+| 2.3 "`auto_submit` exists but has never run true end to end" | Accurate but belongs with 1.4 (no real submit has been watched yet), not as evidence of a contradiction. |
+
+**The important correction: `claim-submission` must not be removed**, and ADR-015's
+"Code to remove/change" bullet is dangerous as written — it is now amended in place. The
+endpoint is a `with_for_update()` lock plus an `approved -> submitting` transition: the
+**at-most-once guarantee for an irreversible outward-facing action**, pinned by
+`test_claim_submission_still_cannot_fire_twice`, and the accounting that ADR-015's own
+daily-caps rail needs. Removing it would allow duplicate applications to real employers.
+
+What remains is cosmetic: comments in `submitApprovedApplication.ts` and
+`main.py::claim_submission` still frame the mechanism in ADR-001 terms ("the human already
+approved once", "the ADR-001 guard's ALLOWLIST"), which is exactly what misled me. Those are
+reworded to ADR-015 terms so the next reader does not "finish the pivot" by deleting a safety
+guarantee.
 
 ## 3. Source coverage — the biggest product gap
 
