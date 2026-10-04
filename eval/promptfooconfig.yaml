@@ -17,10 +17,43 @@ prompts:
 
 providers:
   - id: file://providers/tailor_provider.py:call_api
+    config:
+      # WITHOUT THIS THE HARNESS CANNOT RUN AT ALL. promptfoo spawns the Python
+      # provider with plain `python` (see PythonWorkerPool ->
+      # getConfiguredPythonPath in the installed bundle), which on this machine
+      # is the system interpreter — so `import instructor` inside
+      # apps/api/tailoring/engine.py fails, the worker crash-loops 3x and the
+      # run stalls with no useful error. That is why ADR-014's harness had never
+      # completed a run before 2026-10-04.
+      #
+      # `config.pythonExecutable` is read by the python provider itself
+      # (confirmed by reading promptfoo 0.120.19's own bundle, not from docs);
+      # the PROMPTFOO_PYTHON env var is the equivalent override.
+      # Path is relative to eval/. On Linux this becomes
+      # ../apps/api/.venv/bin/python — this project's dev machine is Windows.
+      pythonExecutable: ../apps/api/.venv/Scripts/python.exe
 
 tests: file://golden.csv
 
 defaultTest:
+  # NO GRADER IS CONFIGURED FOR THE llm-rubric SOFT GATE, on purpose.
+  #
+  # promptfoo defaults to OpenAI and this project has no OpenAI key. Pointing
+  # the grader at NIM's OpenAI-compatible endpoint was tried on 2026-10-04 and
+  # does not work: nemotron-3-super does not reliably return the JSON shape
+  # llm-rubric parses, giving 16x "No output" and 4x "Could not extract JSON"
+  # across 30 rows. A configured-but-broken grader is worse than none — it fails
+  # every row for the wrong reason and hides the truth_check gate below, which
+  # does work. It would also have been the same model grading its own output.
+  #
+  # Consequence to know before reading a run: with no grader, every row's
+  # llm-rubric assertion fails, so promptfoo's headline pass rate is always 0%.
+  # READ THE PER-ASSERTION RESULTS OUT OF results-run.json, not the CLI summary.
+  # See docs/harness-reports/adr014-first-eval-run.md.
+  #
+  # To restore a real soft gate, set options.provider to an INDEPENDENT model
+  # (not the one being graded) that returns llm-rubric's JSON — needs a key this
+  # project does not currently have.
   assert:
     - type: python
       value: file://assertions/truth_check.py:no_unsupported_claims
