@@ -67,6 +67,12 @@ GREENHOUSE_BOARD_TOKENS = [
 LEVER_COMPANY_TOKENS = [
     "meesho", "zeta", "fampay", "mindtickle",
     "cred", "hevodata",  # added 2026-10-03: Bengaluru/Hyderabad/Pune roles verified live
+    # paytm: added 2026-10-05, and the only company F5 (connectors/discovery.py)
+    # ever found that this project's hand-written slug lists had missed — "paytm"
+    # was absent from COLLECT-B's 117 candidates. Verified live: 173 postings,
+    # 129 India-located, incl. "Product Management - Associate Product Manager"
+    # in Noida. One of the 19 companies COLLECT-B recorded as unreachable.
+    "paytm",
 ]
 
 ASHBY_ORG_TOKENS = [
@@ -156,6 +162,7 @@ TOKEN_COMPANY_NAMES: dict[str, str] = {
     "cred": "CRED",
     "hevodata": "Hevo Data",
     "atlan": "Atlan",
+    "paytm": "Paytm",
     # Workday tenants (COLLECT-C)
     "adobe": "Adobe",
     "cisco": "Cisco",
