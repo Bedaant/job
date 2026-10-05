@@ -51,7 +51,12 @@ REED_KEYWORDS = ["product manager", "associate product manager"]
 # actually reachable from India. THREE PLAUSIBLE SLUGS WERE A DIFFERENT COMPANY
 # ENTIRELY — `slice` is a US/Macedonia pizza business, both `porter` boards are
 # US firms, `navi` is SF-only — so never add a token because the slug matches a
-# company name. Fetch the board and read its locations first
+# company name. A NEAR-MISS of a slug we already have is the same trap: `hevo`
+# (lever) is ONE posting, "VP of Power Electronics", New York - a different
+# company from the configured `hevodata` (52 postings, Bangalore/Pune, a
+# Product Manager). Also rejected 2026-10-05: `kite` (Greenhouse, US-only, not
+# Zerodha Kite) and `fi` (Lever, London/New York, not Fi Money).
+# Fetch the board and read its locations first
 # (tests/test_board_tokens.py documents the rejects).
 #
 # Also measured: 19 of 22 Indian consumer-tech companies (razorpay, swiggy,
@@ -62,6 +67,11 @@ GREENHOUSE_BOARD_TOKENS = [
     "okta", "druva", "mongodb", "rubrik", "inmobi", "databricks", "twilio",  # India offices
     "gitlab", "grafanalabs",  # remote across countries
     "groww", "fivetran",  # added 2026-10-03: India-located PM roles verified live
+    # netradyne: added 2026-10-05 from a tools/ats_token_probe.py sweep over ~85
+    # Indian companies. Verified live: payload company "Netradyne", 24 postings,
+    # Bengaluru/Bangalore locations, 2 product roles ("Product Manager -
+    # Integrations", "Technical Product Manager - Integrations").
+    "netradyne",
 ]
 
 LEVER_COMPANY_TOKENS = [
@@ -163,6 +173,7 @@ TOKEN_COMPANY_NAMES: dict[str, str] = {
     "hevodata": "Hevo Data",
     "atlan": "Atlan",
     "paytm": "Paytm",
+    "netradyne": "Netradyne",
     # Workday tenants (COLLECT-C)
     "adobe": "Adobe",
     "cisco": "Cisco",
