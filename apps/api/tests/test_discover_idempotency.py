@@ -89,4 +89,10 @@ def test_ats_boards_keep_only_titles_matching_the_keywords(mock_scope, _embed, m
     finally:
         for p in patches:
             p.stop()
-    assert [j["title"] for j in mock_upsert.call_args.args[1]] == ["Senior Product Manager"]
+    # ADR-021: a company board returns every opening and we now store ALL of it.
+    # This test previously asserted only the FEED_KEYWORDS match survived, which
+    # was exactly the global ingest gate that decision removed — a user's
+    # description filters at match time, not at collection time.
+    assert [j["title"] for j in mock_upsert.call_args.args[1]] == [
+        "Senior Product Manager", "Staff Engineer",
+    ]

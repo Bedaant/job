@@ -100,15 +100,17 @@ def test_fetch_ats_source_reports_one_batch_per_token_that_answered():
     assert [j["external_id"] for j in jobs] == ["d1"]
 
 
-def test_trust_is_still_judged_before_keyword_filtering():
-    """A board that answered but has no matching title is a working fetch, not a
-    dead one — otherwise every board needs an open PM role in the same run or
-    nothing is ever delisted (the latest+57 bug)."""
+def test_a_board_that_matches_no_keyword_is_still_stored_and_trusted():
+    """Was `test_trust_is_still_judged_before_keyword_filtering`, which asserted
+    `jobs == []` for a non-matching board. ADR-021 removed keyword filtering at
+    ingest entirely, so the job is now STORED — a user's description filters at
+    match time rather than deciding what was ever collected. The trust property
+    it was really guarding still holds: a board that answered gets a batch."""
     boards = {"druva": [{"title": "Software Engineer", "external_id": "d9"}]}
     jobs, batches = _fetch_ats_source(lambda t: boards[t], ["druva"], ["product manager"])
 
-    assert jobs == []
-    assert [t for t, _ in batches] == ["druva"], "answered-but-filtered-out is still trustworthy"
+    assert [j["external_id"] for j in jobs] == ["d9"]
+    assert [t for t, _ in batches] == ["druva"], "a board that answered is trustworthy"
 
 
 # --- safety rails -------------------------------------------------------------

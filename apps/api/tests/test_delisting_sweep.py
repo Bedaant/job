@@ -245,10 +245,13 @@ def test_fetch_ats_source_trusts_a_board_that_matches_no_keyword():
 
     jobs, batches = _fetch_ats_source(fetcher, ["okta", "druva"], ["product manager"])
 
-    # Both answered, so both get a batch -- druva's is empty after filtering,
-    # which still correctly means "this board listed nothing we want".
+    # Both answered, so both get a batch. ADR-021 then removed keyword filtering
+    # at ingest, so druva's non-matching posting is STORED rather than dropped —
+    # the user's description filters at match time instead of deciding what was
+    # ever collected. The property this test guards (trust follows the FETCH,
+    # not the keyword match) is unchanged and now trivially true.
     assert [t for t, _ in batches] == ["okta", "druva"]
-    assert {j["external_id"] for j in jobs} == {"okta-1"}  # filtering still applies to what's kept
+    assert {j["external_id"] for j in jobs} == {"okta-1", "druva-1"}
 
 
 def test_fetch_ats_source_combines_every_tokens_jobs():

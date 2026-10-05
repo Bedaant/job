@@ -279,10 +279,24 @@ def _fetch_ats_source(
     for i, token in enumerate(tokens):
         _pace(i)
         raw = fetcher(token)
-        kept = filter_by_keywords(raw, keywords)
-        source_jobs.extend(kept)
+        # `keywords` is deliberately NOT applied (owner decision 2026-10-05,
+        # ADR-021). It used to be, and that made FEED_KEYWORDS a GLOBAL ingest
+        # gate: a user's own description only filtered what one hardcoded list
+        # had already collected. Measured before the change — 1,758 live jobs,
+        # 309 product roles, 6 SRE roles, while FOUR campaigns asked for SRE.
+        # Those campaigns were searching a pool never collected for them.
+        #
+        # Storing the whole board also makes the delisting sweep strictly more
+        # correct: ADR-017's "editing FEED_KEYWORDS tombstones stored jobs"
+        # hazard only existed because the sweep compared against a
+        # keyword-filtered payload.
+        #
+        # The parameter is kept so the signature still documents what a caller
+        # MAY filter on, and because fetch_workday_jobs filters internally for a
+        # cost reason this function must not second-guess.
+        source_jobs.extend(raw)
         if raw:
-            batches.append((token, kept))
+            batches.append((token, list(raw)))
     return source_jobs, batches
 
 
@@ -350,9 +364,11 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
     # ADR-015 multi-source: the keyless public feeds. Reported per source rather
     # than merged into one count — with six boards, "0 inserted" has to be
     # traceable to which board went quiet.
-    feed_jobs, feed_report = fetch_enabled_feeds(
-        conn_config.ENABLED_FEEDS, conn_config.FEED_KEYWORDS
-    )
+    # Empty keyword list = "keep everything" (filter_by_keywords' own contract).
+    # Same reasoning as _fetch_ats_source: the feeds return their whole board and
+    # we store it, so a user's description filters at MATCH time instead of
+    # deciding what was ever collected (ADR-021).
+    feed_jobs, feed_report = fetch_enabled_feeds(conn_config.ENABLED_FEEDS, [])
     all_jobs.extend(feed_jobs)
     runs.extend(_feed_report_rows(feed_report))
     # Each keyless feed returns its whole board in one fetch and has no
