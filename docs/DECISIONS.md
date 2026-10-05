@@ -900,3 +900,71 @@ which destroys the cost argument the idea rested on.
 **Revisit when.** A feed ships a cursor/offset API that makes exhaustion affordable (then it
 simply becomes sweepable), or one of these hosts stops 403ing automated reads — neither is
 something to wait on.
+
+---
+
+## ADR-020 — India coverage: accept the measured ceiling; no unlicensed ingestion from the India job boards
+
+**Date:** 2026-10-05 · **Status:** Accepted · **Decided by:** measurement, pending the owner's
+sign-off on the licensing action
+
+**Context.** ADR-015 put broad multi-source discovery in scope, and the owner's actual search is
+India product-manager roles. Three measurements, in order, closed every unlicensed route:
+
+1. **COLLECT-B/C:** 19 Indian consumer-tech companies have no Greenhouse/Lever/Ashby board. Of
+   the five major Western ATS platforms, only Swiggy (SmartRecruiters, blocked on ADR-018 §7) and
+   later paytm (Lever) were reachable; **16 are on none of them**.
+2. **F5 measurement (2026-10-05):** company→ATS discovery cannot fix that. `detect_ats` scored
+   **1 correct of 9**, because a modern careers page does not name its ATS in raw HTML — SPA
+   shells, post-JS board links, or outright 403s.
+3. **India job boards (2026-10-05, this ADR):** all four candidates evaluated in parallel —
+   `docs/harness-reports/india-job-boards-feasibility.md`.
+
+| Board | Technical reality | Verdict |
+|---|---|---|
+| Instahyre | public unauthenticated JSON API, 753 PM-in-Bangalore, **~half a day** to integrate | `legally-prohibited` |
+| Cutshort | anonymous JSON-LD with salary + posted date, 44k-URL sitemap, **~1 day** | `legally-prohibited` |
+| Hirist | 31k-URL daily sitemap, but SSR payload blanked and anti-bot armed | `legally-prohibited` |
+| Naukri | **hard Akamai 403 on every path**, including its own robots.txt and ToS | `blocked` |
+
+**Decision.**
+
+1. **No unlicensed ingestion from Instahyre, Cutshort, Hirist or Naukri.** Each one's terms
+   prohibit automated extraction; two name a *competing product* specifically, which is what this
+   is. Technical ease is not permission — the easiest source to read carries the most explicit
+   ban.
+2. **`robots.txt` is not the deciding signal, and must not be cited as one.** Three of the four
+   publish permissive robots (Instahyre's has zero `Disallow` lines; Hirist and Cutshort publish
+   31k/44k-URL job sitemaps) while their contracts forbid exactly this use. Robots is an
+   SEO-crawler convention; the ToS is the agreement. **Any future source decision must quote the
+   terms, not the robots file.**
+3. **Naukri is a hard no, on a stronger ground than terms.** Its edge denies a
+   plainly-identified client at request one, so extraction requires UA spoofing and
+   TLS-fingerprint matching — evasion of an access control, already rejected by ADR-018 §9 and
+   ADR-019. There is no degraded-but-legal path.
+4. **Licensing is the only sanctioned route, and it is a business action, not an engineering
+   one.** Integration is half a day to a day *once credentialed*; the permission is the entire
+   cost. Owner to decide whether to approach Info Edge (Hirist/Naukri), Cutshort (`/a/devdocs`)
+   or Instahyre.
+5. **Coverage is stated honestly rather than quietly capped.** The product covers global-remote
+   roles, India roles at multinational GCCs via Workday, and Indian companies that happen to use
+   Greenhouse/Lever/Ashby — 23 live India product roles at the time of this ADR. The user-facing
+   claim must not imply broad Indian-market coverage.
+6. **ADR-015's "user's own browser" shield does not generalise.** Cutshort's terms explicitly
+   extend their automated-access provisions to **browser extensions**. ADR-015 relies on
+   execution in the user's own session to keep exposure off shared infra; for that source the
+   argument is named and rejected. Do not assume it holds elsewhere without reading the terms.
+
+**Consequences.**
+- India coverage stays thin until a licence exists. The remaining cheap lever is **more board
+  tokens on already-permitted platforms** via `tools/ats_token_probe.py` — paytm and mindtickle
+  were both found that way, and the slug list is the limiting factor, not the method.
+- The SmartRecruiters decision (ADR-018 §7, `docs/smartrecruiters-decision-brief.md`) becomes
+  more valuable in relative terms: it is the only *already-permitted-shaped* route to a major
+  Indian consumer company (Swiggy, 168 postings). Still gated on reading the SAP API Policy.
+- A future "just scrape it" proposal for any of these four should be refused by pointing here,
+  not re-litigated.
+
+**Revisit when.** A licence or partner agreement is obtained; or a board publishes a genuine
+public jobs API with terms that permit aggregation; or the owner accepts a different market
+scope.

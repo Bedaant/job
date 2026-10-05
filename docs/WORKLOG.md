@@ -111,6 +111,71 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-10-05 (latest+81) — ADR-020: all four India job boards evaluated in parallel; every unlicensed India route is closed
+
+**What changed.** Four parallel read-only feasibility probes, one per board, then ADR-020. Docs
+only; 871 tests unchanged.
+
+**Method.** One agent per board, each capped at ~15 requests ≥1s apart with a plain identifying
+User-Agent, instructed to fetch `robots.txt` first and to **report** the posture rather than work
+around it. **No UA spoofing, no login, no challenge solving** — the rails ADR-018 §9 and ADR-019
+set.
+
+| Board | robots.txt | Technical reality | Effort if licensed | Verdict |
+|---|---|---|---|---|
+| Instahyre | **wide open**, zero `Disallow` | public unauthenticated JSON API, 12,973 jobs, **753 PM-in-Bangalore**, company names present | **~half a day** | `legally-prohibited` |
+| Cutshort | permissive + **44,320-URL** sitemap | anonymous `JobPosting` JSON-LD with **salary + datePosted + directApply** | **~1 day** | `legally-prohibited` |
+| Hirist | permissive + **31,029-URL** daily sitemap | JS-only: SSR ships field names with values **blanked**, anti-bot slice armed | low | `legally-prohibited` |
+| Naukri | **403 — cannot read it** | hard Akamai 403 on every path at request one | n/a | `blocked` |
+
+**The finding that generalises: `robots.txt` was uncorrelated with permission, and pointed the
+opposite way in three of four cases.** Instahyre's has zero `Disallow` lines while its ToS bans
+"crawl or spider" and commercial use "whether or not for profit". Hirist and Cutshort publish
+31k/44k-URL job sitemaps while their terms ban crawling and commercial derivative works.
+**Technical ease ran inversely to permission** — the easiest source to ingest carries the most
+explicit ban. Same lesson the SmartRecruiters brief drew, now confirmed four more times, and
+ADR-020 makes it a rule: **quote the terms, not the robots file.**
+
+**Two boards name this exact product.** Instahyre bars using the platform to build "a competitive
+product or service"; Naukri's terms prohibit extraction "(by any process, whether automatic or
+manual)" to offer products that "compete with the Company's services".
+
+**Cutshort's terms foreclose ADR-015's legal shield.** Their automated-access provisions cover
+"bots, scraping, **browser extensions**, data extraction". ADR-015's posture is execution "via the
+user's own browser session, never a shared server bot"; for that source the argument is explicitly
+named and rejected. ADR-020 §6 records that it does not generalise.
+
+**Naukri is a different category** — access control, not terms. Its edge 403s a
+plainly-identified client on every path, including `robots.txt` and the ToS page itself.
+Extraction would need UA spoofing plus TLS-fingerprint matching, i.e. evasion, and no
+degraded-but-legal fallback exists.
+
+**Honesty note preserved from the probe:** the Naukri ToS quotes are from a search engine's
+**index** of the page, not a response we received (it 403s). Labelled second-hand in both the
+report and the ADR rather than presented as first-party.
+
+**Decision (ADR-020).** No unlicensed ingestion from any of the four. Licensing is the only
+sanctioned route and it is a business action — integration is half a day to a day *once
+credentialed*, so the permission is the entire cost. Coverage is stated honestly rather than
+quietly capped: global-remote roles, India roles at multinational GCCs via Workday, and Indian
+companies that happen to use Greenhouse/Lever/Ashby — **23 live India product roles**.
+
+**Files changed.** New `docs/harness-reports/india-job-boards-feasibility.md`,
+`docs/DECISIONS.md` (ADR-020), `docs/GAPS.md` (3.1 closed), `docs/PLAN-JOB-COLLECTION.md`.
+
+**Dependencies added.** None. **Tests.** 871, unchanged — no code in this entry.
+
+**Problems hit.** A shell heredoc chain broke on quoting again and silently ran nothing (the
+earlier doc edits had already landed, so the state was half-applied). That is the lesson from
+latest+64 for the third time: **write prose and anything with quotes using the file tools, not
+shell heredocs.**
+
+**Next.** The remaining cheap lever is more board tokens on already-permitted platforms via
+`tools/ats_token_probe.py` — paytm and mindtickle were both surfaced that way, and the slug list
+is the limiting factor, not the method. SmartRecruiters (ADR-018 §7) is now relatively more
+valuable as the only permitted-shaped route to a major Indian consumer company, still gated on
+reading the SAP API Policy. SMTP and the first real submit remain with the owner.
+
 ### 2026-10-05 (latest+80) — GAPS 6.7 resolved: hard gate 1/30 -> 21/30, and the harness regression I had introduced
 
 **What changed.** The owner ruled on GAPS 6.7 — the model checker's findings are **framing, not
