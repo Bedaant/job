@@ -125,6 +125,13 @@ connector**, since discovery is the binding constraint.
 contract, and it is either in `SWEEPABLE_SOURCES` with evidence or explicitly excluded with a
 measured reason.
 
+> **India coverage CLOSED 2026-10-05 (ADR-020).** All four cross-company India boards were
+> evaluated in parallel and all four are unusable unlicensed — Instahyre, Cutshort and Hirist
+> `legally-prohibited`, Naukri `blocked` by Akamai at request one. `robots.txt` turned out to be
+> uncorrelated with permission (the easiest source had the most explicit ban), and two boards
+> name a *competing product* specifically. Licensing is the only sanctioned route and it is a
+> business action, not an engineering one. See `docs/harness-reports/india-job-boards-feasibility.md`.
+
 ## COLLECT-D — Board identity · **DONE** (2026-10-04, migration 0023, WORKLOG latest+73)
 
 `Job.board_token` ships, stamped by the greenhouse/lever/ashby/workday connectors and refreshed
