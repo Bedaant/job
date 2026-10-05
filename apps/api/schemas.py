@@ -444,6 +444,7 @@ class ApplicationReviewOut(BaseModel):
     tailored_bullets: List[BulletOut] = []
     tailored_cover_letter: Optional[str] = None
     flagged_unsupported_claims: List[str] = []
+    advisory_claims: List[str] = []
     pending_questions: List[str] = []
     # A pending question that is a dropdown: its real options, so the user picks one.
     question_options: dict[str, List[str]] = {}
@@ -618,6 +619,7 @@ class TailorResponse(BaseModel):
     bullets: List[BulletOut]
     cover_letter: str
     flagged_unsupported_claims: List[str] = []
+    advisory_claims: List[str] = []
     # {coverage_before, coverage_after, missing} — missing is a gap to show, never resume text.
     keyword_gap: Optional[dict] = None
 
@@ -671,6 +673,7 @@ class ApplicationDetailOut(BaseModel):
     tailored_bullets: List[DetailBulletOut] = []
     tailored_cover_letter: Optional[str] = None
     flagged_unsupported_claims: List[str] = []
+    advisory_claims: List[str] = []
     pending_questions: List[str] = []
     question_options: dict[str, List[str]] = {}
     consent_questions: List[str] = []

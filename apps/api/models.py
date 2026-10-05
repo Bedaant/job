@@ -236,7 +236,17 @@ class Application(Base):
     # ::tailor_application returns flagged_unsupported_claims) but /tailor
     # never persisted it before sub-project #2 — silently dropped on every
     # call. Surfaced, not silently kept, is the whole point of the check.
+    # HARD GATE (GAPS 6.7, owner ruling 2026-10-05): deterministic findings only
+    # — an unlisted tool or number. main.py keys the ready/work queue off this,
+    # so anything here stops the send.
     flagged_unsupported_claims = Column(JSON, default=list)
+    # ADVISORY: the model checker's claim audit. It flagged 29 of 30 golden rows
+    # on framing ("Senior Backend Engineer…", "Proven ability to…") while the
+    # bullets were 107/107 grounded, which would have blocked ~97% of
+    # applications. Shown to a human, never blocking. See
+    # tailoring/engine.py::split_gate_findings for the measurement and the
+    # accepted cost (an invented outcome in plain words is now advisory).
+    advisory_claims = Column(JSON, default=list)
     # ADR-015: questions a driver run stopped on, verbatim as the form asked them.
     # Never demographic. The review queue shows only the ones the answer bank still
     # can't answer, so saving an answer is what clears them.
