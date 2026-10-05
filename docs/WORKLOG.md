@@ -111,6 +111,77 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-10-05 (latest+79) — Migrations 0022/0023 applied to Neon; F5 measured; the ATS coverage ceiling is now a measurement
+
+**What changed.** Three things, the first of which was urgent.
+
+**1. Neon was two migrations behind, and HEAD was incompatible with it.** Asked "is job
+gathering resolved", I queried the real database and `delisted_at` **did not exist**: Neon was at
+revision **0021**, so **0022 (delisted_at, indexes, dropping `uq_jobs_canonical_hash`) and 0023
+(board_token) had never been applied.** Everything from COLLECT-A onward was merged, tested
+against in-memory SQLite, and **not live** — and worse, `upsert_jobs` writes `board_token` and
+`_sweep_delisted` filters on `delisted_at`, so a discovery run against Neon would have **errored
+out**, not degraded. I had been repeating "0022 has never run against a real Postgres" as a risk
+to watch; the accurate statement was that the feature was undeployed and HEAD was broken against
+production.
+
+Applied `alembic upgrade head` with no worker or scheduler running. Verified after: revision
+**0023**, both columns present, `uq_jobs_canonical_hash` dropped as ADR-017 §5 requires, three
+indexes built, **1,848 rows intact**. Then exercised the insert path that would have crashed —
+`upsert_jobs` against real Neon inside a transaction, rolled back, 0 synthetic rows left.
+
+**The pool, measured for the first time:** 1,848 live jobs; 266 live product roles; **23 live
+product roles in India**; 1,827 embedded. By source, arbeitnow 1,051 / jobicy 154 / himalayas 131
+/ reed 121 / remoteok 100 / wwr 97 / **greenhouse 90 / ashby 16 / lever 14**. Every one of the 23
+India product roles comes from the ATS boards (zeta, meesho, mongodb, inmobi, okta). **The 1,588
+aggregator-feed rows contribute essentially zero India product roles** — 86% of the pool, ~0% of
+the value for this search.
+
+**2. F5 measured: 1 correct of 9, and the cause is structural.** `detect_ats` regexes a careers
+page for an ATS URL. On companies whose ATS we already knew, only supabase resolved. The reason
+is not the regex: `okta.com/careers` is 290 KB with no ATS string anywhere, `meesho.com` returns
+the same 47 KB SPA shell for every candidate path, `swiggy.com` 403s on all of them. The board
+link appears only after JS, or on another host, or is blocked. Fixing that needs a headless
+browser per company — declined twice already.
+
+**3. The inversion, and the ceiling.** Instead of asking what ATS a company uses by crawling it,
+ask whether a platform has a board for a slug. That is keyless, JS-free and definitive, and it is
+now a committed tool — **`tools/ats_token_probe.py`** — rather than the scratch scripts
+COLLECT-B/C used. Probing all 19 unreachable companies across greenhouse/lever/ashby/
+smartrecruiters/workable:
+
+- **paytm → lever: added.** 173 postings, 129 India-located, incl. an Associate Product Manager
+  in Noida. **Found by F5**, and the reason matters: `paytm` was absent from COLLECT-B's 117-slug
+  list. Platform probing is only as good as its slug list; F5 works from the domain side. The two
+  are **complementary** — that is the real finding, not "F5 is bad".
+- **swiggy → smartrecruiters**, still blocked on ADR-018 §7.
+- **cars24** → an abandoned SmartRecruiters account, newest posting **2018-01-17**, caught by the
+  recency check built into the tool.
+- **The other 16 are on none of the five platforms at all.**
+
+**So more ATS tokens and better ATS discovery cannot solve India coverage. That avenue is
+exhausted, and it is now a measurement rather than a guess.** Only two honest paths remain: a
+source with cross-company India search (Naukri/Instahyre/Hirist/Cutshort — no public API, so
+scraping, needs an ADR), or accept the ceiling and state coverage honestly.
+
+**Files changed.** New `tools/ats_token_probe.py`, new
+`docs/harness-reports/f5-classifier-and-ats-coverage-ceiling.md`;
+`apps/api/connectors/config.py` (paytm + its display name), `docs/GAPS.md` (3.1).
+
+**Dependencies added.** None. **Tests.** 864, unchanged — plus the config guards in
+`test_board_tokens.py` cover the new token.
+
+**Problems hit.** My own framing of the migration risk was too soft for three consecutive
+sessions. "Has never run against a real Postgres" reads like a caveat; "the feature is not
+deployed and HEAD would crash against production" is what it actually meant. Worth remembering
+that a schema caveat and a broken deployment are the same sentence until someone queries the
+database.
+
+**Next.** GAPS 6.7 (the truth-check blocking ~97% of applications) is still the decision that
+gates everything downstream. For coverage, the remaining choice is the Indian-job-board ADR or
+accepting the ceiling; the cheap middle step is running `ats_token_probe.py` over a much longer
+Indian-startup slug list, since paytm shows the list is the limiting factor.
+
 ### 2026-10-04 (latest+78) — GAPS 6.7 re-measured: the cause was the opposite of what latest+77 said
 
 **What changed.** Measurement and documentation only. No code. Tests unchanged at 864.
