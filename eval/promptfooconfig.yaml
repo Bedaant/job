@@ -35,8 +35,24 @@ providers:
 
 tests: file://golden.csv
 
+# The per-row llm-rubric lives in golden.csv's `rubric_needs_grader` column,
+# NOT `__expected` — deliberately renamed 2026-10-05 so promptfoo does not treat
+# it as an assertion.
+#
+# Why: with an llm-rubric in `__expected` and no grader key, promptfoo does not
+# merely fail the soft gate — it ERRORS the whole test before the python
+# assertion runs, recording no response and no component results. A 30-row run
+# produced "0 passed, 0 failed, 30 errors" and zero usable data. Removing the
+# (broken) NIM grader in an earlier pass therefore made the harness strictly
+# worse than leaving it in: at least a failing grader let the hard gate run.
+#
+# Renaming the column keeps the rubric text in the file for whenever a real
+# grader key exists, while runs produce real numbers from the gate that matters.
+# To re-enable: rename the column back to `__expected` AND set
+# defaultTest.options.provider to an INDEPENDENT model (not the one being
+# graded) that returns llm-rubric's JSON.
 defaultTest:
-  # NO GRADER IS CONFIGURED FOR THE llm-rubric SOFT GATE, on purpose.
+  # No grader is configured; see the note above.
   #
   # promptfoo defaults to OpenAI and this project has no OpenAI key. Pointing
   # the grader at NIM's OpenAI-compatible endpoint was tried on 2026-10-04 and

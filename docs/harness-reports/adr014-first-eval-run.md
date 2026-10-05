@@ -1,5 +1,35 @@
 # ADR-014 eval: the first completed run, and what it measured
 
+> ## ⚠ SECOND CORRECTION (2026-10-05) — §4's "remove the grader" was wrong, and there is now a real number
+>
+> **§4 removed the broken NIM grader on the reasoning that a configured-but-broken grader "fails
+> every row for the wrong reason". That made things worse.** With an `llm-rubric` in `__expected`
+> and no grader key, promptfoo does not fail the soft gate — it **ERRORS the whole test** before
+> the python assertion runs, recording no response and no component results. A 30-row run gave
+> `0 passed, 0 failed, 30 errors` and zero usable data, which also invalidated this report's own
+> instruction to "read the per-assertion results out of the JSON" — there were none.
+>
+> Fixed by moving the rubric text out of `__expected` into a `rubric_needs_grader` column, so
+> promptfoo stops treating it as an assertion. The rubric is preserved for whenever an
+> independent grader key exists.
+>
+> **With that fixed, and after the owner's GAPS 6.7 ruling (deterministic half = hard gate):**
+>
+> | | before | after |
+> |---|---|---|
+> | hard gate | **1 / 30 (3%)** | **21 / 30 (70%)** |
+> | bullets grounded | 107 / 107 | **111 / 111** |
+> | advisory findings | n/a (all blocked) | 136, mean 4.5/row, non-blocking |
+>
+> The 9 remaining blocks are genuine fabrication, not framing: the cover letter names the *job's*
+> technology when the candidate's facts don't contain it — flagged terms `iOS`, `Swift`, `Rust`,
+> `React`, `SQL`, `SRE`, `Machine Learning`, `SEO`. e.g.
+> `"I am applying for the Staff iOS Engineer position at Harborlight." [not in facts: iOS]`.
+>
+> Known imprecision, left deliberately: that sentence arguably names the *role*, not a skill
+> claim, and the gate cannot tell those apart, so it blocks conservatively. A false block costs
+> one application; a false pass costs credibility.
+
 **Date:** 2026-10-04 · 30 golden rows, NIM (`nemotron-3-super-120b-a12b`), `-j 1 --no-cache`,
 8m48s · raw output `eval/results-run.json` (NOT committed — `eval/results.json` was already gitignored, so eval output follows that convention; regenerate with §5)
 

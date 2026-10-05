@@ -253,11 +253,17 @@ def test_claim_audit_flags_padding_phrases_uncited_claims_and_unknown_ids():
 
 def test_truth_check_uses_strict_prompt_blind_to_the_jd_and_adds_deterministic_flags():
     with patch("tailoring.engine._call_claude_structured", return_value=ClaimAudit()) as call:
-        flags = truth_check(DET_FACTS, "Platform engineer.", ["Deployed 12 services on K8s with Terraform"], "Hi.")
+        model_flags, det_flags = truth_check(
+            DET_FACTS, "Platform engineer.", ["Deployed 12 services on K8s with Terraform"], "Hi."
+        )
     system, user, model = call.call_args.args[:3]
     assert system == STRICT_CHECK_SYSTEM and model is ClaimAudit
     assert "JOB DESCRIPTION" not in user  # ADR-006
-    assert flags == ["Deployed 12 services on K8s with Terraform [not in facts: Terraform]"]
+    # truth_check now returns the two halves SEPARATELY instead of concatenating
+    # them (GAPS 6.7): only the deterministic half is a hard gate. The flag this
+    # test has always asserted is a deterministic one — an unlisted tool.
+    assert det_flags == ["Deployed 12 services on K8s with Terraform [not in facts: Terraform]"]
+    assert model_flags == []
 
 
 def test_tailor_prompt_forbids_padding():

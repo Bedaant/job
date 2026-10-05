@@ -32,6 +32,7 @@ def prepare_application_for_review(db: Session, application: models.Application)
     }
     application.tailored_cover_letter = result["cover_letter"]
     application.flagged_unsupported_claims = result["flagged_unsupported_claims"]
+    application.advisory_claims = result.get("advisory_claims") or []
     application.status = models.ApplicationStatus.ready_for_review
 
     write_event(

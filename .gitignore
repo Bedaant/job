@@ -35,3 +35,4 @@ Thumbs.db
 eval/.promptfoo-state/
 eval/results.json
 eval/results-run.json
+eval/results-gate-split.json

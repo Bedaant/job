@@ -333,7 +333,46 @@ def truth_check(facts: list[dict], summary: str, bullet_texts: list[str], cover_
     except InstructorRetryException as exc:
         raise RuntimeError(f"Truth-check pass could not produce a valid response: {exc}") from exc
     sentences = split_sentences(summary) + list(bullet_texts) + split_sentences(cover_letter)
-    return audit.unsupported(known_fact_ids) + deterministic_unsupported(facts, sentences)
+    # Returned SEPARATELY, not concatenated (GAPS 6.7, owner ruling 2026-10-05).
+    # Concatenating them is what made the gate un-splittable at the call site:
+    # the model checker's findings blocked 29 of 30 golden rows while the
+    # deterministic half flagged nothing. See split_gate_findings.
+    return audit.unsupported(known_fact_ids), deterministic_unsupported(facts, sentences)
+
+
+def split_gate_findings(model_findings: list[str],
+                        deterministic_findings: list[str]) -> tuple[list[str], list[str]]:
+    """Which pass-2 findings BLOCK an application, and which are advisory.
+
+    Owner ruling 2026-10-05 (GAPS 6.7), on measured evidence: the model
+    checker's findings are **framing, not fabrication**, and must not block.
+
+    What forced it: on the 30-row golden set the bullets were 107/107 correctly
+    grounded and pass 2 still flagged 29 of 30 rows — every flag from the model
+    checker, none from `deterministic_unsupported`. `main.py` drops any
+    application with `flagged_unsupported_claims` from the ready queue, so ~97%
+    of applications could never be sent. The checker was obeying its own
+    instructions: `STRICT_CHECK_SYSTEM` tells it to flag "scope or scale" and
+    "titles, durations and praise adjectives", so it flagged "Senior Backend
+    Engineer with expertise in…" and "Proven ability to…".
+
+    hard gate -> deterministic only: a tool/technology name or a number the
+                 draft states that no fact contains. Precise, and it had zero
+                 false positives across the measured rows.
+    advisory  -> the model checker's audit. Surfaced to a human, never blocking.
+
+    **The accepted cost, stated so it is not forgotten:**
+    `deterministic_unsupported` only sees names in `matching/skills.py`'s
+    vocabulary plus digits — its own docstring says an invented domain or
+    outcome in plain words is "left to the model checker". Making that advisory
+    means such a claim can reach an employer unless a human reads the advisory
+    list. That is the trade the owner took, not an oversight: ADR-006's
+    no-fabrication rail now binds on concrete claims and advises on prose.
+    """
+    hard = list(deterministic_findings)
+    seen = set(hard)
+    advisory = [f for f in model_findings if f not in seen]
+    return hard, advisory
 
 
 def tailor_application(job: dict, facts: list[dict]) -> dict:
@@ -410,15 +449,26 @@ def tailor_application(job: dict, facts: list[dict]) -> dict:
         )
         raw_check = call_llm(smoke_check_system, check_user)
         cleaned_check = raw_check.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        unsupported_claims = json.loads(cleaned_check).get("unsupported_claims", [])
+        # Smoke path: one unstructured model call, no deterministic half at all,
+        # so by the same ruling nothing here is a hard gate.
+        advisory_claims = json.loads(cleaned_check).get("unsupported_claims", [])
+        unsupported_claims = []
     else:
-        unsupported_claims = truth_check(facts, summary, [b["text"] for b in bullets], cover_letter)
+        model_findings, det_findings = truth_check(
+            facts, summary, [b["text"] for b in bullets], cover_letter
+        )
+        unsupported_claims, advisory_claims = split_gate_findings(model_findings, det_findings)
 
     return {
         "summary": summary,
         "bullets": bullets,
         "cover_letter": cover_letter,
+        # Hard gate: deterministic findings only (GAPS 6.7). main.py keys the
+        # ready/work queue off this, so anything in here stops the send.
         "flagged_unsupported_claims": unsupported_claims,
+        # Advisory: the model checker's claim audit. Shown to a human, never
+        # blocking — see split_gate_findings for the measurement behind this.
+        "advisory_claims": advisory_claims,
         # Advisory only: `missing` is what the job wants and the facts don't
         # show — for the user to see, never written into the resume.
         "keyword_gap": {

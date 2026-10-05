@@ -111,6 +111,73 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-10-05 (latest+80) — GAPS 6.7 resolved: hard gate 1/30 -> 21/30, and the harness regression I had introduced
+
+**What changed.** The owner ruled on GAPS 6.7 — the model checker's findings are **framing, not
+fabrication** — and it is implemented, deployed and measured. 864 -> 871 tests. Migration 0024
+applied to Neon the same session, not left pending.
+
+**The split.** `truth_check` now returns its two halves separately instead of concatenating them
+(concatenation was what made the gate un-splittable at the call site). New
+`split_gate_findings()`: `deterministic_unsupported` is the **hard gate**, the model checker's
+audit becomes **advisory**, duplicates across the halves reported once. `Application.advisory_claims`
+(migration 0024) persists it, `batch_prep` writes it, three schemas expose it. `main.py:161` is
+untouched and now does the right thing by construction, because it keys off
+`flagged_unsupported_claims`, which is deterministic-only.
+
+**Measured end to end on the 30-row golden set:**
+
+| | before | after |
+|---|---|---|
+| hard gate | **1 / 30 (3%)** | **21 / 30 (70%)** |
+| bullets grounded | 107 / 107 | **111 / 111** |
+| advisory findings | n/a — all blocked | 136, mean 4.5/row, non-blocking |
+
+**The 9 remaining blocks are the right ones.** The cover letter names the *job's* technology when
+the candidate's facts do not contain it — flagged terms `iOS`, `Swift`, `Rust`, `React`, `SQL`,
+`SRE`, `Machine Learning`, `SEO`, e.g. `"I am applying for the Staff iOS Engineer position at
+Harborlight." [not in facts: iOS]`. That is the claim that gets an application binned, and it is
+now what blocks instead of "Proven ability to…". Left deliberately imprecise: that sentence
+arguably names the *role* rather than claiming the skill, and the gate cannot tell those apart,
+so it blocks conservatively — a false block costs one application, a false pass costs credibility.
+
+**A regression I had introduced, found by this run.** latest+77 removed the broken NIM grader on
+the reasoning that "a configured-but-broken grader fails every row for the wrong reason". That
+was wrong in effect: with an `llm-rubric` in `__expected` and **no** grader key, promptfoo does
+not fail the soft gate — it **errors the whole test** before the python assertion runs, recording
+no response and no component results. The first verification run returned `0 passed, 0 failed,
+30 errors` and zero usable data, and it invalidated the instruction I had written into three
+documents ("read the per-assertion results out of the JSON") — there were none to read. Removing
+the grader had made the harness strictly worse than leaving it in.
+
+Fixed by moving the rubric text from `__expected` into a `rubric_needs_grader` column, so
+promptfoo stops treating it as an assertion. The rubric is preserved for whenever an independent
+grader key exists; the hard gate now produces real numbers.
+
+**The accepted cost, recorded in code.** `deterministic_unsupported` only sees names in
+`matching/skills.py`'s vocabulary plus digits; its own docstring says an invented domain or
+outcome in plain words is "left to the model checker". That path is now advisory, so such a claim
+can reach an employer unless a human reads the advisory list — 136 of them on this set.
+ADR-006's no-fabrication rail now **binds on concrete claims and advises on prose**. Stated in
+`split_gate_findings`' docstring so it cannot later read as an oversight. Related: the
+`nvidia_smoke` path has no deterministic half, so it now has **no hard fabrication gate at all**.
+
+**Files changed.** `apps/api/tailoring/engine.py`, `apps/api/models.py`, `apps/api/batch_prep.py`,
+`apps/api/schemas.py`, new `apps/api/alembic/versions/0024_application_advisory_claims.py`, new
+`apps/api/tests/test_truthcheck_gate_split.py`, `apps/api/tests/test_tailoring_engine.py`;
+`eval/golden.csv` (column rename), `eval/promptfooconfig.yaml`,
+`docs/harness-reports/adr014-first-eval-run.md` (second correction), `docs/GAPS.md` (6.7 resolved,
+6.8 updated), `.gitignore`.
+
+**Problems hit.** Fifth wrong call of the same shape this week: I reasoned about what promptfoo
+*should* do with a missing grader instead of checking what it *does*. Same as the NIM grader, the
+`[not in facts:]` format, F5's premise and the migration state. The difference is that this one
+was caught by the verification run I had deliberately gated the merge on, rather than by the
+owner later.
+
+**Next.** India coverage is the remaining product question (ADR for Indian job boards, or accept
+the measured ceiling). SMTP still needs credentials; the first real submit still needs the owner.
+
 ### 2026-10-05 (latest+79) — Migrations 0022/0023 applied to Neon; F5 measured; the ATS coverage ceiling is now a measurement
 
 **What changed.** Three things, the first of which was urgent.
