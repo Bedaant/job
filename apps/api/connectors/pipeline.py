@@ -11,7 +11,7 @@ of being silently skipped).
 from datetime import datetime
 
 from sqlalchemy import or_, tuple_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 import models
 from matching.embeddings import embed_texts
@@ -39,8 +39,18 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int, int]:
 
     batch_hashes = [j["canonical_hash"] for j in jobs]
     batch_keys = [(j["source"], j["external_id"]) for j in jobs]
+    # defer(embedding): every matching row used to arrive carrying a 1024-dim
+    # vector it is never read for, and since ADR-021 re-fetches whole boards the
+    # match set in a steady-state run is the ENTIRE live pool, hourly, in one
+    # SimpleWorker process.
+    #
+    # Only `embedding` is deferred, deliberately. `description` is in
+    # _UPDATE_FIELDS and the loop below reads `getattr(existing, field)` as a
+    # fallback, so deferring it would lazy-load per row — an N+1 strictly worse
+    # than the thing being fixed.
     existing_rows = (
         db.query(models.Job)
+        .options(defer(models.Job.embedding))
         .filter(
             or_(
                 models.Job.canonical_hash.in_(batch_hashes),
@@ -62,7 +72,10 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int, int]:
     # misses (F4 gap, DEPENDENCIES.md §3). ponytail: scoped to the current
     # batch only, not a full-table scan against every existing job — that
     # needs its own index/architecture call, not made here.
-    accepted_fingerprints: list[tuple[str, int]] = []
+    # Keyed by company, not a flat list: the scan is per-company anyway (the
+    # company equality check short-circuits), and ADR-021 made the batch the
+    # whole pool rather than ~100 rows.
+    accepted_fingerprints: dict[str, list[int]] = {}
     to_insert = []
     to_update = []
     updated = 0
@@ -85,13 +98,11 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int, int]:
             continue
 
         fingerprint = simhash(f"{job['company']} {job['title']}")
-        if any(
-            company == job["company"] and is_near_duplicate(fingerprint, other_fp)
-            for company, other_fp in accepted_fingerprints
-        ):
+        same_company = accepted_fingerprints.setdefault(job["company"], [])
+        if any(is_near_duplicate(fingerprint, other_fp) for other_fp in same_company):
             skipped += 1
             continue
-        accepted_fingerprints.append((job["company"], fingerprint))
+        same_company.append(fingerprint)
 
         seen_in_batch.add(h)
         to_insert.append({

@@ -1074,7 +1074,16 @@ def list_sources(db: Session = Depends(get_db), _user: models.User = Depends(get
         if error and reasons.get(source) is None and source in _SOURCE_LABELS:
             reasons[source] = "Last check failed; trying again on the next run."
 
-    counts = dict(db.query(models.Job.source, func.count(models.Job.id)).group_by(models.Job.source).all())
+    # Live rows only (GAPS 2.5). This counted tombstones too, which mattered
+    # little when the pool was ~1,800 keyword-filtered rows and matters a lot
+    # now ADR-021 stores whole boards: the number a user reads as "jobs from
+    # this source" should not include ones it stopped listing.
+    counts = dict(
+        db.query(models.Job.source, func.count(models.Job.id))
+        .filter(models.Job.delisted_at.is_(None))
+        .group_by(models.Job.source)
+        .all()
+    )
     return [
         schemas.SourceOut(id=sid, label=label, note=note, enabled=reasons[sid] is None,
                           reason=reasons[sid], job_count=counts.get(sid, 0))
