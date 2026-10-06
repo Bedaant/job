@@ -515,8 +515,12 @@ def test_campaign_status_transitions(from_status, to_status, expected):
     client, SessionLocal = _client()
     headers = _auth(client, f"campstatus{from_status}{to_status}@example.com")
     profile = client.post("/profiles", headers=headers, json={"persona": "developer"}).json()
+    # `roles` is required for the ACTIVE end state (GAPS 2.4, enforced in
+    # main.py::update_campaign) — this test is about the transition table, so it
+    # supplies one rather than tripping that unrelated check.
     campaign_id = client.post("/campaigns", headers=headers,
-                              json={"profile_id": profile["id"], "name": "Backend roles"}).json()["id"]
+                              json={"profile_id": profile["id"], "name": "Backend roles",
+                                    "roles": ["Backend Engineer"]}).json()["id"]
     db = SessionLocal()
     row = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).one()
     row.status = models.CampaignStatus(from_status)

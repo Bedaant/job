@@ -120,7 +120,17 @@ def select_candidates(db: Session, campaign: models.Campaign, limit: int) -> lis
     )
     # Stored matches predate newer filters: a remote role restricted to another country is left out here too.
     country = campaign.profile.country_code
-    matches = [m for m in query.order_by(models.Match.score.desc()).all() if remote_open_to(m.job, country)]
+    # Tie-break on created_at then id: `score.desc()` alone leaves equal-scoring
+    # matches in whatever order the database returns, so which job a capped run
+    # applies to was NONDETERMINISTIC — in production, not just in tests. Two
+    # matches at score 90 and daily_cap=1 could pick either. Found while chasing
+    # the GAPS 6.6 flake.
+    matches = [
+        m for m in query.order_by(
+            models.Match.score.desc(), models.Match.created_at.asc(), models.Match.id.asc()
+        ).all()
+        if remote_open_to(m.job, country)
+    ]
     return matches[:limit]
 
 
