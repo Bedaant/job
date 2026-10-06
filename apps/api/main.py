@@ -650,6 +650,35 @@ def update_campaign(
     for key, value in fields.items():
         setattr(campaign, key, value)
 
+    # GAPS 2.4 — an ACTIVE campaign must name at least one role.
+    #
+    # ADR-021 stopped FEED_KEYWORDS gating ingest, so discovery stores whole
+    # boards (1,768 -> 5,119 jobs on the first unfiltered run). That global
+    # keyword list had been an accidental backstop: `campaigns._in_bounds`
+    # applies its title filter only `if campaign.roles`, so a roles-less
+    # campaign used to be harmless purely because nothing but product roles had
+    # ever been collected. Now it draws from the entire pool, gated only by
+    # min_match_score and passes_hard_filters — and the latter is deliberately
+    # built so missing data never excludes a job. With auto_submit on, that is
+    # an autonomous apply path to postings nobody asked for.
+    #
+    # Checked on the RESULTING state, which covers both ways in: activating a
+    # roles-less campaign, and clearing roles on one that is already active.
+    # Only the active end state binds, so pausing or archiving a pre-existing
+    # roles-less row still works — that is how a user would fix one.
+    #
+    # Blank strings do not count: _in_bounds would build `title.ilike('%%')`,
+    # which matches every job, so `[""]` is exactly as wide open as [].
+    if campaign.status == models.CampaignStatus.active and not [
+        r for r in (campaign.roles or []) if r and r.strip()
+    ]:
+        raise HTTPException(
+            422,
+            "An active campaign needs at least one role — it decides which jobs "
+            "Maggie may apply to, and without it the campaign matches every "
+            "posting we have collected. Add a role, or leave the campaign paused.",
+        )
+
     db.commit()
     db.refresh(campaign)
     return campaign
