@@ -104,6 +104,6 @@ def test_only_exhaustible_sources_are_sweepable():
     """Pins the measured outcome (see this module's docstring). Adding a source
     here has to be a deliberate edit with a measurement behind it.
     """
-    assert SWEEPABLE_SOURCES == {"greenhouse", "lever", "ashby", "jobicy", "workday"}
+    assert SWEEPABLE_SOURCES == {"greenhouse", "lever", "ashby", "jobicy"}  # workday removed 2026-10-06: its payload is keyword-filtered (one detail request per posting), so it is not a complete listing and narrowing FEED_KEYWORDS would have tombstoned live Adobe/Cisco roles
     for truncated in ("remoteok", "himalayas", "arbeitnow", "weworkremotely", "workingnomads"):
         assert truncated not in SWEEPABLE_SOURCES, truncated

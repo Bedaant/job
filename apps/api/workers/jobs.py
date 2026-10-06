@@ -13,7 +13,7 @@ from rq.exceptions import DuplicateJobError
 
 from connectors import config as conn_config
 from connectors.ashby import fetch_ashby_jobs
-from connectors.feeds import fetch_enabled_feeds, filter_by_keywords
+from connectors.feeds import fetch_enabled_feeds
 from connectors.greenhouse import fetch_greenhouse_jobs
 from connectors.lever import fetch_lever_jobs
 from connectors.normalize import canonical_hash
@@ -40,6 +40,10 @@ logger = logging.getLogger(__name__)
 CAMPAIGN_SWEEP_INTERVAL_SECONDS = 60 * 60
 # One embedding pass every 2 minutes: ~6 jobs a pass on Voyage's free tier (3 RPM / 10K TPM).
 EMBED_BACKLOG_INTERVAL_SECONDS = 2 * 60
+# Per-campaign cap on the ids embed_backlog_task collects. backfill_job_embeddings
+# only embeds ~50 a pass anyway, so gathering every in-bounds id is wasted work —
+# and after ADR-021 that set is thousands of rows, re-queried every 2 minutes.
+EMBED_BATCH_LIMIT = 50
 
 # Task 5 (freshness, phase 1): sources that return a FULL listing per fetch —
 # a job's absence from this run's payload is real signal it left the board.
@@ -72,12 +76,24 @@ EMBED_BACKLOG_INTERVAL_SECONDS = 2 * 60
 # (ENABLED_FEEDS), just never swept. Don't re-probe them; the numbers are in
 # tests/test_feed_pagination.py's docstring, which pins this set so re-adding
 # a disqualified source cannot be quiet.
-SWEEPABLE_SOURCES = {"greenhouse", "lever", "ashby", "jobicy", "workday"}
+# workday was REMOVED 2026-10-06. This set is documented above as "sources that
+# return a FULL listing per fetch", and after ADR-021 every other member
+# genuinely does — but `fetch_workday_jobs` still keyword-filters before
+# hydrating (a cost control: each posting needs its own detail request, so a
+# whole board is ~526 extra calls for Adobe). Its payload is therefore NOT a
+# complete listing, which is exactly ADR-017 §3's trap: narrowing FEED_KEYWORDS
+# would have tombstoned every live Adobe and Cisco product role on the next run.
+# Workday keeps being ingested; it just stops being swept, like the five
+# truncated feeds. Freshness for it needs the filter gone, which needs the
+# per-job detail fetch to get cheaper.
+SWEEPABLE_SOURCES = {"greenhouse", "lever", "ashby", "jobicy"}
 
 
 def _sweep_delisted(db, source: str, token: str | None, jobs: list[dict]) -> None:
     """Set delisted_at=now on currently-listed (NULL) rows for one BOARD that
-    are absent from `jobs` — this run's fetched (and keyword-filtered) payload
+    are absent from `jobs` — this run's fetched payload for that board (whole
+    boards since ADR-021; the sources whose payload is still filtered are not in
+    SWEEPABLE_SOURCES)
     for that board. One bulk UPDATE, not per-row.
 
     COLLECT-D: `token` scopes the sweep to a single board within the source
@@ -249,7 +265,7 @@ def _fetch_keyword_source(fetcher, keywords: list[str]) -> tuple[list[dict], lis
 
 
 def _fetch_ats_source(
-    fetcher, tokens: list[str], keywords: list[str]
+    fetcher, tokens: list[str]
 ) -> tuple[list[dict], list[tuple[str, list[dict]]]]:
     """Fetch every token's board for one per-board source (greenhouse / lever /
     ashby / workday). Returns `(all_jobs, batches)`, where `batches` has one
@@ -269,20 +285,29 @@ def _fetch_ats_source(
     genuinely empty one are indistinguishable from an empty list (ADR-017 §3),
     and guessing wrong tombstones live jobs.
 
-    Trust is judged on the RAW fetch, before keyword filtering: a board that
-    responded but has no role matching FEED_KEYWORDS is a working fetch, not a
-    dead one. Judging it after filtering meant every board had to have an open
-    matching role in the same run or nothing was ever delisted.
+    Nothing is filtered here. ADR-021 removed the keyword gate: the whole board
+    is stored and a user's description filters at MATCH time instead of deciding
+    what was ever collected. Trust therefore follows the fetch alone, which is
+    what it always should have — judging it after filtering once meant every
+    board had to have an open matching role in the same run or nothing was ever
+    delisted (the latest+57 bug).
+
+    `fetch_workday_jobs` is the one fetcher that still filters, inside itself and
+    for a cost reason (one detail request per posting). This function does not
+    know or care.
     """
     source_jobs: list[dict] = []
     batches: list[tuple[str, list[dict]]] = []
     for i, token in enumerate(tokens):
         _pace(i)
         raw = fetcher(token)
-        kept = filter_by_keywords(raw, keywords)
-        source_jobs.extend(kept)
+        # The whole board, unfiltered (ADR-021). Storing it also makes the
+        # delisting sweep strictly more correct for these sources: ADR-017's
+        # "editing FEED_KEYWORDS tombstones stored jobs" hazard only existed
+        # because the sweep compared against a keyword-filtered payload.
+        source_jobs.extend(raw)
         if raw:
-            batches.append((token, kept))
+            batches.append((token, list(raw)))
     return source_jobs, batches
 
 
@@ -328,19 +353,18 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
     # nothing this run" from "has never run".
     runs: list[dict] = []
 
-    # A company board returns every opening; keep the target titles only (FEED_KEYWORDS).
-    kw = conn_config.FEED_KEYWORDS
     for source_name, fetch in (
         ("remotive", lambda: _fetch_keyword_source(fetch_remotive_jobs, conn_config.REMOTIVE_KEYWORDS)),
         ("reed", lambda: _fetch_keyword_source(fetch_reed_jobs, conn_config.REED_KEYWORDS)),
-        ("greenhouse", lambda: _fetch_ats_source(fetch_greenhouse_jobs, conn_config.GREENHOUSE_BOARD_TOKENS, kw)),
-        ("lever", lambda: _fetch_ats_source(fetch_lever_jobs, conn_config.LEVER_COMPANY_TOKENS, kw)),
-        ("ashby", lambda: _fetch_ats_source(fetch_ashby_jobs, conn_config.ASHBY_ORG_TOKENS, kw)),
+        ("greenhouse", lambda: _fetch_ats_source(fetch_greenhouse_jobs, conn_config.GREENHOUSE_BOARD_TOKENS)),
+        ("lever", lambda: _fetch_ats_source(fetch_lever_jobs, conn_config.LEVER_COMPANY_TOKENS)),
+        ("ashby", lambda: _fetch_ats_source(fetch_ashby_jobs, conn_config.ASHBY_ORG_TOKENS)),
         # COLLECT-C: one tenant per employer, same per-token shape as the three
-        # ATS boards. fetch_workday_jobs already filters on FEED_KEYWORDS before
-        # its detail fetches (it must, to avoid hydrating a whole 527-job board),
-        # so _fetch_ats_source's filter here is a harmless second pass.
-        ("workday", lambda: _fetch_ats_source(fetch_workday_jobs, _workday_tokens(), kw)),
+        # ATS boards. fetch_workday_jobs filters on FEED_KEYWORDS inside itself
+        # (it must — one detail request per posting, so a whole board is ~526
+        # extra calls for Adobe). That is why workday is NOT in
+        # SWEEPABLE_SOURCES: its payload is not a complete listing.
+        ("workday", lambda: _fetch_ats_source(fetch_workday_jobs, _workday_tokens())),
     ):
         source_jobs, batches, run = _isolate(source_name, fetch)
         all_jobs.extend(source_jobs)
@@ -350,9 +374,11 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
     # ADR-015 multi-source: the keyless public feeds. Reported per source rather
     # than merged into one count — with six boards, "0 inserted" has to be
     # traceable to which board went quiet.
-    feed_jobs, feed_report = fetch_enabled_feeds(
-        conn_config.ENABLED_FEEDS, conn_config.FEED_KEYWORDS
-    )
+    # Empty keyword list = "keep everything" (filter_by_keywords' own contract).
+    # Same reasoning as _fetch_ats_source: the feeds return their whole board and
+    # we store it, so a user's description filters at MATCH time instead of
+    # deciding what was ever collected (ADR-021).
+    feed_jobs, feed_report = fetch_enabled_feeds(conn_config.ENABLED_FEEDS, [])
     all_jobs.extend(feed_jobs)
     runs.extend(_feed_report_rows(feed_report))
     # Each keyless feed returns its whole board in one fetch and has no
@@ -447,9 +473,30 @@ def embed_backlog_task() -> dict:
     from campaigns import _in_bounds
     with session_scope() as db:
         # Jobs an active campaign asks for first; the free tier is too slow to spend on the rest.
-        unembedded = db.query(models.Job).filter(models.Job.embedding.is_(None))
         active = db.query(models.Campaign).filter(models.Campaign.status == models.CampaignStatus.active).all()
-        wanted = {j.id for c in active for j in _in_bounds(unembedded, c)}
+        # ids only, capped per campaign. Was `db.query(models.Job)`, which
+        # materialised full ORM rows (description included) for every unembedded
+        # in-bounds job, once per campaign, every 2 minutes — fine at a
+        # ~1,800-row pool, not after ADR-021 made it ~5,000 and growing.
+        # `_in_bounds` only filters on Job columns, so an id-only query works.
+        unembedded = db.query(models.Job.id).filter(models.Job.embedding.is_(None))
+        wanted = {
+            row[0]
+            for c in active
+            for row in _in_bounds(unembedded, c).limit(EMBED_BATCH_LIMIT)
+        }
+        # `wanted or None` is DELIBERATE, and a review of the ADR-021 change
+        # called it starvation. It isn't: an empty `wanted` means no active
+        # campaign has anything unembedded left in bounds, so nobody is waiting
+        # and the pass spends otherwise-idle budget working through the rest —
+        # "campaign jobs FIRST", not "campaign jobs only". The second assertion
+        # in test_scheduled_runs.py::test_embed_backlog_task_embeds_jobs_the_
+        # active_campaigns_want_first pins exactly that.
+        #
+        # What ADR-021 did change is the size of "the rest": thousands of
+        # postings nobody asked for, which now consume the free tier's 200M-token
+        # allowance in the background. That is a quota question, not a
+        # correctness one — revisit if the allowance starts binding.
         return {"embedded": backfill_job_embeddings(db, only_ids=wanted or None)}
 
 

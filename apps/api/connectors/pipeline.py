@@ -106,18 +106,33 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int, int]:
         db.bulk_update_mappings(models.Job, to_update)
 
     if to_insert:
-        try:
-            embeddings = embed_texts(
-                [_embed_text(j["title"], j["company"], j.get("description")) for j in to_insert],
-                input_type="document",
-            )
-        except Exception:
-            # An embeddings outage/rate limit must not throw away what discovery
-            # found: save the jobs un-embedded (matching skips them until backfilled).
-            logging.getLogger(__name__).exception("embedding %d new jobs failed; saving without", len(to_insert))
-            embeddings = None
-        if embeddings:
-            for job, embedding in zip(to_insert, embeddings):
+        # Chunked to BACKFILL_REQUEST_CHARS, the same budget backfill_job_embeddings
+        # uses. This used to be ONE call with every new job's text: fine at ~100
+        # keyword-filtered inserts a run, guaranteed to fail once ADR-021 made
+        # discovery store whole boards. Measured on the first unfiltered run —
+        # 3,351 new jobs in one batch, one request, 429, and the except below
+        # silently saved every single one un-embedded (6 of 3,351 ended up with a
+        # vector). An unembedded job cannot be matched, so that was the whole
+        # pool invisible until the 2-minute backfill ground through it.
+        #
+        # First failure stops the pass and keeps what was embedded: on Voyage's
+        # free tier (3 RPM) the minute's budget is spent, and the rest is picked
+        # up by embed_backlog_task rather than retried in the worker.
+        texts = [_embed_text(j["title"], j["company"], j.get("description")) for j in to_insert]
+        for start, end in _embed_chunks(texts):
+            try:
+                embeddings = embed_texts(texts[start:end], input_type="document")
+            except Exception:
+                # An embeddings outage/rate limit must not throw away what discovery
+                # found: save the jobs un-embedded (matching skips them until backfilled).
+                logging.getLogger(__name__).exception(
+                    "embedding jobs %d-%d of %d failed; saving the rest un-embedded",
+                    start, end, len(to_insert),
+                )
+                break
+            if not embeddings:
+                break
+            for job, embedding in zip(to_insert[start:end], embeddings):
                 job["embedding"] = embedding
         db.bulk_insert_mappings(models.Job, to_insert)
 
@@ -137,6 +152,26 @@ EMBED_CHARS = 4_000
 
 def _embed_text(title, company, description) -> str:
     return f"{title} at {company}. {description or ''}"[:EMBED_CHARS]
+
+
+def _embed_chunks(texts: list[str]) -> list[tuple[int, int]]:
+    """(start, end) slices whose text fits one BACKFILL_REQUEST_CHARS request.
+
+    Shared by the insert path and backfill_job_embeddings so the per-request
+    budget is defined once. A single text longer than the budget still gets its
+    own chunk rather than being dropped — EMBED_CHARS already caps each one well
+    under it, so that is a guard, not a normal case.
+    """
+    chunks: list[tuple[int, int]] = []
+    start = size = 0
+    for i, text in enumerate(texts):
+        if size and size + len(text) > BACKFILL_REQUEST_CHARS:
+            chunks.append((start, i))
+            start, size = i, 0
+        size += len(text)
+    if start < len(texts):
+        chunks.append((start, len(texts)))
+    return chunks
 
 
 def backfill_job_embeddings(db, limit: int = 50, only_ids=None) -> int:

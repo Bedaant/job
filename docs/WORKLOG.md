@@ -111,6 +111,81 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-10-06 (latest+82) — ADR-021: discovery stores whole boards. Measured, then reviewed, and the review found four real defects
+
+**What changed.** `FEED_KEYWORDS` stops gating ingest; discovery stores whole boards and a user's
+description filters at **match** time. 871 → 876 tests. Then an independent review of the change
+found four defects, two of them mine from this change, all fixed here.
+
+**Why.** `FEED_KEYWORDS` was a GLOBAL ingest gate — a user's own description only filtered what
+one hardcoded list had collected. Measured before: 1,768 live jobs, 318 product roles, **6 SRE
+roles while four campaigns asked for SRE.** Those campaigns searched a pool never collected for
+them.
+
+**Measured on one real unfiltered run (610s):**
+
+| | before | after |
+|---|---|---|
+| live jobs | 1,768 | **5,119** (+3,351) |
+| SRE roles | 6 | **59** |
+| data engineer | 17 | 29 |
+| product roles | 318 | 319 |
+| **embedded** | 1,768 | **1,774 (+6 of 3,351)** |
+
+It does what it was for (SRE ~10x) and the embedding ceiling bit exactly as predicted.
+
+**The review's findings, and what I did with each.**
+
+1. **Workday had to leave `SWEEPABLE_SOURCES`** — and my own new config comment was *inviting*
+   the destructive edit. That set means "returns a FULL listing per fetch"; after this change
+   every other member does, but Workday still keyword-filters before hydrating. My comment said
+   "editing this list changes WORKDAY coverage only", which reads as harmless — and narrowing it
+   would have **tombstoned every live Adobe and Cisco product role on the next run** (ADR-017
+   §3). Workday is still ingested, just not swept.
+2. **The inline embed call was unchunked** — `upsert_jobs` called `embed_texts` *once with every
+   new job's text*. Survivable at ~100 filtered inserts; with whole boards it got 3,351 texts,
+   429'd, and the `except` silently saved **all** of them un-embedded. The measurement proves it:
+   6 of 3,351. Now chunked to the same `BACKFILL_REQUEST_CHARS` budget the backfill uses, via a
+   shared `_embed_chunks`.
+3. **`embed_backlog_task` materialised full ORM rows** (descriptions included) for every
+   unembedded in-bounds job, once per campaign, every two minutes. Now ids only, capped per
+   campaign.
+4. **One finding I rejected, with reasons.** The review called `only_ids=wanted or None` a
+   starvation bug. It is deliberate: an empty `wanted` means no active campaign has anything
+   unembedded left in bounds, so nothing is waiting and the pass spends otherwise-idle budget on
+   the rest — "campaign jobs **first**", not "only". `test_embed_backlog_task_embeds_jobs_the_
+   active_campaigns_want_first`'s second assertion pins exactly that. What ADR-021 changed is the
+   *size* of the rest, which is a free-tier token-quota question, not correctness. I kept the
+   performance half of the finding and declined the correctness half.
+5. **Dead and lying code, all removed:** an unused `filter_by_keywords` import, the `keywords`
+   parameter of `_fetch_ats_source` that nothing read (and that two tests still passed
+   `["product manager"]` into, reading as if it did something), the dead `kw` local, and five
+   comments that stated the opposite of what now happens.
+6. **Tests passing for the wrong reason:** `test_ats_boards_keep_only_titles_matching_the_keywords`
+   still had its inverted name and docstring while asserting the opposite — renamed.
+
+**Recorded rather than fixed** (`GAPS.md` 2.4–2.6): a **roles-less active campaign now draws from
+the whole pool**, and with `auto_submit` that is an autonomous apply path to postings nobody asked
+for — the most important open consequence, fix is requiring `roles` on an active campaign;
+`/sources` `job_count` and `/jobs` changed meaning for the user; and `build_matches`' documented
+O(pool) scan reached its own stated trigger.
+
+**Files changed.** `apps/api/workers/jobs.py`, `apps/api/connectors/{pipeline,config}.py`, new
+`apps/api/tests/test_ingest_unfiltered.py`, and
+`tests/{test_board_token,test_delisting_sweep,test_discover_idempotency,test_feed_pagination}.py`;
+`docs/DECISIONS.md` (ADR-021), `docs/GAPS.md`.
+
+**Dependencies added.** None. **Tests.** 871 → 876, all green.
+
+**Problems hit.** The review was worth more than the change. Two of its four defects were
+introduced by me in this commit, and one of them — the config comment — would have led the *next*
+reader to destroy live data while believing the file said it was safe. Worth remembering that a
+comment claiming something is now harmless is itself a hazard when it is wrong.
+
+**Next.** Broad multi-user coverage stays gated on paid embeddings: at 3 RPM the pool cannot be
+embedded as fast as it grows, and an unembedded job is unmatchable. GAPS 2.4 is the open product
+decision.
+
 ### 2026-10-05 (latest+81) — ADR-020: all four India job boards evaluated in parallel; every unlicensed India route is closed
 
 **What changed.** Four parallel read-only feasibility probes, one per board, then ADR-020. Docs

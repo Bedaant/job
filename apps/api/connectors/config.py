@@ -3,11 +3,31 @@
 REMOTIVE_KEYWORDS = ["product manager", "associate product manager", "APM"]
 
 # --- ADR-015 multi-source discovery ------------------------------------------
-# Keyless public feeds (connectors/feeds.py). Each returns its whole board, so
-# FEED_KEYWORDS filters client-side. Empty list = keep everything the feeds
-# return (feeds.filter_by_keywords treats "no keywords" as "no filter", never
-# as "no results").
-# Also filters the ATS boards below (workers/jobs.py): a board returns every opening.
+# FEED_KEYWORDS NO LONGER GATES INGEST (ADR-021, 2026-10-05). It used to filter
+# both the keyless feeds and the ATS boards, which made it a GLOBAL ingest gate:
+# a user's own description (campaign roles/locations, résumé-fact centroid,
+# prefs) only filtered what this one hardcoded list had already collected. For a
+# product the PRD calls multi-tenant, discovery was single-tenant. Measured
+# before the change: 1,758 live jobs, 309 product roles, and only 6 SRE roles —
+# while four campaigns asked for SRE, searching a pool never collected for them.
+#
+# Discovery now stores whole boards and filtering happens per user at MATCH time
+# (matching/service.py::build_matches, campaigns.py::_in_bounds).
+#
+# WHAT THIS LIST STILL DOES, and it is the only thing:
+#   connectors/workday.py filters on it BEFORE hydrating each job. Workday's
+#   list endpoint is cheap but every posting needs its own detail request, so
+#   storing a whole board there would be ~526 extra requests for Adobe alone.
+#   That is a cost control, not an inconsistency — see that module's docstring.
+#
+# So editing this list changes WORKDAY coverage only — but **widen it freely and
+# never narrow it casually.** Workday's payload is keyword-filtered, so removing
+# a term drops matching jobs out of the payload. Workday was taken out of
+# `SWEEPABLE_SOURCES` (workers/jobs.py) precisely so that can no longer tombstone
+# live Adobe/Cisco roles, which is what would have happened on the next run.
+#
+# REMOTIVE_KEYWORDS and REED_KEYWORDS above/below are separate again: there the
+# keyword IS the query parameter, so there is no unfiltered fetch to make.
 FEED_KEYWORDS: list[str] = ["product manager", "product owner", "product lead", "head of product"]
 
 # Which feeds run. Comment a line out to drop that source without touching code.
