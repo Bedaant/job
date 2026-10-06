@@ -1,14 +1,14 @@
 """F6 matching (SPEC.md §3.2, ARCHITECTURE.md §4.1): score every job with an
 embedding against the profile's fact_centroid, upsert into `matches`.
 
-Candidate selection happens in Postgres (`ORDER BY embedding <=> centroid`,
-GAPS 2.6); composite scoring stays in Python, because semantic similarity is
-only 0.55 of the score (scoring.py) — vector order is not score order, so the
-SQL is a prefilter and never the ranking.
+GAPS 2.6: pgvector computes the cosine similarity and the embedding column
+never leaves the server. Composite scoring stays in Python, because semantic
+similarity is only 0.55 of the score (scoring.py) — vector order is not score
+order, so the SQL ordering is a bound on the candidate set, never the ranking.
 """
 import logging
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 import models
 from events.outbox import write_event
@@ -16,39 +16,54 @@ from matching.embeddings import compute_centroid, cosine_similarity, embed_texts
 from matching.filters import passes_hard_filters
 from matching.scoring import compute_match_score
 
-# How many of the nearest jobs are handed to the Python scorer. Wide on
-# purpose: coverage (0.30) and recency (0.15) can move a job 45 points, so the
-# nearest-K is only safe as a prefilter while K is far larger than `limit`.
+# A ceiling on how many jobs reach the Python scorer, NOT a target. It bounds
+# the worst case as the corpus grows, and sits deliberately far above the live
+# embedded pool (1,967 on 2026-10-06) so nothing is dropped today.
 #
-# Measured against the real database (1,865 live embedded jobs): fetching every
-# embedding to score in Python took a median of 63.5s, almost all of it
-# transferring 1,865 x 512 floats from Neon. Returning the nearest 500 ids
-# instead takes 376ms, of which 7.7ms is Postgres (the rest is round-trip).
-#
-# Two separate approximations, don't conflate them:
-#  1. The prefilter itself. A job outside the nearest K can no longer reach the
-#     top `limit` on coverage/recency alone. Always present; that is the trade.
-#  2. Which K rows come back. Postgres currently answers with a seq scan +
-#     top-N heapsort and IGNORES ix_jobs_embedding, so the K it returns is the
-#     true nearest K (verified: 500/500 against a forced seq scan). The ivfflat
-#     index only takes over once the scan gets expensive, and then recall
-#     becomes a function of `ivfflat.probes` (default 1 over lists=100) — set
-#     probes and re-check this constant when EXPLAIN shows an index scan here.
-CANDIDATE_POOL = 500
+# Why it must stay far above that pool: semantic is only 0.55 of the score
+# (scoring.py), so coverage (0.30) and recency (0.15) can move a job 45 points
+# and vector rank is NOT score rank. This was measured, not assumed — with the
+# ceiling at 500 the top-20 lost 1-3 jobs per profile against a full scan
+# (overlap 17-19/20). The misses scored 58-69 and sat at vector ranks 513-1025:
+# real high scorers that won on recency and coverage despite mediocre
+# similarity. A narrow ceiling silently changes which jobs users see, so don't
+# lower this to "tune" anything without re-running that comparison.
+CANDIDATE_POOL = 5000
 
 
-def _narrow(query, centroid: list[float], limit: int, dialect: str):
-    """Restrict `query` to the jobs nearest `centroid`, in SQL where possible.
+def _candidates(query, centroid: list[float], dialect: str, need_description: bool):
+    """The candidate jobs plus each one's cosine similarity, as (job, semantic).
 
-    SQLite (the unit-test engine) has no pgvector, so there the query is
-    returned untouched and the caller scans everything — which is what every
-    matching test exercises.
+    On Postgres the similarity is computed by pgvector and the embedding column
+    is left on the server: at 512 floats a row it was the dominant cost of this
+    whole function, and nothing downstream reads it once the distance is known.
+    `description` is dropped the same way unless the visa filter needs it —
+    it is the other large column, and `_passes_visa` is its only reader here.
+
+    Verified against the real database: `1 - (embedding <=> centroid)` matches
+    `cosine_similarity()` to 1.4e-07 over 300 real job vectors, which is
+    float32 round-trip noise and cannot move a score rounded to 2 decimals.
+
+    `semantic` is None on SQLite (no pgvector in the unit-test engine), which
+    tells the caller to compute cosine in Python as before.
     """
     if dialect != "postgresql":
-        return query
-    return query.order_by(models.Job.embedding.cosine_distance(centroid)).limit(
-        max(CANDIDATE_POOL, limit)
-    )
+        return [(job, None) for job in query]
+    # pgvector's <=> is cosine DISTANCE; cosine_similarity() returns similarity.
+    return [
+        (job, 1.0 - float(distance))
+        for job, distance in _pgvector_query(query, centroid, need_description).all()
+    ]
+
+
+def _pgvector_query(query, centroid: list[float], need_description: bool):
+    """Built separately from `_candidates` so a test can compile it without a
+    Postgres connection."""
+    deferred = [defer(models.Job.embedding)]
+    if not need_description:
+        deferred.append(defer(models.Job.description))
+    distance = models.Job.embedding.cosine_distance(centroid).label("distance")
+    return query.options(*deferred).add_columns(distance).order_by(distance).limit(CANDIDATE_POOL)
 
 
 def refresh_fact_vectors(db: Session, profile: models.Profile) -> None:
@@ -85,6 +100,7 @@ def build_matches(db: Session, profile: models.Profile, limit: int = 20) -> list
     # candidate query now, which binds it as the <=> operand.
     centroid = [float(x) for x in profile.fact_centroid]
     dialect = db.get_bind().dialect.name
+    need_description = bool(prefs.get("visa_sponsorship_required"))
     # delisted_at excluded here too (Task 5) — cheaper in SQL than relying
     # solely on passes_hard_filters below to drop it in Python.
     embedded = db.query(models.Job).filter(
@@ -96,23 +112,26 @@ def build_matches(db: Session, profile: models.Profile, limit: int = 20) -> list
     active = db.query(models.Campaign).filter(
         models.Campaign.profile_id == profile.id, models.Campaign.status == models.CampaignStatus.active
     ).all()
-    if active:
-        # Narrowed per campaign, not once over the union: each campaign has to
-        # get its own nearest pool, or a broad campaign would eat the budget.
-        candidates = {
-            j.id: j for c in active for j in _narrow(_in_bounds(embedded, c), centroid, limit, dialect)
-        }.values()
-    else:
-        candidates = _narrow(embedded, centroid, limit, dialect).all()
-    jobs = [job for job in candidates if passes_hard_filters(prefs, job, profile.country_code)]
-    if not jobs:
+    sources = [_in_bounds(embedded, c) for c in active] if active else [embedded]
+    # Keyed by id: the same job can be in bounds for two campaigns.
+    candidates = {
+        job.id: (job, semantic)
+        for query in sources
+        for job, semantic in _candidates(query, centroid, dialect, need_description)
+    }.values()
+    scorable = [
+        (job, semantic) for job, semantic in candidates
+        if passes_hard_filters(prefs, job, profile.country_code)
+    ]
+    if not scorable:
         return []
 
     profile_skills = sorted({tag for fact in profile.resume_facts for tag in (fact.tags or [])})
 
     scored = []
-    for job in jobs:
-        semantic = cosine_similarity(centroid, [float(x) for x in job.embedding])
+    for job, semantic in scorable:
+        if semantic is None:   # SQLite: no pgvector, so cosine in Python as before
+            semantic = cosine_similarity(centroid, [float(x) for x in job.embedding])
         breakdown = compute_match_score(semantic, job.skills or [], profile_skills, job.posted_at)
         scored.append((job, breakdown))
     scored.sort(key=lambda pair: pair[1]["score"], reverse=True)

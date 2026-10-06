@@ -1,36 +1,29 @@
-"""GAPS 2.6 — stop dragging every embedded job's vector into Python.
+"""GAPS 2.6 — let pgvector compute similarity; stop shipping vectors to Python.
 
-`build_matches` scored by fetching every live embedded job and computing cosine
-in a Python loop. Measured against the real database: 1,859 live embedded jobs
-x 512 float32, so the dominant cost is the *transfer*, not the arithmetic. The
-ivfflat index from migration 0004 has sat unused since Phase 3.
+`build_matches` fetched every live embedded job as a full ORM row and computed
+cosine in a Python loop. Each row carried a 512-float embedding and a full job
+description, and measured against the real database that transfer — not the
+arithmetic — was the whole cost. Postgres now returns the similarity (7.7ms of
+server time) and both large columns stay on the server.
 
-What this change is NOT. Vector order is not score order: `scoring.py` weights
-semantic at 0.55, so skill coverage (0.30) and recency (0.15) can move a job by
-up to 45 points, and a job much further away in cosine can still outrank a
-nearer one. So the SQL `ORDER BY embedding <=> centroid` is a *prefilter* that
-hands a wide candidate pool to the unchanged Python scorer — replacing the
-composite sort with distance would silently change which jobs users see.
+Two things this must not become, each pinned by a test below.
 
-That makes it approximate by construction: a job outside the nearest
-CANDIDATE_POOL can no longer reach the top `limit` on coverage alone. The pool
-is deliberately wide (500 against a 1,859-job live pool) so that only binds on
-jobs whose semantic score is already far down.
+1. **The SQL ordering is not the ranking.** `scoring.py` weights semantic at
+   0.55, so coverage (0.30) and recency (0.15) can move a job 45 points and a
+   more distant job can outrank a nearer one. The ORDER BY only bounds the
+   candidate set.
+
+2. **The bound must stay far above the live pool.** Measured with a pool of
+   500 against 1,925 live embedded jobs, the top-20 lost 1-3 jobs per profile
+   (overlap 17-19/20); the misses scored 58-69 and sat at vector ranks
+   513-1025, winning on recency and coverage despite mediocre similarity.
+   CANDIDATE_POOL is a worst-case ceiling, not a target.
 """
 from sqlalchemy.dialects import postgresql
 
 import models
-from matching.service import CANDIDATE_POOL, _narrow, build_matches
+from matching.service import CANDIDATE_POOL, _candidates, _pgvector_query, build_matches
 from tests.test_matching_service import _db, _job, _profile
-
-
-def _compiled(query) -> str:
-    """The LIMIT and the vector are bound parameters, so they only become
-    readable with literal_binds."""
-    sql = query.statement.compile(
-        dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
-    )
-    return str(sql).replace("\n", " ")
 
 
 def _embedded_fact(db, profile, tags):
@@ -38,40 +31,65 @@ def _embedded_fact(db, profile, tags):
     first), so a profile-skills fixture has to carry a vector."""
     profile.resume_facts.append(
         models.ResumeFact(
-            profile_id=profile.id, category="experience", achievement="shipped it", tags=tags,
-            embedding=[1.0] + [0.0] * 511,
+            profile_id=profile.id, category="experience", achievement="shipped it",
+            tags=tags, embedding=[1.0] + [0.0] * 511,
         )
     )
     db.commit()
 
 
-def test_the_pool_is_wider_than_the_match_limit():
-    """A pool at or near `limit` would make the prefilter the ranking."""
-    assert CANDIDATE_POOL >= 20 * 10
+def test_the_pool_ceiling_stays_above_the_live_job_pool():
+    """At 500 this measurably dropped real top-20 matches (see module docstring).
+    The live embedded pool was 1,925 when that was measured."""
+    assert CANDIDATE_POOL >= 5000
 
 
-def test_postgres_orders_by_the_cosine_operator_and_limits():
-    """The whole point: the distance and the LIMIT must reach SQL, or the
-    planner cannot use ix_jobs_embedding and nothing was saved."""
+def test_postgres_computes_the_similarity_and_leaves_the_vector_behind():
+    """The point of the change. If `embedding` is still selected, the dominant
+    cost is still being paid and nothing was gained."""
     db = _db()
 
-    sql = _compiled(_narrow(db.query(models.Job), [0.5] * 512, 20, "postgresql"))
+    sql = _postgres_sql(db)
 
     assert "<=>" in sql, sql
+    assert "jobs.embedding AS" not in sql, "the embedding column must stay on the server"
+    assert "jobs.description" not in sql, "description is only needed for the visa filter"
     assert f"LIMIT {CANDIDATE_POOL}" in sql, sql
 
 
-def test_sqlite_still_scans_everything():
-    """The unit-test engine has no pgvector, so the fallback must return every
-    row rather than raise — every other matching test rides this path."""
+def test_the_visa_filter_still_gets_the_description():
+    """`_passes_visa` reads job.description. Deferring it unconditionally would
+    make that filter lazy-load per row — an N+1 worse than the problem."""
+    db = _db()
+
+    sql = _postgres_sql(db, need_description=True)
+
+    assert "jobs.description" in sql, sql
+
+
+def _postgres_sql(db, need_description=False) -> str:
+    """Compile the query rather than run it — SQLite cannot answer `<=>`."""
+    query = _pgvector_query(db.query(models.Job), [0.5] * 512, need_description)
+    return str(
+        query.statement.compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    ).replace("\n", " ")
+
+
+def test_sqlite_defers_the_similarity_to_python():
+    """The unit-test engine has no pgvector, so `semantic` comes back None and
+    the caller falls back to the Python cosine — the path every other matching
+    test rides."""
     db = _db()
     _profile(db, fact_centroid=[1.0] + [0.0] * 511)
     _job(db, "A", embedding=[1.0] + [0.0] * 511)
     _job(db, "B", embedding=[0.0, 1.0] + [0.0] * 510)
 
-    rows = _narrow(db.query(models.Job), [1.0] + [0.0] * 511, 20, "sqlite").all()
+    rows = _candidates(db.query(models.Job), [1.0] + [0.0] * 511, "sqlite", False)
 
-    assert {j.title for j in rows} == {"A", "B"}
+    assert {job.title for job, _ in rows} == {"A", "B"}
+    assert all(semantic is None for _, semantic in rows)
 
 
 def test_coverage_still_beats_distance():
@@ -94,17 +112,15 @@ def test_coverage_still_beats_distance():
     assert matches[0].breakdown["skill_coverage"] == 1.0
 
 
-def test_the_pool_is_not_narrowed_to_the_match_limit():
-    """`limit` caps the MATCHES, and the Python scorer picks which ones.
-    Narrowing to `limit` rows in SQL would leave it nothing to choose from."""
+def test_limit_caps_matches_not_the_candidate_pool():
+    """`limit` caps the MATCHES and the Python scorer picks which ones; it must
+    not shrink what the scorer gets to choose from."""
     db = _db()
     profile = _profile(db, fact_centroid=[1.0] + [0.0] * 511)
     for i in range(5):
         _job(db, f"Job {i}", embedding=[1.0 - i / 10, i / 10] + [0.0] * 510)
 
-    sql = _compiled(_narrow(db.query(models.Job), [1.0] + [0.0] * 511, 2, "postgresql"))
-    assert f"LIMIT {CANDIDATE_POOL}" in sql, sql
-    assert "LIMIT 2" not in sql, sql
-
     matches = build_matches(db, profile, limit=2)
+
     assert [m.job.title for m in matches] == ["Job 0", "Job 1"]
+    assert f"LIMIT {CANDIDATE_POOL}" in _postgres_sql(db)
