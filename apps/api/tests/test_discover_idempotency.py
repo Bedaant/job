@@ -73,9 +73,10 @@ def test_discover_without_job_id_runs_unguarded(mock_session_scope):
 @patch("workers.jobs.upsert_jobs", return_value=(1, 0, 0))
 @patch("workers.jobs.backfill_job_embeddings")
 @patch("workers.jobs.session_scope")
-def test_ats_boards_keep_only_titles_matching_the_keywords(mock_scope, _embed, mock_upsert):
-    """A company board returns every opening (Databricks: 879). Only the target
-    titles are stored, by the same keyword filter the feeds use."""
+def test_ats_boards_keep_every_posting(mock_scope, _embed, mock_upsert):
+    """A company board returns every opening (Databricks: 879) and ADR-021 stores
+    ALL of it — the keyword gate that used to trim this was a GLOBAL ingest
+    filter, so a user's description now filters at match time instead."""
     mock_scope.return_value.__enter__.return_value = MagicMock()
     board = [{"company": "acme", "title": t, "location": "Bengaluru"} for t in ("Senior Product Manager", "Staff Engineer")]
     patches = _patch_connectors()

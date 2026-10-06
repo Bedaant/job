@@ -47,7 +47,7 @@ def test_ats_boards_keep_every_posting_not_just_keyword_matches():
         {"title": "Site Reliability Engineer", "external_id": "2"},
         {"title": "Staff Accountant", "external_id": "3"},
     ]
-    jobs, batches = _fetch_ats_source(lambda token: board, ["acme"], ["product manager"])
+    jobs, batches = _fetch_ats_source(lambda token: board, ["acme"])
 
     assert [j["external_id"] for j in jobs] == ["1", "2", "3"], (
         "FEED_KEYWORDS must no longer gate what enters the pool"
@@ -60,7 +60,7 @@ def test_the_sweep_batch_now_carries_the_whole_board():
     existed because the sweep compared against a keyword-filtered payload. With
     the whole board in the batch, the comparison is complete."""
     board = [{"title": "Site Reliability Engineer", "external_id": "sre-1"}]
-    _, batches = _fetch_ats_source(lambda token: board, ["acme"], ["product manager"])
+    _, batches = _fetch_ats_source(lambda token: board, ["acme"])
 
     (_token, batch_jobs), = batches
     assert [j["external_id"] for j in batch_jobs] == ["sre-1"]
@@ -69,7 +69,7 @@ def test_the_sweep_batch_now_carries_the_whole_board():
 def test_an_empty_board_still_contributes_no_batch():
     """Unchanged safety property: an empty fetch is no signal, never "the board
     is empty" (ADR-017 §3), so nothing of that board's can be delisted."""
-    jobs, batches = _fetch_ats_source(lambda token: [], ["acme"], [])
+    jobs, batches = _fetch_ats_source(lambda token: [], ["acme"])
     assert jobs == [] and batches == []
 
 

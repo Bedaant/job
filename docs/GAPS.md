@@ -49,6 +49,12 @@ approved once", "the ADR-001 guard's ALLOWLIST"), which is exactly what misled m
 reworded to ADR-015 terms so the next reader does not "finish the pivot" by deleting a safety
 guarantee.
 
+| # | Gap | Evidence | Blocks |
+|---|---|---|---|
+| 2.4 | **A roles-less active campaign now draws candidates from the ENTIRE job pool, and with `auto_submit` on that is an autonomous apply path to postings nobody asked for.** `campaigns._in_bounds` applies its title filter only `if campaign.roles`, and `schemas` defaults `roles` to `[]`. Before ADR-021, `FEED_KEYWORDS` was the implicit backstop — a roles-less campaign still only saw product roles because nothing else was ever collected. Now the only remaining gates are `min_match_score` against the résumé centroid and `passes_hard_filters`, which is explicitly built so missing data never excludes a job. | VERIFIED 2026-10-06 — found by an independent review of the ADR-021 change, not by its author. Pool went 1,768 → 5,119 on the first unfiltered run. | **The most important open consequence of ADR-021.** The honest fix is a validator requiring `roles` on an **active** campaign; making `_in_bounds` fail closed instead would silently break existing roles-less campaigns. |
+| 2.5 | **`/sources` `job_count` and `/jobs` changed meaning for the user.** `job_count` used to read as "roles relevant to you" because nothing else was stored; it now counts every posting a board carries (and has always included tombstones — no `delisted_at` filter). A user will see a 5–20x jump and may read it as the product finding more of *their* jobs. `/jobs` is newest-100 with no per-user filter, so it is now whichever whole board was paced last. | VERIFIED 2026-10-06, same review | Cosmetic but misleading. One-line fix for the tombstone half; the `/jobs` relevance question is a product decision. |
+| 2.6 | **`build_matches`' O(pool) in-process cosine scan reached its own documented trigger.** Its docstring says to switch to `ORDER BY embedding <=> centroid` "when job count makes an in-process scan too slow", and migration 0004 already created the ivfflat index. ADR-021 deliberately brought that condition about. Only hit when a profile has **no** active campaign; with one, `_in_bounds` filters in SQL. | VERIFIED — pre-existing note, now triggered | Not a defect; a tracked item rather than a "revisit when". |
+
 ## 3. Source coverage — the biggest product gap
 
 | # | Gap | Evidence | Blocks |

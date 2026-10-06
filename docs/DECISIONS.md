@@ -968,3 +968,98 @@ India product-manager roles. Three measurements, in order, closed every unlicens
 **Revisit when.** A licence or partner agreement is obtained; or a board publishes a genuine
 public jobs API with terms that permit aggregation; or the owner accepts a different market
 scope.
+
+---
+
+## ADR-021 — Discovery stores whole boards; `FEED_KEYWORDS` is no longer a global ingest gate
+
+**Date:** 2026-10-05 (amended 2026-10-06 after review) · **Status:** Accepted · **Decided by:** product owner
+
+**Context.** `FEED_KEYWORDS` lived in `connectors/config.py` and gated what *entered* the pool
+for every ATS board and every keyless feed. A user's own description — campaign roles and
+locations, the résumé-fact centroid, `prefs` — only ever *filtered* what that one hardcoded list
+had already collected. For a product the PRD calls multi-tenant, **discovery was single-tenant.**
+
+Measured on the live database before the change:
+
+| | |
+|---|---|
+| live jobs | 1,768 |
+| product roles | 318 |
+| **SRE roles** | **6** |
+| campaigns asking for SRE | **4** |
+
+Those four campaigns were searching a pool that was never collected for them. No amount of
+matching quality can fix that.
+
+**Decision.** Discovery stores whole boards. Filtering happens per user at **match** time.
+Deliberately **not uniform**, because the sources are not:
+
+| source | fetch shape | filtered at ingest? |
+|---|---|---|
+| greenhouse / lever / ashby | one request returns every opening | **no** |
+| the keyless feeds | whole board per fetch | **no** |
+| **workday** | cheap list + one detail request **per posting** | **yes** — a whole board is ~526 extra calls for Adobe alone |
+| remotive / reed | the keyword **is** the query parameter | n/a — no unfiltered fetch exists |
+
+**Measured consequences, one real unfiltered run (610s):**
+
+| | before | after |
+|---|---|---|
+| live jobs | 1,768 | **5,119** (+3,351) |
+| SRE roles | 6 | **59** |
+| data engineer | 17 | 29 |
+| product roles | 318 | 319 |
+| **embedded** | 1,768 | **1,774 (+6 of 3,351)** |
+
+The change does what it was for — SRE coverage ~10x — and the embedding ceiling bit exactly as
+predicted.
+
+**Consequences, including the ones found by review rather than by design.**
+
+1. **Workday left `SWEEPABLE_SOURCES`.** That set means "sources that return a FULL listing per
+   fetch". After this change every other member genuinely does; Workday still keyword-filters
+   before hydrating, so its payload is not complete. Leaving it in would have re-created
+   ADR-017 §3's trap in its worst form: narrowing `FEED_KEYWORDS` — which this ADR makes
+   *look* harmless, since it now only affects Workday — would have tombstoned **every live Adobe
+   and Cisco product role on the next run.** Workday is still ingested, just not swept, like the
+   five truncated feeds.
+2. **The inline embed call had to be chunked.** `upsert_jobs` called `embed_texts` **once with
+   every new job's text**. At ~100 filtered inserts a run that survived; with whole boards the
+   first run handed it 3,351 texts, got a 429, and the `except` silently saved **all** of them
+   un-embedded. An unembedded job cannot be matched, so that was the entire new pool invisible.
+   Now chunked to the same `BACKFILL_REQUEST_CHARS` budget `backfill_job_embeddings` uses, via a
+   shared `_embed_chunks` helper, stopping at the first failure.
+3. **`embed_backlog_task` collects ids, not ORM rows, capped per campaign.** It was
+   materialising full `Job` objects — `description` included — for every unembedded in-bounds job,
+   once per campaign, every two minutes.
+4. **A review finding we rejected, with reasons.** The same review called `only_ids=wanted or
+   None` a starvation bug. It is deliberate: an empty `wanted` means no active campaign has
+   anything unembedded left in bounds, so nothing is waiting and the pass spends otherwise-idle
+   budget on the rest — "campaign jobs **first**", not "only". What did change is the *size* of
+   the rest, which is a free-tier **token-quota** question, not a correctness one.
+5. **A roles-less active campaign now draws from the whole pool.** `campaigns._in_bounds` only
+   applies a title filter `if campaign.roles`, and `roles` defaults to `[]`. `FEED_KEYWORDS` used
+   to be the implicit backstop. With `auto_submit` on this is an autonomous apply path to
+   postings nobody asked for. **Not fixed here, and the most important open consequence** —
+   recorded in `GAPS.md`. The honest fix is requiring `roles` on an active campaign.
+6. **`/sources` `job_count` and `/jobs` change meaning.** `job_count` used to read as "roles
+   relevant to you" because nothing else was stored; it now counts every posting a board has. A
+   user will see a 5–20x jump and may read it as the product finding *more of their* jobs.
+   `/jobs` (newest 100, no per-user filter) becomes effectively arbitrary relative to the user.
+7. **Freshness improved for the unfiltered sources.** ADR-017's hazard — narrowing
+   `FEED_KEYWORDS` tombstoning stored jobs because they dropped out of a keyword-filtered
+   payload — disappears for greenhouse/lever/ashby/jobicy, whose sweep batches are now complete
+   boards.
+8. **`build_matches`' documented O(pool) scan reached its stated trigger.** Its own docstring
+   says to switch to `ORDER BY embedding <=> centroid` "when job count makes an in-process scan
+   too slow"; migration 0004 already created the ivfflat index. This ADR deliberately brought
+   that condition about, so it is now a tracked item rather than a "revisit when".
+
+**Broad multi-user coverage remains gated on paid embeddings.** At 3 RPM the pool cannot be
+embedded as fast as it grows, and an unembedded job is unmatchable. The priority rule keeps the
+*owner's* campaigns working; a second user with different roles would wait.
+
+**Revisit when.** A Voyage payment method exists (then 8 and the quota note in 4 both change
+shape), or Workday's per-posting detail fetch gets cheap enough to drop its filter and return it
+to `SWEEPABLE_SOURCES`.

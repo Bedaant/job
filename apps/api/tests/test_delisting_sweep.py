@@ -200,7 +200,7 @@ def test_sweepable_sources_is_pinned_to_the_complete_listing_sources():
     """
     from workers.jobs import SWEEPABLE_SOURCES
 
-    assert SWEEPABLE_SOURCES == {"greenhouse", "lever", "ashby", "jobicy", "workday"}
+    assert SWEEPABLE_SOURCES == {"greenhouse", "lever", "ashby", "jobicy"}  # workday removed 2026-10-06: its payload is keyword-filtered (one detail request per posting), so it is not a complete listing and narrowing FEED_KEYWORDS would have tombstoned live Adobe/Cisco roles
 
 
 def test_sweep_ignores_a_truncated_feed():
@@ -243,7 +243,7 @@ def test_fetch_ats_source_trusts_a_board_that_matches_no_keyword():
         return [{"source": "greenhouse", "external_id": f"{token}-1", "title": "Product Manager",
                  "company": token, "location": None}]
 
-    jobs, batches = _fetch_ats_source(fetcher, ["okta", "druva"], ["product manager"])
+    jobs, batches = _fetch_ats_source(fetcher, ["okta", "druva"])
 
     # Both answered, so both get a batch. ADR-021 then removed keyword filtering
     # at ingest, so druva's non-matching posting is STORED rather than dropped —
@@ -259,7 +259,7 @@ def test_fetch_ats_source_combines_every_tokens_jobs():
         return [{"source": "greenhouse", "external_id": f"{token}-1", "title": "Product Manager",
                   "company": token, "location": None}]
 
-    jobs, batches = _fetch_ats_source(fetcher, ["okta", "druva"], ["product manager"])
+    jobs, batches = _fetch_ats_source(fetcher, ["okta", "druva"])
 
     assert [t for t, _ in batches] == ["okta", "druva"]
     assert {j["external_id"] for j in jobs} == {"okta-1", "druva-1"}
@@ -284,7 +284,7 @@ def test_an_empty_board_contributes_no_batch_and_the_others_still_sweep():
              "company": token, "location": None}
         ]
 
-    jobs, batches = _fetch_ats_source(fetcher, ["okta", "druva"], ["product manager"])
+    jobs, batches = _fetch_ats_source(fetcher, ["okta", "druva"])
 
     assert [t for t, _ in batches] == ["okta"], "druva answered nothing, so it is not swept"
     assert {j["external_id"] for j in jobs} == {"okta-1"}
