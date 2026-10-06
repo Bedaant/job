@@ -111,6 +111,77 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-10-06 (latest+83) — GAPS 2.6: candidate selection moved into Postgres. The win was the transfer, not the arithmetic
+
+**What changed.** `build_matches` no longer drags every live embedded job into Python to score it.
+Candidate selection is now `ORDER BY embedding <=> centroid LIMIT 500` (`matching/service.py::_narrow`);
+the composite scoring loop is untouched. 884 → 889 tests.
+
+**Why.** GAPS 2.6 — the function's own docstring said to make this switch "when job count makes an
+in-process scan too slow", and ADR-021 (whole-board ingest) deliberately brought that condition
+about. I had explicitly declined it in the previous PR as deserving its own change with its own
+tests; this is that change.
+
+**Measured first, against the real database — and the numbers moved the design.**
+
+| | median |
+|---|---|
+| old: fetch all 1,865 live embedded jobs' vectors, score in Python | **63,460 ms** |
+| new: nearest 500 ids from Postgres | **376 ms** |
+
+Of that 376ms, **7.7ms is Postgres** (`EXPLAIN ANALYZE`) and the rest is Neon round-trip. So the
+cost was never the cosine arithmetic — it was shipping 1,865 × 512 floats over the wire. That
+reframing matters for the next person: adding more CPU or a faster cosine would have done nothing.
+
+**Two things I expected to be true and weren't.**
+
+1. **The ivfflat index from migration 0004 is still unused.** The planner picks a seq scan +
+   top-N heapsort at this pool size. I had assumed this change would finally light up that index;
+   it doesn't, and that is *good* — it means the 500 rows returned are the true nearest 500
+   (verified 500/500 against a forced `enable_indexscan=off`), with no approximation from
+   `ivfflat.probes`.
+2. **`probes` would have been a trap if the index had been used.** Default is 1 over `lists=100`;
+   at 1,859 rows that is ~19 candidates, well short of the 500 asked for. I had been about to set
+   it before measuring showed the index wasn't in play. The code now says to revisit the constant
+   and set probes *when EXPLAIN shows an index scan here* — not before.
+
+**What this change deliberately is NOT.** Vector order is not score order. `scoring.py` weights
+semantic at 0.55, so coverage (0.30) and recency (0.15) can move a job 45 points — a more distant
+job can and does outrank a nearer one. Replacing the composite sort with distance would have
+silently changed which jobs users see. The SQL is a prefilter; the ranking stays in Python. One
+approximation is introduced and is documented in the code: a job outside the nearest 500 can no
+longer reach the top `limit` on coverage alone.
+
+**Files changed.** `apps/api/matching/service.py`, `apps/api/tests/test_matching_pgvector.py` (new),
+`docs/GAPS.md`, `docs/WORKLOG.md`.
+
+**Dependencies added.** None.
+
+**Tests.** 6 new in `tests/test_matching_pgvector.py`. Red-before-green confirmed — `_narrow` and
+`CANDIDATE_POOL` did not exist, so the file failed to import. The load-bearing one is
+`test_coverage_still_beats_distance`: a job with the worse vector but full skill coverage must still
+come first, which fails if the SQL order ever becomes the answer. Three of my six tests were wrong
+on the first green run (`Query._limit` is not public in SQLAlchemy 2.0, `ResumeFact.category` is
+NOT NULL, and `LIMIT`/the vector are bound parameters so `literal_binds` is needed to read them) —
+all three were test bugs, not code bugs.
+
+**Problems hit.**
+- **The Bash shell was using `D:\Python311`, not the project venv at `apps/api/.venv`.** Four pinned
+  packages (voyageai, redis, rq, presidio) looked "missing" and the *existing* matching tests failed
+  to collect. A dry run showed restoring them would pull 38 packages including all of spacy — which
+  would have been an unapproved install to fix a non-problem. `apps/api/.venv/Scripts/python.exe`
+  has everything; my earlier `find -maxdepth 3` had missed it. **Use the venv interpreter explicitly.**
+- `pytest -q | tail` reports the *pipe's* exit code, so a red run reads as green. Hit this again;
+  used `${PIPESTATUS[0]}`.
+- Used `db.get_bind().dialect.name` rather than `db.bind`, which can be None.
+- The verification script wrote real `matches` rows and `match.new` outbox events for the 4 real
+  profiles with a centroid. That is ordinary production behaviour (the worker does it hourly) and
+  SMTP is still unconfigured, so nothing was sent — but worth naming.
+
+**Next.** `CANDIDATE_POOL` and `ivfflat.probes` become live questions only when EXPLAIN shows an
+index scan on `ix_jobs_embedding`. Voyage payment is still the binding constraint on the pool
+(1,865 of 5,265 jobs embedded).
+
 ### 2026-10-06 (latest+82) — ADR-021: discovery stores whole boards. Measured, then reviewed, and the review found four real defects
 
 **What changed.** `FEED_KEYWORDS` stops gating ingest; discovery stores whole boards and a user's

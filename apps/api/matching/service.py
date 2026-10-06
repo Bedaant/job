@@ -1,11 +1,10 @@
 """F6 matching (SPEC.md §3.2, ARCHITECTURE.md §4.1): score every job with an
 embedding against the profile's fact_centroid, upsert into `matches`.
 
-ponytail: cosine similarity is computed in-process over every embedded job
-(O(n) scan), not via pgvector's ivfflat index (already created by migration
-0004 for when this matters). Fine at MVP job volume; switch to an
-`ORDER BY embedding <=> centroid` query when job count makes an in-process
-scan too slow.
+Candidate selection happens in Postgres (`ORDER BY embedding <=> centroid`,
+GAPS 2.6); composite scoring stays in Python, because semantic similarity is
+only 0.55 of the score (scoring.py) — vector order is not score order, so the
+SQL is a prefilter and never the ranking.
 """
 import logging
 
@@ -16,6 +15,40 @@ from events.outbox import write_event
 from matching.embeddings import compute_centroid, cosine_similarity, embed_texts
 from matching.filters import passes_hard_filters
 from matching.scoring import compute_match_score
+
+# How many of the nearest jobs are handed to the Python scorer. Wide on
+# purpose: coverage (0.30) and recency (0.15) can move a job 45 points, so the
+# nearest-K is only safe as a prefilter while K is far larger than `limit`.
+#
+# Measured against the real database (1,865 live embedded jobs): fetching every
+# embedding to score in Python took a median of 63.5s, almost all of it
+# transferring 1,865 x 512 floats from Neon. Returning the nearest 500 ids
+# instead takes 376ms, of which 7.7ms is Postgres (the rest is round-trip).
+#
+# Two separate approximations, don't conflate them:
+#  1. The prefilter itself. A job outside the nearest K can no longer reach the
+#     top `limit` on coverage/recency alone. Always present; that is the trade.
+#  2. Which K rows come back. Postgres currently answers with a seq scan +
+#     top-N heapsort and IGNORES ix_jobs_embedding, so the K it returns is the
+#     true nearest K (verified: 500/500 against a forced seq scan). The ivfflat
+#     index only takes over once the scan gets expensive, and then recall
+#     becomes a function of `ivfflat.probes` (default 1 over lists=100) — set
+#     probes and re-check this constant when EXPLAIN shows an index scan here.
+CANDIDATE_POOL = 500
+
+
+def _narrow(query, centroid: list[float], limit: int, dialect: str):
+    """Restrict `query` to the jobs nearest `centroid`, in SQL where possible.
+
+    SQLite (the unit-test engine) has no pgvector, so there the query is
+    returned untouched and the caller scans everything — which is what every
+    matching test exercises.
+    """
+    if dialect != "postgresql":
+        return query
+    return query.order_by(models.Job.embedding.cosine_distance(centroid)).limit(
+        max(CANDIDATE_POOL, limit)
+    )
 
 
 def refresh_fact_vectors(db: Session, profile: models.Profile) -> None:
@@ -45,6 +78,13 @@ def build_matches(db: Session, profile: models.Profile, limit: int = 20) -> list
         return []
 
     prefs = profile.prefs or {}
+    # pgvector returns numpy.float32 arrays on a real Postgres connection (not
+    # on the SQLite unit-test engine, where it round-trips plain lists) — cast
+    # to native floats here so json.dumps on the `breakdown` column downstream
+    # doesn't choke on a numpy scalar buried in the dict. Needed before the
+    # candidate query now, which binds it as the <=> operand.
+    centroid = [float(x) for x in profile.fact_centroid]
+    dialect = db.get_bind().dialect.name
     # delisted_at excluded here too (Task 5) — cheaper in SQL than relying
     # solely on passes_hard_filters below to drop it in Python.
     embedded = db.query(models.Job).filter(
@@ -56,17 +96,19 @@ def build_matches(db: Session, profile: models.Profile, limit: int = 20) -> list
     active = db.query(models.Campaign).filter(
         models.Campaign.profile_id == profile.id, models.Campaign.status == models.CampaignStatus.active
     ).all()
-    candidates = {j.id: j for c in active for j in _in_bounds(embedded, c)}.values() if active else embedded.all()
+    if active:
+        # Narrowed per campaign, not once over the union: each campaign has to
+        # get its own nearest pool, or a broad campaign would eat the budget.
+        candidates = {
+            j.id: j for c in active for j in _narrow(_in_bounds(embedded, c), centroid, limit, dialect)
+        }.values()
+    else:
+        candidates = _narrow(embedded, centroid, limit, dialect).all()
     jobs = [job for job in candidates if passes_hard_filters(prefs, job, profile.country_code)]
     if not jobs:
         return []
 
     profile_skills = sorted({tag for fact in profile.resume_facts for tag in (fact.tags or [])})
-    # pgvector returns numpy.float32 arrays on a real Postgres connection (not
-    # on the SQLite unit-test engine, where it round-trips plain lists) — cast
-    # to native floats here so json.dumps on the `breakdown` column downstream
-    # doesn't choke on a numpy scalar buried in the dict.
-    centroid = [float(x) for x in profile.fact_centroid]
 
     scored = []
     for job in jobs:
