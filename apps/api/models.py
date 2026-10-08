@@ -577,3 +577,51 @@ class Suppression(Base):
         Index("ix_suppressions_email", "email"),
         Index("ix_suppressions_domain", "domain"),
     )
+
+
+# REACH-A. The one scope the product needs: it can send mail and nothing else — it
+# cannot read the mailbox, list drafts, or touch anything already there. Narrower than
+# `gmail.compose`, which grants draft management PLUS sending.
+GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
+
+
+class GmailCredential(Base):
+    """A user's Gmail OAuth grant, for sending referral emails as them (ADR-003).
+
+    DELIBERATELY NO `relationship()` ON `User`. ADR-003 requires this token never be
+    returned by any endpoint, and the realistic regression is someone adding
+    `gmail_credential` to a user response model without having read that. No backref
+    means no accidental serialisation path exists to begin with; callers query this
+    table directly.
+
+    Usability is DERIVED from `scopes` rather than stored in a column, so it cannot
+    drift out of sync with the grant it describes.
+    """
+    __tablename__ = "gmail_credentials"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    # UNIQUE: one Gmail account per user. A second is YAGNI at this user count, and the
+    # uniqueness is what makes "the user's credential" an unambiguous lookup.
+    user_id = Column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False, unique=True,
+    )
+    # Ciphertext only. The plaintext refresh token never touches a column — see crypto.py.
+    refresh_token_encrypted = Column(Text, nullable=False)
+    email_address = Column(String, nullable=True)   # which account, so the UI can show it
+    # What Google ACTUALLY granted, not what was requested. Google permits partial
+    # grants, and storing the request would make a narrowed grant invisible until a send
+    # failed with a confusing 500 after the user had already approved an email.
+    scopes = Column(JSON, default=list)
+    connected_at = Column(DateTime, default=datetime.utcnow)
+    # Soft revoke, so a revocation is auditable rather than a vanished row.
+    revoked_at = Column(DateTime, nullable=True)
+
+    @property
+    def missing_scopes(self) -> list[str]:
+        return [s for s in (GMAIL_SEND_SCOPE,) if s not in (self.scopes or [])]
+
+    @property
+    def is_usable(self) -> bool:
+        """Live and sufficiently scoped. Checked before drafting, not at send time."""
+        return self.revoked_at is None and not self.missing_scopes
