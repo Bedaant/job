@@ -71,9 +71,26 @@ class ContactCandidate:
     email: str | None = None
     source: str = "unknown"
     source_ref: str | None = None
-    # Why this person was surfaced, for `Outreach.warm_signal_used`. The engine, not the
-    # adapter, decides the final signal — an adapter only reports what it saw.
+    # What the adapter knew about this person, which differs sharply BY adapter and is
+    # what makes warm-signal ranking degrade rather than fail:
+    #
+    #   signal                | needs            | GitHub | Apify
+    #   same_former_employer  | work history     | no     | yes
+    #   same_role             | current title    | weak   | yes
+    #   same_university       | education        | no     | yes
+    #   same_city             | location         | no     | yes
+    #
+    # A GitHub candidate therefore usually reaches `same_role` or `none`. That is correct
+    # for the data available, not a gap to paper over by guessing.
+    past_companies: list[str] = field(default_factory=list)
+    schools: list[str] = field(default_factory=list)
+    location: str | None = None
+    # Raw adapter observations. The RANKER, not the adapter, decides the final signal —
+    # an adapter only reports what it saw.
     evidence: dict = field(default_factory=dict)
+    # Set by `outreach.signals.rank_contacts`. The email asserts this out loud, so a
+    # signal about the user carries the `ResumeFact` id that justifies it.
+    warm_signal: dict | None = None
 
 
 class ContactSource(Protocol):
