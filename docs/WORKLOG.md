@@ -12,7 +12,7 @@ too — a failed approach that is not written down gets retried by the next pers
 
 ## Current state — read this first
 
-**As of 2026-10-03 (latest+69).** Product is **ApplyScout**, agent **Maggie** (ADR-015).
+**As of 2026-10-09 (latest+84).** Product is **ApplyScout**, agent **Maggie** (ADR-015).
 Autonomous multi-source auto-apply: the user approves a campaign once, then agents
 discover → tailor → submit through the user's own browser.
 
@@ -28,7 +28,12 @@ discover → tailor → submit through the user's own browser.
   ADR, latest+34. `ANTHROPIC_API_KEY` is still a placeholder, which no longer blocks the
   product; it blocks only the ADR-014 eval harness, and that harness is pointed at the wrong
   provider. **Tailoring quality is currently unmeasured** (`GAPS.md` 6.1).
-- 824 tests passing. Neon at migration 0022 — **0022 has never run against a real Postgres.**
+- **950 tests passing. Neon at migration 0025** (verified against the real database, not
+  assumed from the files). Migrations 0022-0025 have all run against real Postgres.
+- **Stage 8 (referral outreach) is in progress** — `docs/PLAN-OUTREACH.md` (REACH-B..E) and
+  `docs/PLAN-GMAIL-CREDENTIALS.md` (REACH-A). REACH-B/C and REACH-D's send path are built and
+  tested. Blocked on the owner for two credentials only: an `APIFY_TOKEN` and a Google Cloud
+  OAuth client. Nothing else in stage 8 is blocked.
 - `apps/extension/` builds (the stray `D:\postcss.config.mjs` is handled by
   `css: { postcss: {} }` in its `vite.config.ts` — that blocker is **fixed**, despite what
   older entries say).
@@ -110,6 +115,87 @@ docs/              this documentation set
 ---
 
 ## Entries
+
+### 2026-10-09 (latest+84) — Stage 8 starts: REACH-B/C/D built, and two signal bugs found by reading back my own summary
+
+**What changed.** Stage 8 (referral outreach) went from "designed but not built" to most of a
+working engine, minus the two pieces that need credentials. Suite **890 → 950**. Also: SMTP
+wired and test-delivered (GAPS 1.1), Voyage billing verified off the free tier (1.2), the Indian
+ATSs probed and closed (3.1), GAPS §7 and 5.8 corrected, and `DECISIONS.md` rewritten 1,065 → 442
+lines with all 21 ADR numbers preserved.
+
+Two new plan docs, both carrying the `REACH-*` prefix per GAPS 7.3's naming rule:
+`docs/PLAN-GMAIL-CREDENTIALS.md` (REACH-A) and `docs/PLAN-OUTREACH.md` (REACH-B…E).
+
+Built, each tested first and red before green:
+
+- **REACH-B** — `outreach/contacts.py`: the `ContactSource` interface with `ManualContactSource`
+  and `GitHubContactSource`. Migration **0025** (contacts, outreach, suppressions + two profile
+  columns), applied to Neon and verified by inspection.
+- **REACH-C** — `outreach/signals.py` (warm-signal ranking) and `outreach/suppression.py`.
+- **REACH-D core** — `outreach/send.py`: the claim lock, ADR-003's 10/day cap, and delivery.
+
+**Why, and the two things worth reading before touching this.**
+
+**1. `same_role` was an unverified claim about the user, and the owner caught it in my own
+summary.** I wrote that `same_role` "asserts nothing about you" because it is checkable from
+`Job.title` plus the contact's title. That is wrong: *same* asserts a **symmetry**, so an email
+opening "as a fellow PM" is a claim about the user — and the code verified only the recipient's
+side. A backend engineer applying for a PM opening would have been made to claim they were a PM.
+That is the fabrication class ADR-006 exists to stop, reached through the signal layer rather
+than through the model, where no truth-check would have caught it.
+
+Split into `same_role` (both sides evidenced, may be framed as mutual, carries the `ResumeFact`
+id) and `holds_target_role` (recipient only, asserts nothing about the user, must NOT be framed
+as shared, ranked lower). Signals now carry `asserts_about_user`, and REACH-D's drafting reads it
+to know which framing is permitted. Writing the invariant test exposed a second hole: `same_city`
+asserts about the user but is backed by `Profile.city`, not a fact — so signals also carry
+`source_field`, and the invariant "asserts_about_user implies something named backs it" is now a
+test over every signal kind rather than a property maintained by review.
+
+**2. The spec was written before the data was checked, and checking it changed the design.**
+`ResumeFact` has **no structured employer or school column** — only `category`, free-text
+`achievement`/`proof`, `metric`, `tags` and a date range. So employer and school overlap cannot
+be key comparisons; they are text matches against the user's own facts, carrying a `ponytail:`
+note naming the ceiling (cannot distinguish "worked at Acme" from "competitor of Acme") and the
+upgrade path (structured fields at parse time — a resume-parser change, not a change here).
+
+Symmetrically, **which signals are reachable depends on the adapter.** GitHub supplies no work
+history, education or location, so a GitHub candidate reaches `same_role`/`holds_target_role` or
+`none`. A test pins that degradation so nobody "fixes" it by inventing a signal the data cannot
+support.
+
+**The contact-sourcing measurement that decided the adapter design** (2026-10-09, live):
+
+| org | public org members | has a public email | bio names product/head |
+|---|---|---|---|
+| razorpay | 25 | 12 | 1 |
+| zerodha | 14 | 7 | 0 |
+| meesho | 2 | — | — |
+| Swiggy | **0** | — | — |
+
+So GitHub is a genuinely good source **for engineers** — about half publish an address
+themselves, on a profile they control, for the purpose of being contactable, which is better
+provenance than any constructed or enriched address, and free. And it is **not** a source for
+product roles: one product-adjacent person across 39. Verified through the adapter as well as
+mocked: zerodha + "Software Engineer" matched 3/3 on bio, razorpay + "Product Manager" matched 1
+of 3, Swiggy returned empty cleanly. **Which role a user targets therefore decides whether
+contact data costs money** — the first place in this project where the target market and the cost
+structure are directly coupled.
+
+**On the send path.** The sender is injected on `digest.py`'s existing
+`sender(to, subject, body) -> delivered?` contract, which is what let the entire path — lock, cap,
+suppression re-check, failure handling — be built and tested before REACH-A's Gmail credential
+exists. Every precondition is evaluated **inside** `with_for_update()`; the cap especially, since
+checked outside it two concurrent sends could both observe nine. The docstring states that the
+lock and the status check guard *different* failures, because GAPS §2 records a reviewer nearly
+deleting the application-side lock on the grounds that its status check looked sufficient.
+
+**Still blocked on the owner, and not by code:** an `APIFY_TOKEN` (paid contact sourcing) and a
+Google Cloud OAuth client (live sending). Both are written against and unit-tested; neither is
+verifiable until the credential exists.
+
+---
 
 ### 2026-10-06 (latest+83) — GAPS 2.6: pgvector computes the similarity; embeddings stop crossing the wire
 
