@@ -28,23 +28,26 @@ rather than step one of a larger outreach PR.
 
 ## What this blocks
 
-Everything in `PLAN-OUTREACH.md`. A draft cannot be written into a user's Gmail without
-a stored, decryptable credential for that user.
+Everything in `PLAN-OUTREACH.md`. No email can be sent as a user without a stored,
+decryptable credential for that user.
 
 ---
 
 ## The scope decision, stated honestly
 
-REACH-B creates **drafts** in the user's Gmail; the user presses send themselves. The
-narrowest Google scope that can create a draft is
-`https://www.googleapis.com/auth/gmail.compose`.
+REACH-B sends the email from the ApplyScout dashboard after the user approves it, so the
+correct scope is `https://www.googleapis.com/auth/gmail.send` — exactly what ADR-003
+specified.
 
 Two things about that are worth writing down rather than discovering later:
 
-1. **`gmail.compose` also permits sending.** There is no "drafts but never send" Gmail
-   scope. So even though the product will not call `messages.send`, the credential we
-   hold *could*. ADR-003's "highest-value secret" framing therefore applies in full —
-   draft-only mode reduces product risk, not credential risk.
+1. **`gmail.send` is the narrowest scope that does the job, and it is narrower than the
+   alternative.** An earlier revision of this plan had the app write a *draft* for the
+   user to send by hand, which would have needed `gmail.compose` — and `gmail.compose`
+   grants draft management **plus** sending, with no "drafts but never send" scope
+   available. So sending from the dashboard is the *lower*-privilege design, not the
+   higher one. `gmail.send` cannot read mail, cannot list drafts, cannot touch anything
+   already in the mailbox.
 2. **It is a Google *restricted* scope**, like every meaningful Gmail scope. Restricted
    scopes require Google's verification process, which can require a third-party
    security assessment on a multi-week timeline. ADR-003 anticipated this: *"that is
@@ -109,9 +112,9 @@ accidentally serialise — see the test below.
 - **User denies consent** → callback returns cleanly to the settings page with a
   message. Not an error state to retry.
 - **Granted scopes are narrower than requested** → store what was granted and mark the
-  connection unusable for drafting, with a message naming the missing scope. Google
-  allows partial grants; discovering that at draft time would surface as a confusing
-  500.
+  connection unusable for outreach, with a message naming the missing scope. Google
+  allows partial grants; discovering that at send time would surface as a confusing 500
+  after the user had already approved an email.
 - **Refresh token rejected later** (user revoked at Google, or password change) → set
   `revoked_at`, write a `Notification` telling the user to reconnect, and stop. Never
   retry-loop on an invalid grant.

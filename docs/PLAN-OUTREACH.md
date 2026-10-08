@@ -26,43 +26,46 @@ person is the part that is both hard and differentiating.
 | Decision | Source |
 |---|---|
 | Sends from the user's own Gmail, not a platform domain | ADR-003 |
-| Human approves; the machine does not send autonomously | `PRD.md` §2 |
+| 10 outreach emails/day/user ceiling | ADR-003 |
 | Every claim traces to a confirmed fact, verified by a second model pass | `PRD.md` §1, ADR-006 |
-| **v1 creates a Gmail draft; the user presses send** | owner, 2026-10-08 |
+| **The user reviews and approves each email in the ApplyScout dashboard; the app sends it** | owner, 2026-10-08 |
+| **Auto-send is available as an opt-in once the user trusts the output** | owner, 2026-10-08 |
 | Recipients ranked by warm signal (shared employer/school/city) before cold | owner, 2026-10-08 |
 | Contact sourcing is pluggable; the owner picks the source | owner, 2026-10-08 |
 
-### Reconciling two of those — read this before implementing
+### The PRD tension on auto-send, and how it is resolved
 
-The owner chose **both** "draft queue, user approves each" **and** "write a Gmail draft
-the user sends themselves". Taken literally that is two approval steps for one email.
-The resolution, which needs a sanity check before coding:
+`PRD.md` §2 says *"Human approves, machine executes… Fully autonomous spraying is what
+makes existing tools useless, and it's what gets accounts banned."* Auto-send is in
+tension with the first clause, so the resolution needs to be explicit rather than
+assumed:
 
-- **Truth-check passes** → the draft is written straight to the user's Gmail drafts.
-  Reviewing it in Gmail *is* the approval, and pressing send is the act of approving.
-  No ApplyScout review step.
-- **Truth-check flags an unsupported claim** → the draft is **not** written to Gmail. It
-  waits in `/outreach/review-queue` until the user edits or dismisses the flag.
+- **It is opt-in and off by default.** The default path is review-and-approve.
+- **The cap is the real control.** ADR-003's 10/day ceiling is what separates this from
+  spraying. 10 personalised emails a day is not the behaviour that gets accounts flagged;
+  500 is.
+- **Auto-send has stricter preconditions than manual send** (below). A human approving
+  can override a warning; auto-send cannot.
+- **Earned, not configured.** Auto-send unlocks only after the user has manually approved
+  **10 emails**. The point is that they have seen what the system actually writes before
+  delegating it. A user who enables it on day one has no basis for the trust.
 
-So the in-app queue exists only as the exception path. That is less code and exactly one
-approval per email.
+This keeps a human in the loop for every *kind* of email before any email of that kind
+goes out unattended, which is the substance of §2 rather than its letter.
 
-### What draft mode buys, precisely
+### What reinstating direct send costs
 
-Writing a draft instead of sending removes three things from the build:
+An earlier revision of this spec had the app write a Gmail draft for the user to send by
+hand. Sending from the dashboard is a better product and it brings back three things
+that draft mode avoided. They are one feature, not three, and all must be correct:
 
-- **The at-most-once send lock.** `main.py::claim_submission` needs a
-  `with_for_update()` lock because submitting an application is irreversible. Creating a
-  duplicate *draft* is untidy, not irreversible, so a `UNIQUE(application_id,
-  contact_id)` constraint is sufficient. No row lock, no `sending` state.
-- **Daily-cap enforcement.** ADR-003's 10/day cap governs *sending*. With a human
-  sending, Gmail's own quotas are the ceiling. The cap becomes relevant again only if
-  direct send is added later.
-- **Deliverability risk to the user's Gmail reputation.** A human reads every email
-  before it leaves. This was the strongest argument against automated outreach.
-
-It does **not** reduce credential risk — see REACH-A on `gmail.compose` also permitting
-send.
+1. **An at-most-once guarantee** — a `with_for_update()` lock on the
+   `approved → sending` transition. See below; this is the single most important
+   correctness property in the stage.
+2. **Daily-cap enforcement** at send time, not draft time.
+3. **Responsibility for the user's Gmail reputation.** A bounce or a complaint now lands
+   on their personal address with no human having read the message. This is why email
+   verification gates auto-send strictly.
 
 ---
 
@@ -70,8 +73,10 @@ send.
 
 - **REACH-B** — models, migration, `ContactSource` interface, `ManualContactSource`.
 - **REACH-C** — warm-signal ranking, email verification, suppression checks.
-- **REACH-D** — drafting through the existing truth-check, Gmail draft creation.
-- **REACH-E** — opt-out endpoint, and whichever automated `ContactSource` the owner picks.
+- **REACH-D** — drafting through the existing truth-check, review queue, approve, the
+  send lock, the daily cap, sending.
+- **REACH-E** — opt-out endpoint, auto-send opt-in, and whichever automated
+  `ContactSource` the owner picks.
 
 ---
 
@@ -86,21 +91,45 @@ ContactSource.find(company, profile_facts)   → candidate contacts
         ▼
 for each contact:
     suppressed?        → Outreach(status=skipped, reason)
-    email unverifiable → Outreach(status=skipped, reason) and surface it
+    email `invalid`    → Outreach(status=skipped, reason)
         │
         ▼
     draft from the Facts KB  →  TRUTH-CHECK (same pass as resumes, ADR-006)
         │
-        ├─ flagged     → status=ready_for_review   (waits in /outreach/review-queue)
-        └─ clean       → write to user's Gmail drafts → status=draft_created
-                                  │
-                                  ▼
-                     user reviews in their own inbox and sends
+        ├─ flagged  → status=ready_for_review, blocked from approval until edited
+        └─ clean    → status=ready_for_review
+                          │
+            ┌─────────────┴──────────────┐
+            │                            │
+      auto_send off                 auto_send on
+      (default)                     AND preconditions met
+            │                            │
+   user approves in dashboard      auto-approve
+            │                            │
+            └─────────────┬──────────────┘
+                          ▼
+        with_for_update(): approved → sending     ← at-most-once
+                          │  daily cap checked here
+                          ▼
+              send via user's Gmail  →  status=sent
 ```
 
 The trigger is `submitted` rather than `approved`, matching `README.md`: *"After you
 apply, the app finds a suitable person at the company…"*. Drafting outreach for an
 application that never went out would waste tokens and confuse the user.
+
+### Auto-send preconditions
+
+Every one must hold, or the row falls back to `ready_for_review` for a human:
+
+| precondition | why |
+|---|---|
+| `profile.outreach_auto_send` is on | opt-in |
+| ≥10 emails previously approved by hand on this profile | earned, not configured |
+| `flagged_unsupported_claims` is empty | the truth-check is the only remaining gate |
+| `email_verification_status == "valid"` | **stricter than manual.** `accept_all` and `unknown` are allowed for a human who can judge; auto-send will not guess at an address |
+| contact not suppressed | |
+| today's sent count < 10 | ADR-003 |
 
 ---
 
@@ -137,15 +166,18 @@ One email, to one contact, about one application.
 |---|---|
 | `id` | uuid pk |
 | `profile_id`, `application_id`, `contact_id` | FKs |
-| `status` | `ready_for_review` / `draft_created` / `skipped` / `failed` |
+| `status` | `ready_for_review` / `approved` / `sending` / `sent` / `skipped` / `failed` |
 | `skip_reason` | populated for `skipped`, so a silent no-op is impossible |
 | `subject`, `body` | |
 | `flagged_unsupported_claims` | JSON, same shape as `Application` |
 | `warm_signal_used` | JSON — what the email actually claimed as the connection |
-| `gmail_draft_id` | set on `draft_created` |
+| `approved_by` | `user` or `auto`, so the auto-send unlock count is computable and auditable |
+| `gmail_message_id`, `gmail_thread_id` | set on `sent` |
+| `sent_at`, `error` | |
 | `created_at`, `updated_at` | |
 
-`UNIQUE(application_id, contact_id)` — the whole duplicate guarantee in draft mode.
+`UNIQUE(application_id, contact_id)` — one email per person per application, enforced in
+the schema rather than in application code.
 
 ### `Suppression`
 
@@ -157,8 +189,39 @@ One email, to one contact, about one application.
 | `reason` | `opt_out` / `bounced` / `manual` |
 | `created_at` | |
 
-Checked before every draft. An opt-out from the public endpoint writes a **global** row:
-someone who asks not to be contacted should not have to ask each user separately.
+Checked before every draft **and again immediately before send** — a suppression written
+between drafting and approval must still take effect.
+
+An opt-out from the public endpoint writes a **global** row: someone who asks not to be
+contacted should not have to ask each user separately.
+
+### `Profile` additions
+
+| column | notes |
+|---|---|
+| `outreach_auto_send` | bool, default **false** |
+| `outreach_contacts_per_application` | int, default **2** |
+
+---
+
+## The send lock (REACH-D)
+
+The `approved → sending` transition takes a `with_for_update()` row lock, exactly as
+`main.py::claim_submission` does for application submission. The reasoning is identical
+and is recorded in `GAPS.md` §2: that endpoint is *"the at-most-once guarantee for an
+irreversible outward-facing action"*, pinned by
+`test_claim_submission_still_cannot_fire_twice`.
+
+Sending email is irreversible and outward-facing. Two workers picking up the same
+`approved` row, or a double-click on Approve, must not produce two emails to the same
+person. **Copy the existing pattern rather than inventing a second one** — and note that
+`GAPS.md` §2 records a near-miss where a reviewer proposed deleting the application-side
+lock because its comments framed it in superseded terms. Comment this one in terms of
+what it guarantees, not which ADR motivated it.
+
+The daily cap is checked **inside** the lock, against `sent_at >= utc_day_start()`,
+following the `campaigns.applied_today` pattern. Checking it outside the lock would let
+two concurrent sends both observe 9.
 
 ---
 
@@ -174,13 +237,14 @@ user's own `ResumeFact` rows:
 
 The chosen signal is written to `Outreach.warm_signal_used`, because the email asserts
 it ("we overlapped at Flipkart") and an assertion the user cannot verify is exactly what
-the truth-check exists to stop. A signal that cannot be traced to a `ResumeFact` must not
-be used.
+the truth-check exists to stop. **A signal that cannot be traced to a `ResumeFact` must
+not be used.**
 
 **Ordering must be deterministic.** `GAPS.md` 6.6 records a real nondeterminism bug from
 ordering by score with no tiebreaker: which job a capped run applied to was undefined
 whenever two rows tied. Rank by `(signal_rank, contact.created_at, contact.id)` so ties
-resolve the same way every run.
+resolve the same way every run. This matters more here than it did there, because with
+auto-send on, the tiebreaker decides who receives mail.
 
 ---
 
@@ -195,9 +259,9 @@ optionally an email. No vendor, no cost, no legal question, and it exercises the
 engine end to end. It is also the permanent fallback for any company an automated source
 cannot cover.
 
-**Why manual first rather than integrating a provider immediately:** the engine is the
-part with the correctness properties (truth-check, suppression, dedupe, verification
-gating). Wiring a paid provider into an unproven engine means debugging both at once.
+**Why manual first rather than integrating a provider immediately:** the engine holds all
+the correctness properties — the send lock, the cap, suppression, dedupe, verification
+gating. Wiring a paid provider into an unproven engine means debugging both at once.
 
 The automated adapter is **REACH-E and the owner's decision** — it is a cost,
 data-protection and vendor choice, not a technical one. Whatever is chosen implements the
@@ -207,29 +271,30 @@ same interface, so adding it is small.
 
 ## Email verification (REACH-C)
 
-Verification gates whether a draft is created at all. Measured reality to design around:
+Verification gates whether a draft is created, and more strictly whether it can
+auto-send. Measured reality to design around:
 
-- **`valid`** → draft.
-- **`invalid`** → `skipped`, reason recorded.
+- **`valid`** → eligible for manual approval and for auto-send.
+- **`invalid`** → `skipped`, reason recorded. Never sent.
 - **`accept_all`** → the domain accepts every address, so mailbox existence is unknowable.
   Most corporate Google Workspace and Microsoft 365 tenants behave this way, so this will
-  be the *common* case, not the edge case. Create the draft but mark the uncertainty in
-  the review UI. The user is sending by hand and can judge.
+  be the *common* case, not the edge case. Eligible for **manual** approval with the
+  uncertainty shown in the UI; **never** auto-sent.
 - **`unknown`** → same handling as `accept_all`.
 
 **On running verification ourselves:** `AfterShip/email-verifier` (Go, MIT — licence
-verified 2026-10-08, so it carries none of the copyleft obligations that rule out
-AGPL-licensed alternatives in this space) performs syntax, MX, disposable, role-account
-and catch-all checks for free, but its own
-README notes SMTP checking is **off by default** because *"most ISPs block outgoing SMTP
-requests through port 25"*. The mailbox-existence check — the only layer that prevents a
-bounce — needs outbound port 25, a PTR record and a reputable `MAIL FROM` domain. Most
-cloud hosts block port 25 outright. It is also Go, while this API is Python, so it would
-be a sidecar service rather than an import.
+verified 2026-10-08 via the GitHub API, so it carries none of the copyleft obligations
+that rule out the GPL/AGPL alternatives in this space) performs syntax, MX, disposable,
+role-account and catch-all checks for free. But its own README notes SMTP checking is
+**off by default** because *"most ISPs block outgoing SMTP requests through port 25"*.
+The mailbox-existence check — the only layer that prevents a bounce — needs outbound
+port 25, a PTR record and a reputable `MAIL FROM` domain. Most cloud hosts block port 25
+outright. It is also Go, while this API is Python, so it would be a sidecar service
+rather than an import.
 
-**Implication:** treat verification as best-effort metadata shown to the user, not as a
-gate that can be trusted to prevent bounces. Since a human sends each email, a bounce
-costs that user one bad address rather than a domain reputation.
+**Implication:** verification is best-effort metadata, not a guarantee. That is precisely
+why `accept_all` cannot auto-send: with a human sending, a bounce costs one bad address;
+with auto-send, a run of bounces damages the user's own Gmail reputation unattended.
 
 ---
 
@@ -246,8 +311,12 @@ generation path:
 Note the known tension recorded in `GAPS.md` 6.7: the model half of the checker flags
 titles, scope and praise adjectives, which is why 9 of 30 golden rows still block. Prose
 asking for a favour is *more* likely to carry evaluative framing than a resume bullet, so
-expect a higher flag rate here than on bullets and treat the review-queue exception path
-as a normal case rather than a rare one.
+expect a higher flag rate here than on bullets, and treat the review queue as a normal
+path rather than a rare one.
+
+**This matters directly for auto-send:** with no human reading the email, the truth-check
+is the only remaining gate. Its flag rate on favour-asking prose has never been measured.
+Measure it on ~10 real drafts before auto-send is offered to anyone.
 
 Every body ends with a plain opt-out line and a link to the unsubscribe endpoint.
 
@@ -259,8 +328,20 @@ Every body ends with a plain opt-out line and a link to the unsubscribe endpoint
 a **global** `Suppression` row and returns a plain confirmation page.
 
 Unauthenticated by necessity: the recipient has no account. Signed so the endpoint cannot
-be used to enumerate or mass-suppress addresses. No Gmail read scope is involved, which
+be used to enumerate addresses or mass-suppress. No Gmail read scope is involved, which
 is the reason to use a link rather than reply-parsing.
+
+---
+
+## Endpoints
+
+- `GET /outreach/review-queue` — drafts awaiting approval, each with the recipient, the
+  warm signal used, the verification status, and any flags.
+- `PATCH /outreach/{id}` — edit subject/body, or dismiss a flag. An edit re-runs the
+  truth-check; an edited email must not bypass the gate.
+- `POST /outreach/{id}/approve` — takes the lock, transitions, enqueues the send.
+- `POST /outreach/{id}/skip` — user declines this one; records a reason.
+- `GET /outreach` — history, for the tracker.
 
 ---
 
@@ -270,9 +351,11 @@ is the reason to use a link rather than reply-parsing.
 |---|---|
 | No contacts found for the company | One `Outreach(status=skipped, skip_reason="no_contact_found")`. Visible, never a silent no-op |
 | Contact suppressed | `skipped`, reason recorded; no draft, no Gmail call |
-| Truth-check flags the draft | `ready_for_review`; **not** written to Gmail until resolved |
+| Truth-check flags the draft | `ready_for_review`, approval blocked until edited or the flag is dismissed |
+| Daily cap reached | Row stays `approved`; sends on the next day's first pass. Not an error |
 | Gmail credential missing or revoked | Stop before drafting; write a `Notification` asking the user to reconnect. Do not retry-loop |
-| Gmail draft write fails | `failed` with the error type only — never the error body, which can echo the credential. `digest.smtp_sender` sets this precedent |
+| Send fails | `failed`, with the error **type** only — never the body, which can echo the credential. `digest.smtp_sender` sets this precedent |
+| Send succeeded but the commit failed | The lock plus `gmail_message_id` makes this detectable: a `sending` row older than the task timeout is reconciled by querying Gmail for the message id, never by blindly resending |
 | Enqueue fails | Rows persist, return `503` with a "saved, try again" message, mirroring `main.py:1672` |
 
 ---
@@ -281,13 +364,19 @@ is the reason to use a link rather than reply-parsing.
 
 | test | pins |
 |---|---|
-| `test_outreach_is_unique_per_application_and_contact` | The duplicate guarantee |
+| `test_outreach_cannot_send_twice` | The lock. Mirrors `test_claim_submission_still_cannot_fire_twice` |
+| `test_daily_cap_is_enforced_inside_the_lock` | Two concurrent sends cannot both see 9 |
+| `test_outreach_is_unique_per_application_and_contact` | The schema-level duplicate guarantee |
 | `test_outreach_respects_suppression_list` | Including global (`profile_id IS NULL`) rows |
-| `test_truth_check_flag_blocks_gmail_draft_creation` | A flagged draft never reaches Gmail |
+| `test_suppression_written_after_drafting_still_blocks_send` | The re-check at send time |
+| `test_truth_check_flag_blocks_approval` | |
+| `test_editing_a_draft_reruns_the_truth_check` | An edit cannot bypass the gate |
+| `test_auto_send_requires_all_preconditions` | One case per row of the preconditions table |
+| `test_auto_send_refuses_accept_all_email` | The stricter-than-manual rule |
+| `test_auto_send_locked_until_ten_manual_approvals` | The earned-trust rule |
 | `test_warm_signal_ranking_prefers_former_employer` | Ordering, including the deterministic tiebreaker |
 | `test_warm_signal_must_trace_to_a_resume_fact` | No asserted connection without a backing fact |
 | `test_invalid_email_is_skipped_with_reason` | |
-| `test_accept_all_email_still_drafts_but_marks_uncertainty` | The common case is handled, not treated as an error |
 | `test_unsubscribe_token_adds_global_suppression` | |
 | `test_unsubscribe_rejects_unsigned_token` | No enumeration |
 | `test_contacts_are_not_visible_across_profiles` | The privacy property of profile scoping |
@@ -297,25 +386,24 @@ is the reason to use a link rather than reply-parsing.
 ## Deliberately not building
 
 - **Reply polling.** Needs `gmail.readonly`, a second restricted scope, to tell the user
-  something their own inbox already shows them.
+  something their own inbox already shows them. Replies are marked in the tracker by
+  hand until there is a reason to spend another restricted scope on it.
 - **Follow-up sequences.** One ask per contact. Drip follow-ups are the single clearest
-  thing that turns referral outreach into spam.
-- **Direct send, the 10/day cap, and the at-most-once send lock.** Deferred with draft
-  mode. If direct send is added later, all three come back together — they are one
-  feature, not three.
+  thing that turns referral outreach into spam, and they multiply the cap problem.
 - **A contact CRM.** Contacts exist to support an application, not as a managed list.
 - **Cross-user contact dedupe.** See the privacy note under `Contact`.
+- **Per-user sending domains or a platform fallback domain.** ADR-003 decided against
+  this and the reasoning (distributed reputation risk) still holds.
 
 ---
 
 ## Open items for the owner
 
 1. **Which automated `ContactSource`** (REACH-E), or whether manual entry is enough for
-   v1. This is a cost and data-protection decision. `ManualContactSource` makes it
-   deferrable without blocking anything.
-2. **Expected flag rate.** `GAPS.md` 6.7's measurement was on resumes. Nobody has
-   measured the truth-check against favour-asking prose. Worth one measured run on ~10
-   real drafts before assuming the exception path is rare.
-3. **Whether "draft created" should notify.** A draft silently appearing in Gmail may go
-   unnoticed. An in-app `Notification` already exists as a mechanism; using it here is a
-   one-line decision, not a design.
+   v1. A cost and data-protection decision. `ManualContactSource` makes it deferrable
+   without blocking anything.
+2. **Measure the truth-check flag rate on outreach prose** before auto-send ships.
+   `GAPS.md` 6.7's 9-of-30 was measured on resumes; favour-asking prose is expected to be
+   worse, and auto-send makes that gate load-bearing. ~10 real drafts is enough to know.
+3. **Confirm the auto-send unlock threshold.** 10 manual approvals is a chosen number,
+   not a measured one.
