@@ -75,8 +75,7 @@ that draft mode avoided. They are one feature, not three, and all must be correc
 - **REACH-C** — warm-signal ranking, email verification, suppression checks.
 - **REACH-D** — drafting through the existing truth-check, review queue, approve, the
   send lock, the daily cap, sending.
-- **REACH-E** — opt-out endpoint, auto-send opt-in, and whichever automated
-  `ContactSource` the owner picks.
+- **REACH-E** — opt-out endpoint, auto-send opt-in, and `ApifyContactSource`.
 
 ---
 
@@ -231,14 +230,25 @@ Candidates are ordered by the strongest shared signal found between the contact 
 user's own `ResumeFact` rows:
 
 1. **Same former employer** — strongest. Verifiable and specific.
-2. **Same university**
-3. **Same city**
-4. **No link** — a member of the relevant team. Cold, and ranked last.
+2. **Same role as the one being applied for** — owner's addition, 2026-10-09, and a better
+   signal than the ranking originally had. A PM asking another PM about a PM opening is a
+   natural approach in a way that asking a recruiter is not: the recipient can speak to fit
+   from experience, has an incentive to want good teammates, and is not fielding a hundred
+   cold asks a day. This is the **default target** for the Apify adapter's query — it
+   searches the company for the job's own title.
+3. **Same university**
+4. **Same city**
+5. **No link** — a member of the relevant team. Cold, and ranked last.
+
+Signals 1, 3 and 4 are claims about the *user* and must trace to a `ResumeFact`. Signal 2
+is a claim about the *recipient* and traces to the contact's own title plus `Job.title`, so
+it is verifiable from data the system already holds — no fact needed, and nothing asserted
+about the user that the truth-check could not check.
 
 The chosen signal is written to `Outreach.warm_signal_used`, because the email asserts
-it ("we overlapped at Flipkart") and an assertion the user cannot verify is exactly what
-the truth-check exists to stop. **A signal that cannot be traced to a `ResumeFact` must
-not be used.**
+it ("we overlapped at Flipkart", "I saw you're a PM on the payments team") and an assertion
+the user cannot verify is exactly what the truth-check exists to stop. **A signal about the
+user that cannot be traced to a `ResumeFact` must not be used.**
 
 **Ordering must be deterministic.** `GAPS.md` 6.6 records a real nondeterminism bug from
 ordering by score with no tiebreaker: which job a capped run applied to was undefined
@@ -261,11 +271,53 @@ cannot cover.
 
 **Why manual first rather than integrating a provider immediately:** the engine holds all
 the correctness properties — the send lock, the cap, suppression, dedupe, verification
-gating. Wiring a paid provider into an unproven engine means debugging both at once.
+gating. Wiring a paid provider into an unproven engine means debugging both at once. Manual
+also stays permanently useful, because the automated adapter's coverage is partial (below).
 
-The automated adapter is **REACH-E and the owner's decision** — it is a cost,
-data-protection and vendor choice, not a technical one. Whatever is chosen implements the
-same interface, so adding it is small.
+### `ApifyContactSource` (REACH-E) — decided 2026-10-09
+
+The owner's choice is Apify's `harvestapi/linkedin-profile-search` actor. It searches a
+company for people matching a title and returns profile data.
+
+**Why this adapter is a plain HTTP integration and not an infrastructure project:**
+
+- **No LinkedIn credential of any kind.** The actor runs on Apify's own infrastructure. It
+  needs no cookie, no session, no account from the user — so no user's LinkedIn account is
+  exposed, which was the deciding objection against every other route considered.
+- **Nothing is installed or vendored.** One authenticated POST to Apify's API, one poll for
+  the run result. No browser, no Patchright, no proxy configuration, no anti-detection
+  layer — none of that is in this design and none of it should be added to it.
+- **The query is narrow by construction:** one company, one title, `limit` 2 by default.
+  It is a lookup, not a harvest.
+
+**Query:** company from `Job.company`, title from `Job.title` — which is what makes warm
+signal #2 the default rather than an afterthought.
+
+**Cost**, from the actor's own pricing: **$0.10 per search page** (up to 25 results) plus
+**$0.01 per profile** in email mode. At the default 2 contacts per application that is
+roughly **$0.12 per application**.
+
+**Coverage is partial, and the spec must not pretend otherwise.** Email addresses are not on
+LinkedIn profiles — the actor states the data *"is not publicly available on the platform"*
+and performs *"independent email searches"*, with results *"not guaranteed to find an email
+for every profile."* So expect a real miss rate. Three consequences:
+
+1. `ManualContactSource` is a **permanent fallback**, not scaffolding.
+2. A company with no result produces `Outreach(status=skipped,
+   skip_reason="no_contact_found")` — visible, never a silent no-op.
+3. Returned addresses carry the actor's own uncertainty, so they go through the same
+   verification gate as any other source and are **never** auto-sent on `accept_all` or
+   `unknown`.
+
+**Failure handling.** An Apify run can be slow, rate-limited, or return nothing. Treat it as
+an untrusted network dependency: a bounded timeout, no retry storm, and on failure fall
+through to `ManualContactSource` rather than blocking the application. The Apify token lives
+in the environment and is never logged — same discipline as every other credential here.
+
+**Residual items that belong to the owner, not to this spec:** a privacy notice and a
+lawful-basis position for processing contact data under DPDP/GDPR, and the fact that Apify's
+terms place responsibility on the account holder running the actor. Recorded so the next
+session does not have to rediscover that they were considered.
 
 ---
 
@@ -375,6 +427,9 @@ is the reason to use a link rather than reply-parsing.
 | `test_auto_send_refuses_accept_all_email` | The stricter-than-manual rule |
 | `test_auto_send_locked_until_ten_manual_approvals` | The earned-trust rule |
 | `test_warm_signal_ranking_prefers_former_employer` | Ordering, including the deterministic tiebreaker |
+| `test_same_role_signal_traces_to_job_title_not_a_fact` | Signal 2 is a claim about the recipient, so it must verify against `Job.title` + the contact title, not require a `ResumeFact` |
+| `test_apify_failure_falls_through_to_manual_source` | A vendor outage must not block the application |
+| `test_apify_no_result_skips_with_reason` | Partial coverage is visible, never silent |
 | `test_warm_signal_must_trace_to_a_resume_fact` | No asserted connection without a backing fact |
 | `test_invalid_email_is_skipped_with_reason` | |
 | `test_unsubscribe_token_adds_global_suppression` | |
@@ -399,9 +454,9 @@ is the reason to use a link rather than reply-parsing.
 
 ## Open items for the owner
 
-1. **Which automated `ContactSource`** (REACH-E), or whether manual entry is enough for
-   v1. A cost and data-protection decision. `ManualContactSource` makes it deferrable
-   without blocking anything.
+1. ~~Which automated `ContactSource`~~ **Decided 2026-10-09: Apify
+   `harvestapi/linkedin-profile-search`.** What remains is an `APIFY_TOKEN` in the
+   environment and the privacy-notice/lawful-basis item noted in that section.
 2. **Measure the truth-check flag rate on outreach prose** before auto-send ships.
    `GAPS.md` 6.7's 9-of-30 was measured on resumes; favour-asking prose is expected to be
    worse, and auto-send makes that gate load-bearing. ~10 real drafts is enough to know.
