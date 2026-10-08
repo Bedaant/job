@@ -20,12 +20,26 @@ from models import ResumeFact
 from outreach.contacts import ContactCandidate, _title_tokens
 
 # Strongest first. The email leads with whichever of these is found.
+#
+# `same_role` vs `holds_target_role` is the one distinction here that is not merely about
+# strength, and it exists because of a real bug. "Same role" asserts a SYMMETRY — an
+# email opening "as a fellow PM" is a claim about the USER, not just the recipient. An
+# earlier version verified only the recipient's title, so a backend engineer applying
+# for a PM opening would have been made to claim they were a PM. Now:
+#
+#   same_role          both sides evidenced; may be framed as mutual; carries a fact id
+#   holds_target_role  the recipient holds it, the user does not (or cannot be shown to);
+#                      asserts nothing about the user, so it must NOT be framed as shared
+#
+# The second is still worth sending — a PM is the right person to ask about a PM opening
+# whoever you are — it just has to be phrased one-sidedly.
 _RANK = {
     "former_employer": 0,   # verifiable, specific, and the strongest opener there is
     "same_role": 1,         # owner's addition: a PM asking a PM is a natural approach
-    "same_university": 2,
-    "same_city": 3,
-    "none": 4,
+    "holds_target_role": 2,  # the one-sided version of the above
+    "same_university": 3,
+    "same_city": 4,
+    "none": 5,
 }
 
 # Stripped before matching a company name, so "Flipkart" matches "Flipkart Internet Pvt
@@ -72,6 +86,38 @@ def _mentions(needle: str, facts: list[ResumeFact], categories: tuple[str, ...])
     return None
 
 
+def _sig(kind, value, *, fact_id=None, field=None, asserts=False, **extra) -> dict:
+    """Every signal has the same shape, and `asserts_about_user` is the field that
+    matters: when it is true, `source_fact_id` or `source_field` MUST name what backs
+    the claim. `tests/test_outreach_signals.py` enforces that as an invariant rather
+    than leaving it to review."""
+    return {
+        "kind": kind,
+        "value": value,
+        "source_fact_id": fact_id,
+        "source_field": field,
+        "asserts_about_user": asserts,
+        **extra,
+    }
+
+
+def _role_tokens_in_facts(tokens: set[str], facts: list[ResumeFact]) -> str | None:
+    """Does the user's own history show them holding this role? Returns the fact id.
+
+    Experience and project facts only: a `skill` fact saying "product management" is a
+    competency, not a role held, and is too weak to justify "as a fellow PM".
+    """
+    if not tokens:
+        return None
+    for fact in sorted(facts, key=lambda f: (f.created_at or 0, f.id)):
+        if fact.category not in ("experience", "project"):
+            continue
+        text = " ".join(filter(None, [fact.achievement, fact.proof])).casefold()
+        if all(t in text for t in tokens):
+            return fact.id
+    return None
+
+
 def _signal(c: ContactCandidate, facts: list[ResumeFact], profile, job_title: str) -> dict:
     """The strongest TRUE connection between this contact and this user.
 
@@ -82,33 +128,37 @@ def _signal(c: ContactCandidate, facts: list[ResumeFact], profile, job_title: st
     for company in c.past_companies:
         fact_id = _mentions(company, facts, ("experience",))
         if fact_id:
-            return {"kind": "former_employer", "value": company, "source_fact_id": fact_id}
+            return _sig("former_employer", company, fact_id=fact_id, asserts=True)
 
-    # 2. They hold the role being applied for. Asserts nothing about the USER — it is
-    # verifiable from `Job.title` plus their own title, both already in the system — so
-    # it carries no fact id and needs none.
+    # 2. The recipient holds the role being applied for — and whether that may be framed
+    # as MUTUAL depends on the user's own facts, which is the whole point of the split.
     if c.title and job_title:
-        wanted = _title_tokens([job_title])
-        theirs = _title_tokens([c.title])
-        shared = wanted & theirs
+        shared = _title_tokens([job_title]) & _title_tokens([c.title])
         if shared:
-            return {"kind": "same_role", "value": c.title, "source_fact_id": None,
-                    "shared_terms": sorted(shared)}
+            fact_id = _role_tokens_in_facts(shared, facts)
+            if fact_id:
+                return _sig("same_role", c.title, fact_id=fact_id, asserts=True,
+                            shared_terms=sorted(shared))
+            # The user cannot be shown to hold this role — a career switcher, or simply
+            # facts that never name the title. Still worth sending, phrased one-sidedly.
+            return _sig("holds_target_role", c.title, asserts=False,
+                        shared_terms=sorted(shared))
 
     # 3. Same university.
     for school in c.schools:
         fact_id = _mentions(school, facts, ("education",))
         if fact_id:
-            return {"kind": "same_university", "value": school, "source_fact_id": fact_id}
+            return _sig("same_university", school, fact_id=fact_id, asserts=True)
 
-    # 4. Same city. `Profile.city` is structured, so this one is a real comparison rather
-    # than a text search — but the contact's location is free text ("Bengaluru, India"),
-    # so the city has to be found inside it.
+    # 4. Same city. Backed by `Profile.city` — structured and entered by the user
+    # themselves, so it grounds the claim without a `ResumeFact`, but it is named
+    # explicitly rather than left implicit. The contact's location is free text
+    # ("Bengaluru, India"), so the city has to be found inside it.
     if c.location and profile is not None and profile.city:
         if _strip_corp(profile.city) in _strip_corp(c.location):
-            return {"kind": "same_city", "value": profile.city, "source_fact_id": None}
+            return _sig("same_city", profile.city, field="profile.city", asserts=True)
 
-    return {"kind": "none", "value": None, "source_fact_id": None}
+    return _sig("none", None)
 
 
 def rank_contacts(

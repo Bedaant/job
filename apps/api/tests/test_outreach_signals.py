@@ -66,6 +66,7 @@ def test_former_employer_outranks_same_role(db_session):
 def test_same_role_outranks_no_signal(db_session):
     from outreach.signals import rank_contacts
     p = _profile(db_session)
+    _fact(db_session, p, "experience", "Product Manager on payments", proof="Acme")
     pm = ContactCandidate(full_name="A PM", company="Acme", title="Senior Product Manager")
     other = ContactCandidate(full_name="An SRE", company="Acme", title="Site Reliability Engineer")
     ranked = rank_contacts([other, pm], facts=p.resume_facts, profile=p, job_title="Product Manager")
@@ -99,15 +100,89 @@ def test_a_signal_about_the_user_records_the_fact_that_backs_it(db_session):
     assert ranked[0].warm_signal["source_fact_id"] == f.id
 
 
-def test_same_role_needs_no_fact_because_it_is_a_claim_about_the_recipient(db_session):
-    """Unlike the others, this asserts nothing about the user — it is verifiable from
-    Job.title plus the contact's own title, both of which the system already holds."""
+def test_same_role_requires_evidence_on_both_sides(db_session):
+    """"Same role" asserts a SYMMETRY, so verifying only the recipient is not enough —
+    an email saying "as a fellow PM" is a claim about the user. It carries the fact id
+    that backs the user's half, like every other signal about the user."""
     from outreach.signals import rank_contacts
     p = _profile(db_session)
+    f = _fact(db_session, p, "experience", "Led the product manager function for billing")
     c = ContactCandidate(full_name="X", company="Acme", title="Group Product Manager")
     ranked = rank_contacts([c], facts=p.resume_facts, profile=p, job_title="Product Manager")
     assert ranked[0].warm_signal["kind"] == "same_role"
+    assert ranked[0].warm_signal["source_fact_id"] == f.id
+
+
+def test_role_signal_downgrades_when_the_user_holds_no_such_role(db_session):
+    """A career switcher — an engineer applying for a PM opening. The contact really is
+    a PM, which is still worth knowing, but the user is not, so the shared-role framing
+    would be false. Downgraded to a one-sided signal that cannot imply symmetry."""
+    from outreach.signals import rank_contacts
+    p = _profile(db_session)
+    _fact(db_session, p, "experience", "Built the billing service in Go")
+    c = ContactCandidate(full_name="X", company="Acme", title="Product Manager")
+    ranked = rank_contacts([c], facts=p.resume_facts, profile=p, job_title="Product Manager")
+    assert ranked[0].warm_signal["kind"] == "holds_target_role"
     assert ranked[0].warm_signal["source_fact_id"] is None
+    assert ranked[0].warm_signal["asserts_about_user"] is False
+
+
+def test_same_role_outranks_holds_target_role(db_session):
+    """Mutual beats one-sided: a genuine peer is a better ask than a stranger who
+    happens to hold the title."""
+    from outreach.signals import rank_contacts
+    p = _profile(db_session)
+    _fact(db_session, p, "experience", "Product manager for payments")
+    peer = ContactCandidate(full_name="Peer", company="Acme", title="Product Manager",
+                            email="peer@acme.com")
+    # No title overlap with the user's facts beyond the job itself.
+    stranger = ContactCandidate(full_name="Stranger", company="Acme", title="Product Manager",
+                                email="stranger@acme.com")
+    ranked = rank_contacts([stranger, peer], facts=p.resume_facts, profile=p,
+                           job_title="Product Manager")
+    kinds = [c.warm_signal["kind"] for c in ranked]
+    assert kinds[0] == "same_role", "the user's own fact makes both of these mutual"
+    assert set(kinds) == {"same_role"}, (
+        "both contacts hold the role and the user's fact backs it, so both are mutual — "
+        "the downgrade is per-USER, not per-contact"
+    )
+
+
+def test_every_signal_that_asserts_about_the_user_carries_a_fact(db_session):
+    """The invariant, stated once as a test rather than trusted to review: if a signal
+    says anything about the user, a confirmed fact backs it."""
+    from outreach.signals import rank_contacts
+    p = _profile(db_session, city="Bengaluru")
+    _fact(db_session, p, "experience", "Product manager at Flipkart")
+    _fact(db_session, p, "education", "B.Tech, VIT Vellore")
+    cands = [
+        ContactCandidate(full_name="A", company="Acme", past_companies=["Flipkart"]),
+        ContactCandidate(full_name="B", company="Acme", title="Product Manager"),
+        ContactCandidate(full_name="C", company="Acme", schools=["VIT Vellore"]),
+        ContactCandidate(full_name="D", company="Acme", location="Bengaluru, India"),
+        ContactCandidate(full_name="E", company="Acme", title="Chef"),
+    ]
+    for c in rank_contacts(cands, facts=p.resume_facts, profile=p, job_title="Product Manager"):
+        sig = c.warm_signal
+        if sig["asserts_about_user"]:
+            # Either a confirmed fact, or a structured profile field the user filled in
+            # themselves (`city`). Both are user-confirmed; neither is model output.
+            assert sig["source_fact_id"] or sig["source_field"], (
+                f"{sig['kind']} claims something about the user with nothing backing it"
+            )
+
+
+def test_same_city_is_backed_by_the_profile_field_not_a_fact(db_session):
+    """`Profile.city` is structured and user-entered, so it grounds the claim without a
+    `ResumeFact` — but it must still be named, not left implicit."""
+    from outreach.signals import rank_contacts
+    p = _profile(db_session, city="Bengaluru")
+    c = ContactCandidate(full_name="X", company="Acme", location="Bengaluru, India")
+    sig = rank_contacts([c], facts=p.resume_facts, profile=p, job_title="PM")[0].warm_signal
+    assert sig["kind"] == "same_city"
+    assert sig["asserts_about_user"] is True
+    assert sig["source_field"] == "profile.city"
+    assert sig["source_fact_id"] is None
 
 
 def test_employer_overlap_is_not_claimed_without_a_matching_fact(db_session):
