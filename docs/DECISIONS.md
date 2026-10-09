@@ -77,8 +77,19 @@ secret in the system. It is never logged, never returned by any endpoint, and re
 one click. `gmail.send` is deliberately the narrowest scope that does the job: it cannot
 read mail or list drafts.
 
-**Revisit when.** Google's verification process blocks us, or a user segment explicitly
-wants platform-domain sending for a shared team account.
+**Interim fallback, added 2026-10-09 and deliberately temporary.** No OAuth client
+existed yet, so nothing could send at all — while `digest.smtp_sender` was already
+configured and proven delivering. `workers/outreach_tasks.py::_sender_for` therefore
+tries Gmail first and falls back to SMTP. **This breaks the second bullet above:** an
+SMTP send leaves from the ONE configured account, not from the identity of whichever user
+the row belongs to, so reputation is no longer distributed and PRD §3 does not hold on
+that path. It is why Gmail is *preferred* rather than configurable — the fallback
+disappears the moment a grant exists, with no code change. Acceptable while this is the
+owner plus a handful of friends. **Revisit before onboarding anyone outside that circle.**
+
+**Revisit when.** Google's verification process blocks us, a user segment explicitly
+wants platform-domain sending for a shared team account, or the SMTP fallback above is
+still in place when the user count leaves the owner's own circle.
 
 ---
 

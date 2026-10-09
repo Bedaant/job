@@ -57,14 +57,70 @@ def send_outreach_task(outreach_id: str) -> dict:
         return {"outreach_id": outreach_id, "result": "sent" if delivered else "failed"}
 
 
-def _sender_for(db, row: models.Outreach):
-    """The user's own Gmail (ADR-003). Raises if they have no usable grant, which the
-    caller records as `failed` rather than retrying — a missing credential is not a
-    transient fault and retrying it just burns the queue.
-    """
-    from outreach.gmail import gmail_sender
+def _smtp_configured() -> bool:
+    from core.config import get_settings
 
-    return gmail_sender(db, row.profile.user_id)
+    return bool(get_settings().smtp_host)
+
+
+def smtp_outreach_sender():
+    """`digest.smtp_sender`, adapted to the outreach sender contract.
+
+    Two reasons this wrapper exists rather than passing `digest.smtp_sender` directly:
+
+    1. It returns `True`/`False`, while `send_outreach` stores the return value as
+       `gmail_message_id` — passing the bool through would persist the literal string
+       `"True"` as a message id.
+    2. `False` must become `None`, because `send_outreach` treats a falsy return as a
+       failed delivery. Returning a truthy id on a failed send would mark the row `sent`
+       with nothing delivered, which is the one outcome worse than failing.
+
+    SMTP gives no provider message id, so the id is synthetic and marked `smtp:` so a row
+    sent this way is distinguishable from a Gmail-API one forever after.
+    """
+    import uuid
+
+    import digest
+
+    def sender(to: str, subject: str, body: str):
+        delivered = digest.smtp_sender(to, subject, body)
+        return f"smtp:{uuid.uuid4()}" if delivered else None
+
+    return sender
+
+
+def _sender_for(db, row: models.Outreach):
+    """How this email actually leaves. Gmail first, SMTP as the fallback.
+
+    ADR-003 chose per-user Gmail OAuth and it stays preferred — it is the only path that
+    satisfies `PRD.md` §3 ("the user's identity, the user's reputation"), and it is tried
+    whenever a grant exists.
+
+    **The deviation the fallback introduces, stated rather than buried:** an SMTP send
+    goes out from the ONE configured account, not from the identity of whichever user the
+    row belongs to. So §3 holds for the Gmail path and does NOT hold here. That is
+    acceptable while this is the owner plus a handful of friends, and it is why Gmail is
+    preferred the moment a grant appears rather than being a configurable choice. Revisit
+    before any user who is not a friend of the owner's is onboarded.
+
+    Raises when neither is available, which the caller records as `failed`. A missing
+    credential is not a transient fault, so retrying it only burns the queue — and
+    returning a no-op sender instead would mark rows `sent` with nothing delivered.
+    """
+    from outreach.gmail import (
+        GmailNotConfigured,
+        GmailNotConnected,
+        GmailReauthRequired,
+        gmail_sender,
+    )
+
+    try:
+        return gmail_sender(db, row.profile.user_id)
+    except (GmailNotConnected, GmailNotConfigured, GmailReauthRequired):
+        if not _smtp_configured():
+            raise
+        logger.info("outreach %s falling back to SMTP: no usable Gmail grant", row.id)
+        return smtp_outreach_sender()
 
 
 def default_sources() -> list:
