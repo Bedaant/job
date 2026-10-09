@@ -1,13 +1,14 @@
 """REACH-E — `ApifyContactSource` (`docs/PLAN-OUTREACH.md`).
 
-MOCKED, NOT LIVE, and the distinction matters for what these tests do and don't prove.
-There is no `APIFY_TOKEN` available, so the request shape and the failure handling are
-verified here, while the OUTPUT field mapping is only as right as the actor's published
-example. Those keys (`firstName`, `lastName`, `headline`, `location`, `id`,
-`publicIdentifier`, `experience`, `education`) came from its documentation, not from a
-response. One live run is needed to confirm them, and `_first_str` accepts several
-plausible keys per field precisely so that a mismatch degrades one field instead of
-returning a row of Nones.
+Mostly mocked, and the distinction matters for what these tests prove. The request shape
+and the failure handling are verified here; the OUTPUT field mapping was originally only
+as good as the actor's published documentation.
+
+**Confirmed live 2026-10-09** against a real token: a Razorpay / "Product Manager" query
+returned 2 candidates in 16.2s with `full_name`, `title`, `email`, `location`,
+`source_ref` and — importantly for `outreach/signals.py` — 8 and 9 `past_companies` plus
+1 and 2 `schools` each. So `former_employer` and `same_university` ARE reachable through
+this adapter, which is the whole reason it exists alongside the free GitHub one.
 """
 from unittest.mock import patch
 
@@ -15,6 +16,24 @@ import httpx
 import pytest
 
 from outreach.sources_apify import ApifyContactSource
+
+
+@pytest.fixture()
+def no_apify_token(monkeypatch):
+    """Isolate from a REAL configured token.
+
+    `patch.dict("os.environ", clear=True)` is NOT sufficient: `_resolve_token` also
+    consults Settings, which loads `apps/api/.env`. Without this, a test asserting
+    "unconfigured" behaviour makes a live, billable Apify call on any machine where the
+    token is set — which is exactly what happened the first time one was.
+    """
+    from core.config import get_settings
+
+    monkeypatch.delenv("APIFY_TOKEN", raising=False)
+    get_settings.cache_clear()
+    monkeypatch.setattr(get_settings(), "apify_token", None, raising=False)
+    yield
+    get_settings.cache_clear()
 
 
 class _Resp:
@@ -53,19 +72,36 @@ def _profile(**over):
 
 # ---------- not configured ----------
 
-def test_no_token_returns_empty_and_makes_no_request():
+def test_no_token_returns_empty_and_makes_no_request(no_apify_token):
     """Not configured is not an error — the Reed connector and the embedding pipeline
     no-op the same way without their keys."""
-    with patch.dict("os.environ", {}, clear=True), patch("httpx.post") as post:
+    with patch("httpx.post") as post:
         assert ApifyContactSource().find(company="Acme", titles=["PM"], limit=2) == []
     post.assert_not_called()
 
 
-def test_token_from_the_environment_is_used():
-    with patch.dict("os.environ", {"APIFY_TOKEN": "env-token"}, clear=True), \
-            patch("httpx.post", return_value=_Resp([])) as post:
+def test_token_from_the_environment_is_used(no_apify_token, monkeypatch):
+    """The raw-env fallback, for a deployment that injects the token instead of using a
+    `.env` file. The fixture blanks the Settings source first, so this proves the
+    fallback rather than accidentally reading the configured token."""
+    monkeypatch.setenv("APIFY_TOKEN", "env-token")
+    with patch("httpx.post", return_value=_Resp([])) as post:
         ApifyContactSource().find(company="Acme", titles=[], limit=2)
     assert post.call_args.kwargs["headers"]["Authorization"] == "Bearer env-token"
+
+
+def test_token_from_dotenv_settings_is_preferred(no_apify_token, monkeypatch):
+    """Where the owner actually puts it. Every other credential in this project lives in
+    `apps/api/.env`, so Settings is the PRIMARY source and the env var is the fallback —
+    the original implementation read only `os.environ`, so a token in `.env` was reachable
+    by neither path and the adapter silently reported "no candidates"."""
+    from core.config import get_settings
+
+    monkeypatch.setenv("APIFY_TOKEN", "env-token")
+    monkeypatch.setattr(get_settings(), "apify_token", "dotenv-token", raising=False)
+    with patch("httpx.post", return_value=_Resp([])) as post:
+        ApifyContactSource().find(company="Acme", titles=[], limit=2)
+    assert post.call_args.kwargs["headers"]["Authorization"] == "Bearer dotenv-token"
 
 
 def test_a_blank_company_makes_no_request():

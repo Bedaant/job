@@ -73,6 +73,13 @@ class Settings(BaseSettings):
     google_client_id: str | None = None
     google_client_secret: str | None = None
 
+    # REACH-E. Paid contact sourcing via Apify's linkedin-profile-search actor. Declared
+    # here rather than left to `os.environ` because `extra="ignore"` means an undeclared
+    # key in `.env` is silently DROPPED — the adapter then no-ops and reports "no
+    # candidates", which is indistinguishable from a company having nobody. Found live:
+    # the token was in `.env` and reachable by neither path.
+    apify_token: str | None = None
+
     cors_origins: list[str] = ["http://localhost:3000"]
     # Where emailed links (password reset) point.
     web_base_url: str = "http://localhost:3000"

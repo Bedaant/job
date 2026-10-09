@@ -147,8 +147,25 @@ class ApifyContactSource:
         self.mode = mode
         self._token = token
 
+    def _resolve_token(self) -> str | None:
+        """Explicit argument, then `.env`/Settings, then the raw environment.
+
+        Settings first because every other credential in this project lives in
+        `apps/api/.env`, so that is where the owner will put this one. The `os.environ`
+        fallback stays for a deployment that injects it as a real env var.
+        """
+        if self._token:
+            return self._token
+        try:
+            from core.config import get_settings
+
+            configured = get_settings().apify_token
+        except Exception:
+            configured = None
+        return configured or os.environ.get(_TOKEN_ENV)
+
     def _post(self, body: dict) -> list | None:
-        token = self._token or os.environ.get(_TOKEN_ENV)
+        token = self._resolve_token()
         if not token:
             # Not configured is not an error — same shape as the Reed connector and the
             # embedding pipeline, which no-op without their keys.
