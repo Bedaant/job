@@ -6,6 +6,8 @@ import os
 # patch it explicitly.
 os.environ["LLM_PROVIDER"] = "anthropic"
 
+from pathlib import Path
+
 import pytest
 from unittest.mock import patch
 from sqlalchemy import create_engine
@@ -15,24 +17,87 @@ import models
 from database import Base
 
 
-@pytest.fixture()
-def db_session():
-    """In-memory SQLite per test — fast, isolated, no Postgres/Docker required.
+# GAPS 5.4's real-Postgres lane. Opt-in, because the default must stay fast and need no
+# infrastructure: `pytest -q` is SQLite as before, and
+#
+#     TEST_DATABASE_URL=postgresql://jobcopilot:jobcopilot@localhost:5433/jobcopilot_test \
+#         .venv/Scripts/python.exe -m pytest -q
+#
+# runs the identical suite against a real Postgres. `docker compose up -d db-test` starts
+# one; it uses the pgvector image because migration 0004 declares Vector columns and the
+# plain postgres:16-alpine image has no `vector` extension (verified: its control file is
+# simply absent).
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 
-    Not a substitute for the real Postgres integration suite (Alembic migration
-    correctness, pgvector, JSONB semantics) — those need a real Postgres and are
-    blocked on Docker approval (DEPENDENCIES.md §5). This covers ORM-level logic:
-    tenancy, relationships, constraints that behave the same on both engines.
+
+@pytest.fixture(scope="session")
+def _pg_engine():
+    """A migrated Postgres, built once per session.
+
+    **Migrated with Alembic, not `Base.metadata.create_all`** — that difference is the
+    whole point of this lane. `create_all` builds the schema the ORM *describes*, so it
+    can never catch a migration that is wrong, missing, or out of order. Migrations
+    0025 and 0026 were verified by INSPECTING the live Neon schema precisely because no
+    test could do it; this is what replaces that.
     """
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-    Base.metadata.create_all(engine)
-    SessionLocal = sessionmaker(bind=engine)
-    session = SessionLocal()
+    if not TEST_DATABASE_URL:
+        yield None
+        return
+
+    from alembic import command
+    from alembic.config import Config
+
+    engine = create_engine(TEST_DATABASE_URL)
+    api_dir = Path(__file__).resolve().parent.parent
+    cfg = Config(str(api_dir / "alembic.ini"))
+    cfg.set_main_option("script_location", str(api_dir / "alembic"))
+    cfg.set_main_option("sqlalchemy.url", TEST_DATABASE_URL)
+    # Downgrade-then-upgrade is deliberately NOT done here: 0025's downgrade drops an
+    # enum type, and proving that path belongs in its own test rather than in every run's
+    # setup.
+    command.upgrade(cfg, "head")
+    try:
+        yield engine
+    finally:
+        engine.dispose()
+
+
+@pytest.fixture()
+def db_session(_pg_engine):
+    """A session per test. SQLite in-memory by default; real Postgres when opted in.
+
+    SQLite is fast, isolated and needs no infrastructure, and it covers ORM-level logic —
+    tenancy, relationships, constraints that behave identically on both engines. What it
+    structurally CANNOT cover, and what the Postgres lane exists for: Alembic migration
+    correctness, pgvector, JSONB semantics, real enum types, and `NULLS NOT DISTINCT`
+    behaviour on the partial-unique constraints REACH-B relies on.
+
+    The Postgres path wraps each test in a transaction and rolls back, rather than
+    recreating the schema — migrating once per session and rolling back per test keeps
+    the real lane usable rather than something nobody runs because it takes an hour.
+    """
+    if _pg_engine is None:
+        engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+        Base.metadata.create_all(engine)
+        session = sessionmaker(bind=engine)()
+        try:
+            yield session
+        finally:
+            session.close()
+            engine.dispose()
+        return
+
+    connection = _pg_engine.connect()
+    transaction = connection.begin()
+    session = sessionmaker(bind=connection)()
     try:
         yield session
     finally:
         session.close()
-        engine.dispose()
+        # Roll back whatever the test did, including DDL-free schema state. The next test
+        # therefore sees the migrated schema with no rows, without paying to rebuild it.
+        transaction.rollback()
+        connection.close()
 
 
 @pytest.fixture(autouse=True)
