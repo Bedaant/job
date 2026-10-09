@@ -1,0 +1,60 @@
+# DEPLOY-B. Without this, `COPY apps/api` bakes two things into the image that must never
+# be there:
+#
+#   apps/api/.env   EVERY secret — Neon and Redis URLs, JWT_SECRET, the Gmail client
+#                   secret, APIFY_TOKEN, SMTP_PASSWORD and ENCRYPTION_KEY. An image layer
+#                   is readable by anyone who can pull it and survives in the build cache,
+#                   so a leaked image is a full credential compromise. Compose mounts the
+#                   file read-only from the host instead.
+#   apps/api/.venv  A Windows virtualenv, with Scripts/python.exe and win32 wheels. It is
+#                   large and useless in a Linux container, and it would shadow nothing
+#                   but still bloat the build context enormously.
+#
+# Everything else here is build-context weight, which is worth cutting on its own: the
+# daemon tars and uploads the whole context before the first instruction runs.
+
+# --- secrets: never, under any circumstances ---
+**/.env
+**/.env.*
+!**/.env.example
+
+# --- virtualenvs and node_modules ---
+# Explicit paths alongside the globs. `**/.venv` should match, but the one that matters
+# most here is a ~1GB Windows virtualenv and this is not the place to rely on subtle
+# pattern semantics being what I assume.
+apps/api/.venv
+apps/web/node_modules
+apps/extension/node_modules
+**/.venv
+**/venv
+**/node_modules
+tools/.venv-jobspy
+
+# The harnesses are deliberately NOT in the image (Chromium is the ~2GB the deferral
+# saves), so excluding them keeps the context small too.
+tools/stagehand-harness
+tools/browser-use-harness
+tools/.venv-agent-reach
+
+# --- caches and build output ---
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/.deepeval
+**/dist
+**/.next
+**/coverage
+
+# --- not needed at runtime ---
+.git
+.github
+docs
+eval
+.claude
+apps/web
+apps/extension
+**/*.md
+**/*.log
+**/.DS_Store

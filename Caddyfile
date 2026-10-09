@@ -1,0 +1,51 @@
+# DEPLOY-C — TLS for the API (docs/PLAN-DEPLOY.md).
+#
+# Caddy rather than nginx + certbot: automatic certificate issue and renewal, no cron, no
+# renewal hook to forget. Point api.applyscout.in's A record at the box and the first
+# request provisions a certificate.
+#
+# Three routes MUST be publicly reachable, and the second has a consequence the others
+# do not:
+#
+#   /gmail/callback               Google redirects a browser here. It must match the OAuth
+#                                 client's authorized redirect URI EXACTLY, and it is
+#                                 derived from API_BASE_URL — so set that to
+#                                 https://api.applyscout.in and register this alongside
+#                                 the localhost entry (keep both).
+#   /outreach/unsubscribe/{token} A RECIPIENT with no account must reach it. If this is
+#                                 unreachable, someone who asks not to be contacted
+#                                 cannot act on it — the one guarantee REACH-E exists to
+#                                 provide. `claim_outreach` now refuses to send to anyone
+#                                 but the operator while API_BASE_URL is local, so a
+#                                 misconfiguration here blocks sending rather than
+#                                 shipping dead links.
+#   everything else               The extension and the web app. The extension's
+#                                 host_permissions must list this host over HTTPS
+#                                 (DEPLOY-A.3) and it needs rebuilding with
+#                                 VITE_API_BASE_URL set to match.
+
+api.applyscout.in {
+	reverse_proxy api:8000
+
+	# Caddy serves HTTPS and redirects HTTP by default, so no manual redirect block.
+	encode gzip
+
+	# The extension sends a bearer token to this host, so tell browsers never to try
+	# cleartext. Only set once the certificate is confirmed working — HSTS is sticky and
+	# a bad deploy becomes hard to back out of.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		-Server
+	}
+
+	# `log` is worth keeping: it is the only record of whether an unsubscribe link was
+	# ever actually fetched, which is the thing worth being able to prove.
+	log {
+		output file /data/access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}
