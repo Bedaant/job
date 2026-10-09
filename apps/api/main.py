@@ -21,6 +21,8 @@ import models
 import schemas
 from tailoring.engine import tailor_application
 from auth.router import router as auth_router
+from outreach import api as outreach_api
+from outreach import gmail
 from connectors.apply_target import resolve_apply_target
 from documents.ats_safety import lint_docx
 from documents.generate_docx import generate_resume_docx
@@ -59,6 +61,12 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+
+# Stage 8 (`docs/PLAN-OUTREACH.md`). Their own routers rather than another 200 lines
+# here: `outreach.api` carries the review/approve/skip surface plus the PUBLIC
+# unsubscribe route, and `outreach.gmail` the OAuth grant REACH-D's send path needs.
+app.include_router(outreach_api.router)
+app.include_router(gmail.router)
 
 
 # ---------- Job discovery ----------
