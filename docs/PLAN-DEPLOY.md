@@ -36,15 +36,15 @@ rebuild costs nothing but time, and there is no backup story to get wrong.
 Each of these is a real break, found by reading the code rather than discovered after a
 failed deploy. Three of them fail **silently**, which is why they are listed first.
 
-### 1. `_JOBSPY_PYTHON` hardcodes a Windows interpreter path
+### 1. `_JOBSPY_PYTHON` hardcodes a Windows interpreter path — **FIXED 2026-10-09**
 
 `connectors/jobspy_connector.py:28` builds `.venv-jobspy/Scripts/python.exe`. On Linux
 that is `bin/python`. `subprocess.run` raises `FileNotFoundError`, the connector logs it
 and returns `[]` — so **JobSpy silently contributes nothing**, which is exactly the
 failure shape GAPS 3.2 just spent weeks being unexplained by.
 
-Fix: resolve `Scripts/python.exe` or `bin/python` by what exists, not by platform
-guessing, so the same code works in both places.
+Fixed: `_jobspy_python()` resolves `Scripts/python.exe`, `bin/python` or `bin/python3` by
+what EXISTS, and a missing venv now logs that it is missing rather than returning `[]`.
 
 ### 2. `gh` CLI is a runtime dependency, not a dev convenience
 
@@ -54,26 +54,49 @@ sourcing dies silently** — `GitHubContactSource` returns `[]`, which the engin
 reads as "nobody found" and records as a skip. Indistinguishable from a company genuinely
 having no public members, which is the measured normal case.
 
-Two options, and the second is better:
-- install `gh` in the image and pass `GH_TOKEN`; or
-- call `api.github.com` directly with `httpx` and a `GITHUB_TOKEN`. One fewer binary, one
-  fewer auth mechanism, and it makes the 403/empty distinction explicit the way the
-  JobSpy fix did.
+**FIXED 2026-10-09** — now calls `api.github.com` directly with `httpx`. One fewer
+binary, one fewer auth mechanism, and the 403/empty distinction is explicit the way the
+JobSpy fix made it.
 
-### 3. The extension points at `http://localhost:8000`
+**And a correction to this plan's own earlier claim.** It said anonymous access "works at
+GitHub's 60 req/hour — fine for a handful of lookups". **That is wrong.** Measured: on an
+anonymous request `GET /users/{login}` returns `email: None` for **every** user, including
+those who publish one — the field is only populated when authenticated. So without a
+token the adapter finds nobody, every time, and the earlier 12-of-25 razorpay figure was
+taken through an authenticated `gh`.
+
+**`GITHUB_TOKEN` is therefore mandatory, not an optimisation.** The adapter now refuses to
+spend a request without one and logs that it is a missing credential rather than an empty
+company. Verified with a token: razorpay 3 candidates / 3 emails, zerodha 3/3 — identical
+to the pre-rewrite numbers.
+
+### 3. The extension points at `http://localhost:8000` — **FIXED 2026-10-09**
 
 `apps/extension/manifest.json:10` — `host_permissions`. Chrome requires HTTPS for any
-non-localhost host, so this needs the real domain and a reissued extension build. Until
-then the extension cannot reach a deployed API at all.
+non-localhost host, so a deployed API was unreachable from the extension entirely,
+failing with a permissions error rather than anything naming the cause.
 
-### 4. `API_BASE_URL` is still localhost
+Fixed: `host_permissions` now lists `https://api.applyscout.in/*` alongside localhost, and
+`apiConfig.ts` reads `VITE_API_BASE_URL` at build time instead of hardcoding localhost
+with a comment conceding production was unsolved. `src/deployConfig.test.mjs` pins both
+halves, plus that no production host is granted over plain HTTP — the extension sends the
+user's bearer token over it. Still needs a reissued extension build with the var set.
+
+### 4. `API_BASE_URL` is still localhost — **GUARDED 2026-10-09**
 
 **This is a hard gate, not a nice-to-have.** Every outreach email carries an unsubscribe
 link built from `api_base_url`. Pointing at localhost means **a recipient cannot opt out**
-— which is the one thing REACH-E exists to guarantee. Must be the public URL before any
-mail goes to anyone who is not the owner.
+— the one thing REACH-E exists to guarantee.
 
-### 5. `gmail.send`'s redirect URI is environment-specific
+Now enforced in code rather than trusted to a checklist: `claim_outreach` refuses with
+`unsubscribe_unreachable` when `api_base_url` is a local address and the recipient is not
+the operator. Refused at CLAIM time, because once the mail has gone the dead link is
+already in someone's inbox. The operator's own address stays exempt so delivery can be
+proven before deploying — which is exactly how today's two live sends were done. The row
+is left `approved`, not failed: it is a configuration problem and should send once the URL
+is public.
+
+### 5. `gmail.send`'s redirect URI is environment-specific — **SELF-DIAGNOSING 2026-10-09**
 
 `outreach/gmail.py::_redirect_uri` builds from `api_base_url`, so deploying changes it —
 and Google requires an **exact** match. The production URI has to be added to the OAuth

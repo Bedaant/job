@@ -89,6 +89,18 @@ def claim_outreach(db, outreach_id: str, profile_id: str) -> str | None:
         row.skip_reason = "suppressed"
         return "suppressed"
 
+    # DEPLOY-A.4. Every body carries an unsubscribe link built from `api_base_url`, which
+    # defaults to localhost. Sending on that default means THE RECIPIENT CANNOT OPT OUT,
+    # which defeats the one guarantee REACH-E exists to provide — and by the time the mail
+    # has gone, the dead link is already in someone's inbox and cannot be fixed.
+    #
+    # The owner's own address is exempt, because otherwise no end-to-end delivery test is
+    # possible before deploying, and the gate exists to protect people who are NOT the
+    # operator. Left `approved` rather than failed: it is a configuration problem, so the
+    # row should send once the URL is public.
+    if not _unsubscribe_is_reachable(contact.email, row.profile):
+        return "unsubscribe_unreachable"
+
     if sent_today(db, profile_id) >= DAILY_CAP:
         # Deliberately left `approved` rather than failed: the cap is a pacing rule, not
         # an error, and this row should go out on the next day's first pass.
@@ -136,3 +148,30 @@ def send_outreach(db, row: models.Outreach, sender) -> bool:
     row.sent_at = datetime.utcnow()
     row.gmail_message_id = str(message_id)
     return True
+
+
+_LOCAL_HOSTS = ("localhost", "127.0.0.1", "0.0.0.0", "::1")
+
+
+def _unsubscribe_is_reachable(recipient_email: str, profile) -> bool:
+    """Could this recipient actually reach the unsubscribe link we are about to send?
+
+    False when `api_base_url` is a local address AND the recipient is not the operator
+    themselves. A self-test to one's own inbox is fine — a dead link to a stranger is not,
+    and REACH-E's whole promise is that someone who asks not to be contacted can act on it
+    without an account.
+    """
+    from core.config import get_settings
+
+    base = (get_settings().api_base_url or "").casefold()
+    if not any(h in base for h in _LOCAL_HOSTS):
+        return True
+
+    # Exempt the operator's own address, so delivery can be proven before deploying.
+    own = {
+        (getattr(profile, "user", None).email or "").casefold()
+        if getattr(profile, "user", None) else "",
+        (get_settings().smtp_from or "").casefold(),
+        (get_settings().smtp_user or "").casefold(),
+    }
+    return (recipient_email or "").casefold() in {o for o in own if o}

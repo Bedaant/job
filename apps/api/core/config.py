@@ -79,6 +79,12 @@ class Settings(BaseSettings):
     # candidates", which is indistinguishable from a company having nobody. Found live:
     # the token was in `.env` and reachable by neither path.
     apify_token: str | None = None
+    # REACH-B / DEPLOY-A.2. `GitHubContactSource` calls api.github.com directly rather
+    # than shelling out to the `gh` CLI, which would have been a runtime dependency a
+    # container does not have. Optional: anonymous works at GitHub's 60 req/hour, and a
+    # token raises it to 5,000. Declared here for the same reason as `apify_token` —
+    # `extra="ignore"` silently drops an undeclared key from `.env`.
+    github_token: str | None = None
 
     cors_origins: list[str] = ["http://localhost:3000"]
     # Where emailed links (password reset) point.

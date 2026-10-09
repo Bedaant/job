@@ -58,6 +58,23 @@ def _outreach(db, profile, *, status=models.OutreachStatus.approved, email="b@ac
     return o
 
 
+@pytest.fixture(autouse=True)
+def _public_base_url(monkeypatch):
+    """A reachable `api_base_url` for every test here.
+
+    `claim_outreach` refuses to send to anyone but the operator while the unsubscribe
+    link would point at localhost (DEPLOY-A.4). That gate is correct, but it is not what
+    the cap and lock tests are about — so they get a public URL, and the gate's own tests
+    set it back to localhost explicitly rather than leaning on the default.
+    """
+    from core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setattr(get_settings(), "api_base_url", "https://api.applyscout.in", raising=False)
+    yield
+    get_settings.cache_clear()
+
+
 # ---------- the claim ----------
 
 def test_claim_moves_approved_to_sending(db_session):
@@ -219,3 +236,47 @@ def test_the_sender_receives_the_contacts_address_and_the_drafted_text(db_sessio
 
     send_outreach(db_session, o, sender=capture)
     assert seen == {"to": "target@acme.com", "subject": "Subj", "body": "Hello there"}
+
+
+# ---------- DEPLOY-A.4: an unreachable unsubscribe link blocks the send ----------
+
+def test_a_localhost_unsubscribe_link_blocks_sending_to_someone_else(db_session, monkeypatch):
+    """`API_BASE_URL` defaults to localhost, and every outreach body carries an
+    unsubscribe link built from it. Sending with that default means **the recipient
+    cannot opt out** — which defeats the one guarantee REACH-E exists to provide.
+
+    Refused at claim time rather than left to be noticed, because by the time mail has
+    gone out the link is already in someone's inbox and cannot be fixed.
+    """
+    from core.config import get_settings
+    from outreach.send import claim_outreach
+    p = _profile(db_session)
+    o = _outreach(db_session, p, email="stranger@acme.com")
+    # Stated, not inherited from the default, so this test keeps meaning if the default
+    # ever changes.
+    monkeypatch.setattr(get_settings(), "api_base_url", "http://localhost:8000", raising=False)
+    assert claim_outreach(db_session, o.id, p.id) == "unsubscribe_unreachable"
+    assert o.status is models.OutreachStatus.approved, "held, not failed — it is fixable"
+
+
+def test_the_owners_own_address_may_still_be_used_for_a_self_test(db_session, monkeypatch):
+    """Otherwise no end-to-end delivery test is possible before deploying, and the whole
+    point of the gate is protecting people who are NOT the operator."""
+    from core.config import get_settings
+    from outreach.send import claim_outreach
+    p = _profile(db_session, email="me@example.com")
+    o = _outreach(db_session, p, email="me@example.com")
+    monkeypatch.setattr(get_settings(), "api_base_url", "http://localhost:8000", raising=False)
+    assert claim_outreach(db_session, o.id, p.id) is None
+    assert o.status is models.OutreachStatus.sending
+
+
+def test_a_public_base_url_lets_a_real_recipient_through(db_session, monkeypatch):
+    from core.config import get_settings
+    from outreach.send import claim_outreach
+    p = _profile(db_session)
+    o = _outreach(db_session, p, email="stranger@acme.com")
+    get_settings.cache_clear()
+    monkeypatch.setattr(get_settings(), "api_base_url", "https://api.applyscout.in", raising=False)
+    assert claim_outreach(db_session, o.id, p.id) is None
+    get_settings.cache_clear()

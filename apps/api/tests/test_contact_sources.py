@@ -16,9 +16,20 @@ product roles: one product-adjacent person across 39. `GitHubContactSource` is t
 tried first and expected to return nothing for a PM search, which is not a failure and
 must not be treated as one.
 """
+import json
 from unittest.mock import patch
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _github_token(monkeypatch):
+    """A token for every test here, because `GitHubContactSource` now refuses to spend a
+    request without one — GitHub omits the email field on anonymous requests, so a
+    tokenless lookup can only ever return nobody. The test that asserts THAT behaviour
+    clears it again."""
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp-test-token")
+    yield
 
 
 # ---------- the interface ----------
@@ -67,16 +78,26 @@ def test_manual_source_respects_limit():
 
 # ---------- GitHubContactSource ----------
 
-def _gh(payloads):
-    """Fake `gh api` returning a queued stdout per call."""
+def _gh(payloads, status=200):
+    """Fake `api.github.com`, one queued JSON body per call.
+
+    DEPLOY-A.2: this used to fake `subprocess.run` because the adapter shelled out to the
+    `gh` CLI. It now speaks HTTP, which removed a runtime dependency a container does not
+    have — see `GitHubContactSource._gh_json`. Bodies stay JSON strings so the test
+    expectations below did not have to change.
+    """
     calls = iter(payloads)
 
-    def run(cmd, *a, **kw):
+    def get(url, *a, **kw):
+        body = next(calls)
+
         class R:
-            returncode = 0
-            stdout = next(calls)
+            status_code = status
+
+            def json(self):
+                return json.loads(body)
         return R()
-    return run
+    return get
 
 
 def test_github_source_returns_members_with_a_public_email():
@@ -84,7 +105,7 @@ def test_github_source_returns_members_with_a_public_email():
     members = '[{"login": "asha"}, {"login": "ben"}]'
     asha = '{"login": "asha", "name": "Asha Rao", "email": "asha@acme.com", "bio": "Staff Engineer"}'
     ben = '{"login": "ben", "name": "Ben Shah", "email": null, "bio": "Engineer"}'
-    with patch("outreach.contacts.subprocess.run", _gh([members, asha, ben])):
+    with patch("outreach.contacts.httpx.get", _gh([members, asha, ben])):
         got = GitHubContactSource().find(company="acme", titles=[], limit=5)
     assert [c.email for c in got] == ["asha@acme.com"], "a null email yields no candidate"
     assert got[0].source == "github"
@@ -94,26 +115,54 @@ def test_github_source_returns_members_with_a_public_email():
 def test_github_source_returns_empty_when_org_has_no_public_members():
     """Measured: Swiggy exposes 0. Empty is a normal answer, not an error."""
     from outreach.contacts import GitHubContactSource
-    with patch("outreach.contacts.subprocess.run", _gh(["[]"])):
+    with patch("outreach.contacts.httpx.get", _gh(["[]"])):
         assert GitHubContactSource().find(company="swiggy", titles=[], limit=5) == []
 
 
 def test_github_source_survives_a_missing_org():
-    """`gh` exits non-zero for an org that does not exist. That is not a crash."""
+    """GitHub answers 404 for an org that does not exist. Expected and quiet: the slug is
+    guessed from a company name, so misses are the common case, not an error."""
     from outreach.contacts import GitHubContactSource
 
-    def fail(cmd, *a, **kw):
-        class R:
-            returncode = 1
-            stdout = ""
-        return R()
-    with patch("outreach.contacts.subprocess.run", fail):
+    with patch("outreach.contacts.httpx.get", _gh(["{}"], status=404)):
         assert GitHubContactSource().find(company="nosuchco", titles=[], limit=5) == []
+
+
+def test_a_rate_limited_lookup_is_logged_and_not_an_empty_result(caplog):
+    """DEPLOY-A.2's whole point. A 403 from the rate limiter is NOT "nobody there", and
+    conflating the two is what would have made a tokenless container look like every
+    company having no public members — the measured normal case for a product role."""
+    from outreach.contacts import GitHubContactSource
+
+    with caplog.at_level("WARNING"),          patch("outreach.contacts.httpx.get", _gh(["{}"], status=403)):
+        assert GitHubContactSource().find(company="acme", titles=[], limit=5) == []
+    assert any("not an empty result" in r.getMessage() for r in caplog.records), caplog.text
+
+
+def test_a_token_is_sent_when_configured(monkeypatch):
+    """Anonymous works at 60 req/hour; a token raises it to 5,000."""
+    from outreach.contacts import GitHubContactSource
+
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp-test")
+    seen = {}
+
+    def get(url, *a, **kw):
+        seen.update(kw.get("headers") or {})
+
+        class R:
+            status_code = 200
+
+            def json(self):
+                return []
+        return R()
+    with patch("outreach.contacts.httpx.get", get):
+        GitHubContactSource().find(company="acme", titles=[], limit=2)
+    assert seen.get("Authorization") == "Bearer ghp-test"
 
 
 def test_github_source_survives_unparseable_output():
     from outreach.contacts import GitHubContactSource
-    with patch("outreach.contacts.subprocess.run", _gh(["not json"])):
+    with patch("outreach.contacts.httpx.get", _gh(["not json"])):
         assert GitHubContactSource().find(company="acme", titles=[], limit=5) == []
 
 
@@ -125,7 +174,7 @@ def test_github_source_prefers_a_title_match_but_does_not_require_one():
     members = '[{"login": "eng"}, {"login": "pm"}]'
     eng = '{"login": "eng", "name": "E Eng", "email": "e@acme.com", "bio": "Backend engineer"}'
     pm = '{"login": "pm", "name": "P Prod", "email": "p@acme.com", "bio": "Head of Product"}'
-    with patch("outreach.contacts.subprocess.run", _gh([members, eng, pm])):
+    with patch("outreach.contacts.httpx.get", _gh([members, eng, pm])):
         got = GitHubContactSource().find(company="acme", titles=["Product Manager"], limit=5)
     assert [c.full_name for c in got] == ["P Prod", "E Eng"], "bio match ranks first"
     assert len(got) == 2, "a non-matching bio is still a usable contact"
@@ -138,9 +187,9 @@ def test_github_source_ordering_is_deterministic():
     members = '[{"login": "b"}, {"login": "a"}]'
     b = '{"login": "b", "name": "B", "email": "b@acme.com", "bio": ""}'
     a = '{"login": "a", "name": "A", "email": "a@acme.com", "bio": ""}'
-    with patch("outreach.contacts.subprocess.run", _gh([members, b, a])):
+    with patch("outreach.contacts.httpx.get", _gh([members, b, a])):
         first = GitHubContactSource().find(company="acme", titles=[], limit=5)
-    with patch("outreach.contacts.subprocess.run", _gh([members, b, a])):
+    with patch("outreach.contacts.httpx.get", _gh([members, b, a])):
         second = GitHubContactSource().find(company="acme", titles=[], limit=5)
     assert [c.full_name for c in first] == [c.full_name for c in second]
     assert [c.full_name for c in first] == ["A", "B"], "equal bios fall back to a stable key"
@@ -152,7 +201,7 @@ def test_github_source_never_returns_a_noreply_address():
     from outreach.contacts import GitHubContactSource
     members = '[{"login": "x"}]'
     x = '{"login": "x", "name": "X", "email": "1+x@users.noreply.github.com", "bio": ""}'
-    with patch("outreach.contacts.subprocess.run", _gh([members, x])):
+    with patch("outreach.contacts.httpx.get", _gh([members, x])):
         assert GitHubContactSource().find(company="acme", titles=[], limit=5) == []
 
 
@@ -160,7 +209,7 @@ def test_github_source_falls_back_to_login_when_name_is_null():
     from outreach.contacts import GitHubContactSource
     members = '[{"login": "asha"}]'
     asha = '{"login": "asha", "name": null, "email": "a@acme.com", "bio": ""}'
-    with patch("outreach.contacts.subprocess.run", _gh([members, asha])):
+    with patch("outreach.contacts.httpx.get", _gh([members, asha])):
         got = GitHubContactSource().find(company="acme", titles=[], limit=5)
     assert got[0].full_name == "asha"
 
@@ -173,13 +222,43 @@ def test_github_source_stops_at_limit_without_fetching_more_profiles():
     prof = '{"login": "a", "name": "A", "email": "a@acme.com", "bio": ""}'
     calls = []
 
-    def counting(cmd, *a, **kw):
-        calls.append(cmd)
+    def counting(url, *a, **kw):
+        calls.append(url)
 
         class R:
-            returncode = 0
-            stdout = members if len(calls) == 1 else prof
+            status_code = 200
+
+            def json(self):
+                return json.loads(members if len(calls) == 1 else prof)
         return R()
-    with patch("outreach.contacts.subprocess.run", counting):
+    with patch("outreach.contacts.httpx.get", counting):
         GitHubContactSource(max_profile_lookups=2).find(company="acme", titles=[], limit=1)
     assert len(calls) <= 3, "1 member list + at most max_profile_lookups profile calls"
+
+
+def test_no_github_token_is_reported_not_silently_empty(monkeypatch, caplog):
+    """MEASURED 2026-10-09: anonymously `GET /users/{login}` returns `email: None` for
+    EVERY user, including those who publish one — the field is only populated on
+    authenticated requests. So without a token this adapter finds nobody, every time.
+
+    The engine reads an empty list as "nobody found", which is indistinguishable from a
+    company genuinely having no public members — the measured normal case for a product
+    role. Third time today that shape of bug appeared (the Apify token, JobSpy's 403s,
+    this), hence a test rather than a comment.
+
+    The 12-of-25 razorpay figure quoted elsewhere was taken through an AUTHENTICATED
+    `gh`, not anonymously.
+    """
+    from core.config import get_settings
+    from outreach.contacts import GitHubContactSource
+
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    get_settings.cache_clear()
+    monkeypatch.setattr(get_settings(), "github_token", None, raising=False)
+
+    with caplog.at_level("WARNING"), patch("outreach.contacts.httpx.get") as get:
+        assert GitHubContactSource().find(company="razorpay", titles=["PM"], limit=2) == []
+    get.assert_not_called(), "no point spending a request that cannot return an address"
+    assert any("not an empty company" in r.getMessage() for r in caplog.records), caplog.text
+    get_settings.cache_clear()

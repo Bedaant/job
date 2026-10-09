@@ -27,12 +27,16 @@ Two conclusions that shape the design:
 So GitHub is tried first and the paid adapter covers what it cannot reach. There is no
 fallback chain hardcoded here — the engine composes the sources it was given, in order.
 """
-import json
-import subprocess
+import logging
+import os
+import httpx
 from dataclasses import dataclass, field
 from typing import Protocol
 
+logger = logging.getLogger(__name__)
+
 TIMEOUT = 20
+_GITHUB_API = "https://api.github.com"
 
 # Deliverable to nobody. GitHub hands these out by default for web-UI commits and to
 # anyone who hides their address, so it is the common case rather than an edge one.
@@ -140,24 +144,89 @@ class GitHubContactSource:
         self.max_profile_lookups = max_profile_lookups
 
     def _gh_json(self, path: str):
+        """One GitHub REST call. **httpx, not the `gh` CLI** (DEPLOY-A.2).
+
+        This shelled out to `gh api`, which made the CLI a RUNTIME dependency rather than
+        a developer convenience. A container has neither the binary nor an authenticated
+        account, so on the first deploy every lookup would have returned None — and the
+        engine correctly reads that as "nobody found", which is indistinguishable from a
+        company genuinely having no public members. That is the measured normal case for
+        a product role, so it would have looked like correct behaviour indefinitely.
+
+        Direct HTTP also removes a second auth mechanism: one `GITHUB_TOKEN` instead of
+        `gh auth login` state on the box. Unauthenticated works too, at GitHub's 60
+        requests/hour anonymous limit — fine for a handful of lookups, and the token
+        raises it to 5,000.
+        """
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "ApplyScout/0.1",
+        }
+        token = self._github_token()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         try:
-            r = subprocess.run(
-                ["gh", "api", path], capture_output=True, text=True,
-                encoding="utf-8", errors="replace", timeout=TIMEOUT,
+            r = httpx.get(f"{_GITHUB_API}/{path.lstrip('/')}", headers=headers, timeout=TIMEOUT)
+        except Exception as exc:
+            # Type only — a response body can echo a token in an error path.
+            logger.warning("github lookup failed for %s: %s", path, type(exc).__name__)
+            return None
+        if r.status_code == 404:
+            # An org that does not exist. Expected and quiet: the slug is guessed from a
+            # company name, so misses are the common case.
+            return None
+        if r.status_code in (401, 403, 429):
+            # Rate limit or a bad token. NOT the same as "nobody there", and the whole
+            # point of this rewrite is that the difference is visible.
+            logger.warning(
+                "github lookup refused for %s: HTTP %s (rate limit or token) — this is "
+                "not an empty result", path, r.status_code,
             )
-        except (OSError, subprocess.SubprocessError):
             return None
-        if r.returncode != 0 or not (r.stdout or "").strip():
+        if r.status_code != 200:
+            logger.warning("github lookup for %s returned HTTP %s", path, r.status_code)
             return None
         try:
-            return json.loads(r.stdout)
-        except json.JSONDecodeError:
+            return r.json()
+        except ValueError:
             return None
 
+    @staticmethod
+    def _github_token() -> str | None:
+        """Settings first, then the environment — the same order and the same reason as
+        `ApifyContactSource._resolve_token`: every other credential here lives in
+        `apps/api/.env`, and an undeclared key is silently dropped by `extra="ignore"`."""
+        try:
+            from core.config import get_settings
+
+            configured = get_settings().github_token
+        except Exception:
+            configured = None
+        return configured or os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+
     def find(self, company: str, titles: list[str], limit: int) -> list[ContactCandidate]:
-        # The org slug is guessed from the company name. A miss is a clean empty result
-        # (`gh` exits non-zero for an unknown org), which is why no slug cleverness is
-        # warranted here — being wrong is cheap and silent.
+        # A GITHUB_TOKEN IS NOT OPTIONAL, measured 2026-10-09: anonymously
+        # `GET /users/{login}` returns `email: None` for EVERY user, including those who
+        # publish one. The field is only populated for authenticated requests. So without
+        # a token this adapter returns zero candidates every time — and the engine
+        # correctly reads that as "nobody found", which is indistinguishable from a
+        # company genuinely having no public members.
+        #
+        # That is the third time today that shape of bug has appeared (the Apify token,
+        # JobSpy's 403s, this), so it is said out loud rather than left to be discovered:
+        # the earlier measurement of 12-of-25 razorpay members with a public address was
+        # taken through an AUTHENTICATED `gh`, not anonymously.
+        if not self._github_token():
+            logger.warning(
+                "GitHubContactSource has no GITHUB_TOKEN: GitHub omits the email field "
+                "on anonymous requests, so this will find nobody — that is a missing "
+                "credential, not an empty company"
+            )
+            return []
+
+        # The org slug is guessed from the company name, so a miss is the common case and
+        # a clean empty result (GitHub answers 404). No slug cleverness is warranted.
         org = company.strip().casefold().replace(" ", "")
         members = self._gh_json(f"orgs/{org}/members?per_page=100")
         if not isinstance(members, list):

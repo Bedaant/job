@@ -163,3 +163,38 @@ def test_jobspy_is_never_swept_for_delistings():
     live jobs."""
     from workers.jobs import SWEEPABLE_SOURCES
     assert not any(s.startswith("jobspy") for s in SWEEPABLE_SOURCES)
+
+
+# ---------- DEPLOY-A.1: the interpreter path must not be Windows-only ----------
+
+def test_the_jobspy_interpreter_is_resolved_not_hardcoded(tmp_path, monkeypatch):
+    """`.venv-jobspy/Scripts/python.exe` is Windows-only; Linux is `bin/python`.
+
+    Hardcoding it means `subprocess.run` raises FileNotFoundError on the box, the
+    connector logs it and returns `[]`, and **JobSpy silently contributes nothing** —
+    the exact failure shape GAPS 3.2 spent weeks being unexplained by. Resolved by what
+    exists rather than by guessing the platform, so one code path works in both places.
+    """
+    from connectors import jobspy_connector as jc
+
+    posix = tmp_path / ".venv-jobspy" / "bin"
+    posix.mkdir(parents=True)
+    (posix / "python").write_text("#!/bin/sh\n")
+    monkeypatch.setattr(jc, "_TOOLS_DIR", str(tmp_path))
+    assert jc._jobspy_python() == str(posix / "python")
+
+    win = tmp_path / ".venv-jobspy" / "Scripts"
+    win.mkdir(parents=True)
+    (win / "python.exe").write_text("")
+    assert jc._jobspy_python() == str(win / "python.exe"), "Windows layout still wins when present"
+
+
+def test_a_missing_jobspy_venv_is_reported_not_silently_empty(monkeypatch, caplog):
+    """Deploying without building the second venv must say so. Returning `[]` would look
+    exactly like a board with nothing matching."""
+    from connectors import jobspy_connector as jc
+
+    monkeypatch.setattr(jc, "_TOOLS_DIR", "/nonexistent-tools-dir")
+    with caplog.at_level("WARNING"):
+        assert jc.fetch_jobspy_jobs("pm", sites=["glassdoor"], location="Bengaluru, India") == []
+    assert any("venv" in r.getMessage().lower() for r in caplog.records), caplog.text

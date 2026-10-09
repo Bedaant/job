@@ -380,3 +380,19 @@ def test_the_redirect_uri_points_at_a_mounted_route():
         f"the OAuth redirect points at {path}, which is not a mounted route — Google "
         "would send the user to a 404 and the code would never arrive"
     )
+
+
+def test_the_authorize_response_names_the_uri_that_must_be_registered(db):
+    """DEPLOY-A.5. `_redirect_uri` is built from `api_base_url`, so it CHANGES on deploy —
+    and Google requires an exact match, failing with `redirect_uri_mismatch` only when a
+    real user first tries to connect, long after the console entry was typed.
+
+    Returning it alongside the consent URL makes the mismatch self-diagnosing: the
+    operator can read the exact string to paste into the OAuth client rather than
+    reconstructing it from config.
+    """
+    from outreach import gmail as g
+
+    out = g.gmail_authorize(user_id=_user(db).id)
+    assert out["redirect_uri"] == g._redirect_uri()
+    assert out["authorize_url"].startswith("https://accounts.google.com/")

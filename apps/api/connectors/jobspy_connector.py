@@ -25,7 +25,27 @@ from connectors.normalize import coerce_posted_at
 logger = logging.getLogger(__name__)
 
 _TOOLS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "tools")
-_JOBSPY_PYTHON = os.path.join(_TOOLS_DIR, ".venv-jobspy", "Scripts", "python.exe")
+def _jobspy_python() -> str | None:
+    """The isolated venv's interpreter, or None if the venv was never built.
+
+    Resolved by what EXISTS rather than by guessing the platform. This was hardcoded to
+    `Scripts/python.exe`, which is Windows-only — on Linux the layout is `bin/python`,
+    so `subprocess.run` raised FileNotFoundError, the caller logged it and returned `[]`,
+    and JobSpy silently contributed nothing. That is the same failure shape that left
+    GAPS 3.2 unexplained for weeks, and it would have reappeared on the first deploy.
+
+    Windows is checked first only because that is where this currently runs; both are
+    equally supported and a test pins each.
+    """
+    base = os.path.join(_TOOLS_DIR, ".venv-jobspy")
+    for candidate in (
+        os.path.join(base, "Scripts", "python.exe"),
+        os.path.join(base, "bin", "python"),
+        os.path.join(base, "bin", "python3"),
+    ):
+        if os.path.isfile(candidate):
+            return candidate
+    return None
 
 _SCRAPE_SCRIPT = """
 import json, sys
@@ -62,8 +82,18 @@ def fetch_jobspy_jobs(search_term: str, results_wanted: int = 20,
     that reason and a test enforces it.
     """
     sites = sites or config.JOBSPY_SITES
+    python = _jobspy_python()
+    if python is None:
+        # Deploying without building the second venv must SAY so. Returning [] here
+        # would look exactly like a board with nothing matching — the failure mode this
+        # connector has already had once.
+        logger.warning(
+            "jobspy venv not found under %s — run its bootstrap, or JobSpy silently "
+            "contributes nothing", os.path.join(_TOOLS_DIR, ".venv-jobspy"),
+        )
+        return []
     result = subprocess.run(
-        [_JOBSPY_PYTHON, "-c", _SCRAPE_SCRIPT, search_term, str(results_wanted),
+        [python, "-c", _SCRAPE_SCRIPT, search_term, str(results_wanted),
          ",".join(sites), location or ""],
         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
     )

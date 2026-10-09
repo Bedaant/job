@@ -363,8 +363,16 @@ router = APIRouter(prefix="/gmail", tags=["gmail"])
 
 @router.get("/authorize")
 def gmail_authorize(user_id: str = Depends(current_user_id)):
+    """Returns the consent URL, and the redirect URI it was built with.
+
+    The redirect URI is reported deliberately (DEPLOY-A.5): it is derived from
+    `api_base_url`, so it CHANGES on deploy, and Google requires an exact match — a
+    mismatch surfaces as `redirect_uri_mismatch` only when a real user first tries to
+    connect, long after the console entry was typed. Returning the exact string makes
+    that self-diagnosing instead of a reconstruction exercise.
+    """
     try:
-        return {"authorize_url": authorize_url(user_id)}
+        return {"authorize_url": authorize_url(user_id), "redirect_uri": _redirect_uri()}
     except GmailNotConfigured as exc:
         raise HTTPException(503, str(exc)) from None
 
