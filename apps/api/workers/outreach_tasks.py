@@ -65,3 +65,36 @@ def _sender_for(db, row: models.Outreach):
     from outreach.gmail import gmail_sender
 
     return gmail_sender(db, row.profile.user_id)
+
+
+def default_sources() -> list:
+    """Free sources first, paid last — `orchestrate._gather` stops as soon as the quota
+    is filled, so Apify's per-profile charge is only spent on companies GitHub cannot
+    reach.
+
+    Measured 2026-10-09: GitHub exposes a public, self-published address for about half
+    the people it lists, which is better provenance than any constructed or enriched
+    address — but it is engineers only (one product-adjacent person across 39 across
+    razorpay and zerodha, and Swiggy exposes nobody). So for an engineering-role user
+    this list often never reaches Apify at all, and for a product-role user it almost
+    always does.
+    """
+    from outreach.contacts import GitHubContactSource
+    from outreach.sources_apify import ApifyContactSource
+
+    # Apify is included unconditionally: with no token configured its `find` returns []
+    # rather than raising, so an unconfigured install degrades to GitHub-only on its own.
+    return [GitHubContactSource(), ApifyContactSource()]
+
+
+def draft_outreach_task(application_id: str) -> dict:
+    """Scheduled off the back of a submitted application (REACH-D).
+
+    Idempotent: `draft_outreach_for_application` pre-checks for existing rows and the
+    schema's UNIQUE(application_id, contact_id) backs it up. ADR-008 documents RQ
+    retrying on worker crash, so this will run twice for some applications.
+    """
+    from outreach.orchestrate import draft_outreach_for_application
+
+    with session_scope() as db:
+        return draft_outreach_for_application(db, application_id, sources=default_sources())

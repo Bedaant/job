@@ -76,6 +76,11 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000"]
     # Where emailed links (password reset) point.
     web_base_url: str = "http://localhost:3000"
+    # Where the API itself is reachable from outside. Distinct from `web_base_url`
+    # because the outreach unsubscribe route is served by the API, not the web app, and
+    # that link goes to a RECIPIENT who is not a user — if it points at localhost they
+    # cannot opt out at all. Must be set to a public URL before any outreach is sent.
+    api_base_url: str = "http://localhost:8000"
 
 
 @lru_cache
