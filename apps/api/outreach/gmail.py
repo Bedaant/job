@@ -88,7 +88,19 @@ def _client() -> tuple[str, str]:
 
 
 def _redirect_uri() -> str:
-    return f"{get_settings().web_base_url.rstrip('/')}/settings/gmail/callback"
+    """Where Google sends the user back, and it must name a route that EXISTS.
+
+    This pointed at `web_base_url` + `/settings/gmail/callback` — a Next.js page that was
+    never built. Google would have redirected to a 404 and the authorization code would
+    never have reached the API, while `/gmail/callback` sat mounted and tested one port
+    over. `tests/test_gmail_credentials.py::test_the_redirect_uri_points_at_a_mounted_route`
+    now pins the two together.
+
+    `api_base_url`, not `web_base_url`: this endpoint is served by the API. A nicer flow
+    would land the user on a web page that forwards the code, but that page has to exist
+    first, and swapping back is one line plus the console entry.
+    """
+    return f"{get_settings().api_base_url.rstrip('/')}/gmail/callback"
 
 
 # ---------- the signed state parameter ----------

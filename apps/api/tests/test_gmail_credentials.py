@@ -129,10 +129,20 @@ def test_authorize_state_round_trips_the_user_and_rejects_tampering(db):
 
 
 def test_authorize_url_without_a_client_is_a_clear_error(db, monkeypatch):
+    """Isolated from Settings, not just from `os.environ`.
+
+    `delenv` alone was enough only while no OAuth client existed. Once a real
+    `GOOGLE_CLIENT_ID` landed in `apps/api/.env`, pydantic-settings kept supplying it and
+    this test started failing — the same trap the Apify token sprang. A test asserting
+    "unconfigured" has to blank the `.env` source too, or it only passes on machines where
+    the thing genuinely is not set up.
+    """
     get_settings.cache_clear()
     monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.setattr(get_settings(), "google_client_id", None, raising=False)
     with pytest.raises(gmail.GmailNotConfigured):
         gmail.authorize_url(_user(db).id)
+    get_settings.cache_clear()
 
 
 # ---------- the callback ----------
@@ -348,3 +358,25 @@ def test_token_is_never_logged(db, caplog):
                 gmail.gmail_sender(db, u.id)("x@acme.com", "S", "B")
     assert REFRESH not in caplog.text
     assert "client-secret" not in caplog.text
+
+
+def test_the_redirect_uri_points_at_a_mounted_route():
+    """Google requires an EXACT match on the redirect URI, and a wrong one fails only at
+    the moment a real user tries to connect — after the console entry is already typed.
+
+    This caught a real break: `_redirect_uri` pointed at `web_base_url` +
+    `/settings/gmail/callback`, a Next.js page that was never built, while
+    `/gmail/callback` sat mounted and tested one port over. Google would have redirected
+    to a 404 and the authorization code would never have reached the API. Nothing else in
+    the suite noticed, because every other test calls `handle_callback` directly.
+    """
+    from urllib.parse import urlparse
+
+    from main import app
+    from outreach.gmail import _redirect_uri
+
+    path = urlparse(_redirect_uri()).path
+    assert path in app.openapi()["paths"], (
+        f"the OAuth redirect points at {path}, which is not a mounted route — Google "
+        "would send the user to a 404 and the code would never arrive"
+    )

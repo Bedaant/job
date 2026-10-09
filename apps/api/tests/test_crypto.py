@@ -21,7 +21,18 @@ def _clear_key_cache():
 
 
 def _with_key(monkeypatch, key):
-    """Point `get_settings()` at a specific key, bypassing .env."""
+    """Point `get_settings()` at a specific key, genuinely bypassing `.env`.
+
+    It used to claim that and not do it: clearing `os.environ` leaves pydantic-settings
+    free to keep supplying the value from `apps/api/.env`, so `key=None` meant "no key"
+    only on a machine where none was configured. The moment a real `ENCRYPTION_KEY` was
+    added, both fail-closed tests started failing.
+
+    **This is the third time the same trap has fired** — after `APIFY_TOKEN` and
+    `GOOGLE_CLIENT_ID`. The rule it implies: a test asserting a credential is ABSENT must
+    blank it on the Settings object too, not just in the environment, or it is really
+    asserting "absent on this developer's machine".
+    """
     from core.config import get_settings
 
     get_settings.cache_clear()
@@ -29,9 +40,10 @@ def _with_key(monkeypatch, key):
         monkeypatch.delenv("ENCRYPTION_KEY", raising=False)
     else:
         monkeypatch.setenv("ENCRYPTION_KEY", key)
+    # Overriding the attribute is what actually defeats the `.env` source.
+    monkeypatch.setattr(get_settings(), "encryption_key", key, raising=False)
     crypto.reset_cipher_cache()
-    yield_key = get_settings().encryption_key
-    return yield_key
+    return get_settings().encryption_key
 
 
 def test_round_trip(monkeypatch):
