@@ -89,3 +89,38 @@ def no_real_network():
     with patch.object(httpx.HTTPTransport, "handle_request", blocked), \
          patch.object(httpx.AsyncHTTPTransport, "handle_async_request", blocked):
         yield
+
+
+@pytest.fixture(autouse=True)
+def no_real_subprocess_scrapes():
+    """`no_real_network` cannot see into a subprocess, and that gap has now cost a
+    second slow suite.
+
+    `connectors/jobspy_connector.py` shells out to `tools/.venv-jobspy/` because JobSpy
+    pins numpy 1.26.3 against this app's 2.x. The httpx transport patch above therefore
+    does nothing for it: when jobspy was wired into `discover_jobs_task` (GAPS 3.2), the
+    suite went from ~90s to over 600s doing 18 real Glassdoor scrapes per discovery
+    test, with no failure to point at the cause.
+
+    So fail fast instead, exactly as `no_real_network` does.
+
+    Blocked at the DISCOVERY boundary (`workers.jobs.fetch_jobspy_jobs`), deliberately,
+    not inside the connector. The first attempt patched
+    `connectors.jobspy_connector.subprocess.run` — which patches `subprocess.run`
+    **globally**, because that attribute is the one shared module object every importer
+    sees. It duly broke `test_answer_bank.py`'s import-graph probe, which legitimately
+    shells out to a fresh interpreter.
+
+    This target leaves `tests/test_jobspy_connector.py` free to exercise the real
+    function against a mocked `subprocess.run`, and a discovery test that wants rows
+    patches the same name itself (its patch is applied inside this one and wins).
+    """
+    def blocked(*args, **kwargs):
+        raise RuntimeError(
+            "the test suite tried to run a real JobSpy scrape in a subprocess. Stub "
+            "workers.jobs.fetch_jobspy_jobs (see tests/test_source_isolation.py"
+            "::_offline) rather than letting the suite depend on a live job board."
+        )
+
+    with patch("workers.jobs.fetch_jobspy_jobs", blocked):
+        yield

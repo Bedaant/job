@@ -43,8 +43,38 @@ ENABLED_FEEDS = [
 # JobSpy sites (connectors/jobspy_connector.py). ADR-015: "linkedin" is parked
 # as a special case and "indeed" is Tier C — test_jobspy_connector.py asserts
 # neither appears here, so adding one has to be a deliberate, visible decision.
-JOBSPY_SITES = ["google", "zip_recruiter", "glassdoor"]
-JOBSPY_KEYWORDS: list[str] = []
+# MEASURED LIVE 2026-10-09 on python-jobspy 1.3.0, which is why this list is one entry:
+#
+#   glassdoor      returned rows. Was HTTP 403 on the previously pinned 1.1.82.
+#   zip_recruiter  0 rows. 403 ("forbidden aa", a Cloudflare CFRAY id).
+#   google         0 rows, silently — no error, just nothing.
+#   indeed         0 rows. Also Tier C and parked by ADR-015.
+#
+# A dead site in this list costs one subprocess per keyword per location and returns
+# nothing, so it is removed rather than left hopefully in place. Re-probe before adding
+# one back; the numbers above are pinned in tests/test_jobspy_connector.py.
+# LinkedIn stays out regardless (ADR-015 parks it as a special case).
+JOBSPY_SITES = ["glassdoor"]
+JOBSPY_KEYWORDS = ["product manager", "associate product manager", "product owner"]
+
+# CITY-QUALIFIED, and that is load-bearing rather than tidiness: `location="India"`
+# returns **Indianapolis** jobs, because Glassdoor prefix-matches the string. A
+# country-level query would quietly fill the pool with US roles — the same class of trap
+# as COLLECT-B's three plausible slugs that turned out to be different companies.
+#
+# Per-city is also what makes this source worth having at all. Measured 2026-10-09 at 25
+# results per city: **147 unique product-manager jobs across 101 distinct companies**,
+# with every city still returning a full page — against the 23 live India product roles
+# that were the measured ceiling before this (GAPS 3.1). This is the first source to
+# move that number.
+JOBSPY_LOCATIONS = [
+    "Bengaluru, India",
+    "Mumbai, India",
+    "Delhi, India",
+    "Hyderabad, India",
+    "Pune, India",
+    "Gurgaon, India",
+]
 
 # Reed (PRD.md §6 Tier 2) — no-ops without REED_API_KEY set in .env
 REED_KEYWORDS = ["product manager", "associate product manager"]

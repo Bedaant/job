@@ -55,6 +55,10 @@ def _offline(db=None, **overrides):
         "fetch_lever_jobs": MagicMock(return_value=[]),
         "fetch_ashby_jobs": MagicMock(return_value=[]),
         "fetch_workday_jobs": MagicMock(return_value=[]),
+        # Added when jobspy was wired in (GAPS 3.2). Missing it is the exact failure
+        # `conftest.no_real_subprocess_scrapes` exists to catch: without a stub here,
+        # discovery shells out to the real Glassdoor scraper once per keyword per city.
+        "fetch_jobspy_jobs": MagicMock(return_value=[]),
         "fetch_enabled_feeds": MagicMock(return_value=([], {})),
         **overrides,
     }
@@ -165,12 +169,16 @@ def test_requests_inside_one_source_are_paced(db):
          patch("workers.jobs.conn_config.REMOTIVE_KEYWORDS", []), \
          patch("workers.jobs.conn_config.REED_KEYWORDS", []), \
          patch("workers.jobs.conn_config.WORKDAY_BOARDS", {}), \
+         patch("workers.jobs.conn_config.JOBSPY_KEYWORDS", []), \
          patch("workers.jobs.upsert_jobs", MagicMock(return_value=(0, 0, 0))), \
          patch("workers.jobs.HOST_PACING_SECONDS", 0.25), \
          patch("workers.jobs.time.sleep") as sleep:
         wj.discover_jobs_task()
 
     # Three tokens, one host: paced between them, never before the first.
+    # Every other source is zeroed above so this counts Greenhouse alone — jobspy is in
+    # that list because it paces once per keyword PER CITY, so three keywords across six
+    # cities would otherwise add 17 sleeps to this assertion.
     assert sleep.call_args_list == [((0.25,),), ((0.25,),)]
 
 
@@ -182,6 +190,7 @@ def test_pacing_is_configurable_and_skipped_for_a_single_request(db):
          patch("workers.jobs.conn_config.REMOTIVE_KEYWORDS", []), \
          patch("workers.jobs.conn_config.REED_KEYWORDS", []), \
          patch("workers.jobs.conn_config.WORKDAY_BOARDS", {}), \
+         patch("workers.jobs.conn_config.JOBSPY_KEYWORDS", []), \
          patch("workers.jobs.upsert_jobs", MagicMock(return_value=(0, 0, 0))), \
          patch("workers.jobs.time.sleep") as sleep:
         wj.discover_jobs_task()

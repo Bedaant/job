@@ -1,6 +1,9 @@
 import json
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+from connectors.jobspy_connector import fetch_jobspy_jobs
 
 
 @patch("connectors.jobspy_connector.subprocess.run")
@@ -67,3 +70,96 @@ def test_jobspy_never_scrapes_linkedin_or_indeed():
     assert "linkedin" not in config.JOBSPY_SITES
     assert "indeed" not in config.JOBSPY_SITES
     assert config.JOBSPY_SITES, "at least one JobSpy site must be enabled"
+
+
+# ---------- GAPS 3.2: wiring it into ingestion, and the three defects that blocked it ----------
+
+@patch("connectors.jobspy_connector.subprocess.run")
+def test_location_is_passed_to_the_scraper(mock_run):
+    """MEASURED 2026-10-09, and it is the whole reason this connector returned nothing
+    useful: the scrape script never passed `location`, so Glassdoor answered without one
+    and every row arrived with `location=None` — while the library populates it 8/8 when
+    asked. Location-less rows are worse than missing rows here, because
+    `passes_hard_filters` is built so missing data never excludes a job (GAPS 2.4), so
+    they pass the India filter wherever they actually are.
+    """
+    mock_run.return_value = SimpleNamespace(returncode=0, stdout="[]", stderr="")
+    fetch_jobspy_jobs("product manager", results_wanted=5, sites=["glassdoor"],
+                      location="Bengaluru, India")
+    argv = mock_run.call_args.args[0]
+    assert "Bengaluru, India" in argv
+
+
+@patch("connectors.jobspy_connector.subprocess.run")
+def test_location_survives_into_the_normalized_row(mock_run):
+    mock_run.return_value = SimpleNamespace(
+        returncode=0,
+        stdout=json.dumps([{
+            "job_url": "https://g.example/1", "title": "Product Manager",
+            "company": "Acme", "location": "Bengaluru, India", "site": "glassdoor",
+            "date_posted": "2026-10-01",
+        }]),
+        stderr="",
+    )
+    rows = fetch_jobspy_jobs("product manager", sites=["glassdoor"], location="Bengaluru, India")
+    assert rows[0]["location"] == "Bengaluru, India"
+
+
+@patch("connectors.jobspy_connector.subprocess.run")
+def test_a_crashed_scrape_is_logged_not_silently_empty(mock_run, caplog):
+    """The defect that let GAPS 3.2 sit unexplained: a 403 and a genuinely empty board
+    both returned `[]`. ZipRecruiter and Glassdoor were BOTH returning 403 on the pinned
+    1.1.82, and nothing said so. Same bug class as the Apify token silently resolving to
+    "no candidates".
+    """
+    mock_run.return_value = SimpleNamespace(
+        returncode=1, stdout="", stderr="ZipRecruiter response status code 403",
+    )
+    with caplog.at_level("WARNING"):
+        assert fetch_jobspy_jobs("pm", sites=["zip_recruiter"]) == []
+    assert any("403" in r.message or "403" in str(r.args) for r in caplog.records), caplog.text
+
+
+@patch("connectors.jobspy_connector.subprocess.run")
+def test_an_empty_result_is_not_logged_as_a_failure(mock_run, caplog):
+    """The other half: a board with nothing matching is normal and must stay quiet, or
+    the log becomes noise nobody reads."""
+    mock_run.return_value = SimpleNamespace(returncode=0, stdout="[]", stderr="")
+    with caplog.at_level("WARNING"):
+        assert fetch_jobspy_jobs("pm", sites=["glassdoor"]) == []
+    assert not [r for r in caplog.records if r.levelname == "WARNING"]
+
+
+def test_configured_sites_are_only_the_ones_measured_to_work():
+    """Measured live on python-jobspy 1.3.0, 2026-10-09: glassdoor returned rows while
+    google, zip_recruiter and indeed each returned 0. Carrying a dead site in the default
+    list spends a request per keyword per location on nothing.
+    """
+    from connectors import config
+    assert config.JOBSPY_SITES == ["glassdoor"]
+
+
+def test_locations_are_cities_never_a_bare_country():
+    """`location="India"` returns INDIANAPOLIS — Glassdoor prefix-matches the string, so
+    a country-level query silently fills the pool with US jobs. Measured 2026-10-09.
+    Per-city is what produced 147 unique India PM jobs across 101 companies.
+    """
+    from connectors import config
+    assert config.JOBSPY_LOCATIONS, "an empty list means jobspy fetches nothing"
+    for loc in config.JOBSPY_LOCATIONS:
+        assert "," in loc, f"{loc!r} is not city-qualified — 'India' alone matches Indianapolis"
+
+
+def test_keywords_are_not_empty():
+    """`JOBSPY_KEYWORDS` was `[]`, so even once wired the connector would have searched
+    for nothing — the second reason GAPS 3.2 produced no rows."""
+    from connectors import config
+    assert config.JOBSPY_KEYWORDS
+
+
+def test_jobspy_is_never_swept_for_delistings():
+    """A keyword+location slice is not a complete listing, so absence from a payload
+    means "not in that search", not "gone" (ADR-017 §2). Sweeping it would tombstone
+    live jobs."""
+    from workers.jobs import SWEEPABLE_SOURCES
+    assert not any(s.startswith("jobspy") for s in SWEEPABLE_SOURCES)

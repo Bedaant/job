@@ -20,6 +20,7 @@ from connectors.normalize import canonical_hash
 from connectors.pipeline import backfill_job_embeddings, upsert_jobs
 from connectors.reed import fetch_reed_jobs
 from connectors.remotive import fetch_remotive_jobs
+from connectors.jobspy_connector import fetch_jobspy_jobs
 from connectors.workday import fetch_workday_jobs
 from core.config import get_settings
 from database import session_scope
@@ -49,8 +50,10 @@ EMBED_BATCH_LIMIT = 50
 # a job's absence from this run's payload is real signal it left the board.
 # remotive and reed always fetch a keyword slice (connectors/config.py) —
 # absence there means "not in that search", not "gone" — so they never
-# qualify and must never appear here. jobspy isn't wired into ingestion at
-# all (main.py), so it's moot.
+# qualify and must never appear here. jobspy IS wired into ingestion as of
+# GAPS 3.2 (2026-10-09) and still must never appear here: it fetches a
+# keyword+location slice, so absence from its payload means "not in that
+# search", not "gone".
 #
 # A feed that returns only the newest N listings does not qualify either:
 # absence from a newest-N window IS age, and this phase expires by source
@@ -264,6 +267,39 @@ def _fetch_keyword_source(fetcher, keywords: list[str]) -> tuple[list[dict], lis
     return jobs, []
 
 
+def _fetch_jobspy_source(keywords: list[str], locations: list[str]) -> tuple[list[dict], list]:
+    """One scrape per keyword PER LOCATION (GAPS 3.2).
+
+    The cross product is the point, not laziness: `location="India"` returns Indianapolis
+    because Glassdoor prefix-matches the string, so the only way to get Indian results is
+    to ask city by city. Measured 2026-10-09 — 147 unique PM jobs across 101 companies
+    from six cities, against a prior measured ceiling of 23.
+
+    Contributes **no sweep batch**. A keyword+location slice is not a complete listing,
+    so absence from a payload means "not in that search", not "gone" (ADR-017 §2). That
+    is also enforced independently by `SWEEPABLE_SOURCES`, and a test asserts no
+    `jobspy_*` source ever joins it.
+
+    Each scrape is a subprocess into `tools/.venv-jobspy/` (its pinned numpy 1.26.3
+    conflicts with this app's numpy 2.x), so failures are isolated per query: one city
+    going 403 must not cost the other five.
+    """
+    jobs: list[dict] = []
+    i = 0
+    for keyword in keywords:
+        for location in locations:
+            _pace(i)
+            i += 1
+            try:
+                jobs.extend(fetch_jobspy_jobs(keyword, sites=conn_config.JOBSPY_SITES,
+                                              location=location))
+            except Exception:
+                logger.warning(
+                    "jobspy query failed for %r in %r", keyword, location, exc_info=False
+                )
+    return jobs, []
+
+
 def _fetch_ats_source(
     fetcher, tokens: list[str]
 ) -> tuple[list[dict], list[tuple[str, list[dict]]]]:
@@ -365,6 +401,10 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
         # extra calls for Adobe). That is why workday is NOT in
         # SWEEPABLE_SOURCES: its payload is not a complete listing.
         ("workday", lambda: _fetch_ats_source(fetch_workday_jobs, _workday_tokens())),
+        # GAPS 3.2, closed 2026-10-09. Built long ago and never wired; see
+        # _fetch_jobspy_source for why it is per-city and why it is not sweepable.
+        ("jobspy", lambda: _fetch_jobspy_source(
+            conn_config.JOBSPY_KEYWORDS, conn_config.JOBSPY_LOCATIONS)),
     ):
         source_jobs, batches, run = _isolate(source_name, fetch)
         all_jobs.extend(source_jobs)

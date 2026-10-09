@@ -12,7 +12,7 @@ too — a failed approach that is not written down gets retried by the next pers
 
 ## Current state — read this first
 
-**As of 2026-10-09 (latest+84).** Product is **ApplyScout**, agent **Maggie** (ADR-015).
+**As of 2026-10-09 (latest+85).** Product is **ApplyScout**, agent **Maggie** (ADR-015).
 Autonomous multi-source auto-apply: the user approves a campaign once, then agents
 discover → tailor → submit through the user's own browser.
 
@@ -28,8 +28,8 @@ discover → tailor → submit through the user's own browser.
   ADR, latest+34. `ANTHROPIC_API_KEY` is still a placeholder, which no longer blocks the
   product; it blocks only the ADR-014 eval harness, and that harness is pointed at the wrong
   provider. **Tailoring quality is currently unmeasured** (`GAPS.md` 6.1).
-- **950 tests passing. Neon at migration 0025** (verified against the real database, not
-  assumed from the files). Migrations 0022-0025 have all run against real Postgres.
+- **1101 tests passing. Neon at migration 0026** (verified against the real database, not
+  assumed from the files). Migrations 0022-0026 have all run against real Postgres.
 - **Stage 8 (referral outreach) is in progress** — `docs/PLAN-OUTREACH.md` (REACH-B..E) and
   `docs/PLAN-GMAIL-CREDENTIALS.md` (REACH-A). REACH-B/C and REACH-D's send path are built and
   tested. Blocked on the owner for two credentials only: an `APIFY_TOKEN` and a Google Cloud
@@ -115,6 +115,53 @@ docs/              this documentation set
 ---
 
 ## Entries
+
+### 2026-10-09 (latest+85) — GAPS 3.2 closed: JobSpy wired, and it moved GAPS 3.1's ceiling
+
+**What changed.** JobSpy went from dead code to the **first source that moves the India
+coverage ceiling**. `python-jobspy` 1.1.82 → 1.3.0 in its isolated venv, `location`
+threaded through the connector, per-city config, wired into `discover_jobs_task`. Suite
+1093 → 1101.
+
+**Measured 2026-10-09, 25 results across six Indian cities: 147 unique product-manager
+jobs across 101 distinct companies**, every city still returning a full page — against
+the **23** live India product roles that were the measured maximum (GAPS 3.1). No
+licence, no new dependency: the connector was already here and already approved.
+
+**Why it had produced nothing, which was four problems and three of them silent.**
+
+1. **The connector never passed `location`.** Glassdoor answered without one, so every
+   row arrived with `location=None` while the library populates it on all rows when
+   asked. Worse than no rows: `passes_hard_filters` is built so missing data never
+   excludes a job (GAPS 2.4), so those rows would pass the India filter wherever they
+   actually were, and `canonical_hash(company, title, location)` lost a third of its key.
+2. **`JOBSPY_KEYWORDS` was `[]`** — even once wired it would have searched for nothing.
+3. **The connector swallowed subprocess failure.** `returncode != 0 or not stdout →
+   return []`, so a 403 and an empty board were indistinguishable. That is why "returns
+   no results" went unexplained for weeks: on 1.1.82 **ZipRecruiter and Glassdoor were
+   both answering HTTP 403** and nothing said so. Same bug class as the Apify token
+   silently resolving to "no candidates" earlier the same day.
+4. **The pin was eight months stale.** 1.3.0 (released 2026-10-08) fixes Glassdoor.
+   `google`, `zip_recruiter` and `indeed` still return 0, so `JOBSPY_SITES` is
+   `["glassdoor"]` alone rather than three dead sites costing a subprocess each.
+
+**The trap that decides whether any of this is worth having: `location="India"` returns
+INDIANAPOLIS jobs.** Glassdoor prefix-matches the string, so a country-level query would
+have quietly filled the pool with US roles — the same class of error as COLLECT-B's three
+plausible slugs that turned out to be different companies. Per-city is not tidiness; it is
+the difference between 147 India roles and a pool of Indiana.
+
+**One hermeticity fix came with it, and `conftest`'s own docstring had predicted it.**
+`no_real_network` patches the httpx transport, which **cannot see into a subprocess** —
+so wiring jobspy took the suite from ~90s to over 600s doing 18 real Glassdoor scrapes
+per discovery test, with no failure pointing at the cause. Now blocked by
+`no_real_subprocess_scrapes`. My first attempt at that guard patched
+`connectors.jobspy_connector.subprocess.run`, which patches `subprocess.run`
+**globally** — the attribute is the one shared module object — and duly broke
+`test_answer_bank.py`'s import-graph probe, which legitimately shells out. Blocked at the
+discovery boundary instead.
+
+---
 
 ### 2026-10-09 (latest+84) — Stage 8 starts: REACH-B/C/D built, and two signal bugs found by reading back my own summary
 
