@@ -67,6 +67,22 @@ JOBSPY_KEYWORDS = ["product manager", "associate product manager", "product owne
 # with every city still returning a full page — against the 23 live India product roles
 # that were the measured ceiling before this (GAPS 3.1). This is the first source to
 # move that number.
+# LinkedIn job search via Apify (connectors/linkedin_jobs.py), GAPS 3.1.
+#
+# Unlike JOBSPY_LOCATIONS, a bare country is CORRECT here and city-splitting is not
+# needed: measured 2026-10-09, location="India" returned 14 of 15 rows genuinely
+# India-located, where the same string against Glassdoor returns Indianapolis. One
+# request per keyword per location, so a country-level query is also far cheaper.
+#
+# This is the only source that reaches the companies GAPS 3.1 lists as having no
+# greenhouse/lever/ashby board at all — PhonePe showed up in the first 15 rows.
+LINKEDIN_JOB_KEYWORDS = ["product manager", "associate product manager"]
+LINKEDIN_JOB_LOCATIONS = ["India"]
+# Per keyword per location. ~$0.0015/row measured, so 50 rows is roughly $0.08 a pass and
+# the whole default config is ~$0.15 — against a $5/month plan allowance. Raise
+# deliberately, not hopefully.
+LINKEDIN_JOB_ROWS = 50
+
 JOBSPY_LOCATIONS = [
     "Bengaluru, India",
     "Mumbai, India",

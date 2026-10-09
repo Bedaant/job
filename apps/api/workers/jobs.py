@@ -21,6 +21,7 @@ from connectors.pipeline import backfill_job_embeddings, upsert_jobs
 from connectors.reed import fetch_reed_jobs
 from connectors.remotive import fetch_remotive_jobs
 from connectors.jobspy_connector import fetch_jobspy_jobs
+from connectors.linkedin_jobs import fetch_linkedin_jobs
 from connectors.workday import fetch_workday_jobs
 from core.config import get_settings
 from database import session_scope
@@ -300,6 +301,35 @@ def _fetch_jobspy_source(keywords: list[str], locations: list[str]) -> tuple[lis
     return jobs, []
 
 
+def _fetch_linkedin_source(keywords: list[str], locations: list[str]) -> tuple[list[dict], list]:
+    """One Apify search per keyword per location (GAPS 3.1).
+
+    The only source that reaches the companies GAPS 3.1 lists as having no
+    greenhouse/lever/ashby board at all — PhonePe appeared in the first 15 rows measured.
+    A bare country works here, unlike JobSpy/Glassdoor where "India" returns Indianapolis,
+    so the cross product stays small and cheap (~$0.0015/row).
+
+    Contributes **no sweep batch**: a keyword+location slice is not a complete listing, so
+    absence means "not in that search", not "gone" (ADR-017 §2). `SWEEPABLE_SOURCES`
+    enforces that independently and a test pins that no `linkedin_*` source joins it.
+
+    Each query is isolated: this is a paid third-party browser-driven actor, so one
+    keyword timing out must not cost the others or the sources queued behind it.
+    """
+    jobs: list[dict] = []
+    i = 0
+    for keyword in keywords:
+        for location in locations:
+            _pace(i)
+            i += 1
+            try:
+                jobs.extend(fetch_linkedin_jobs(keyword, location,
+                                                rows=conn_config.LINKEDIN_JOB_ROWS))
+            except Exception:
+                logger.warning("linkedin query failed for %r in %r", keyword, location)
+    return jobs, []
+
+
 def _fetch_ats_source(
     fetcher, tokens: list[str]
 ) -> tuple[list[dict], list[tuple[str, list[dict]]]]:
@@ -405,6 +435,10 @@ def discover_jobs_task(job_id: str | None = None) -> dict:
         # _fetch_jobspy_source for why it is per-city and why it is not sweepable.
         ("jobspy", lambda: _fetch_jobspy_source(
             conn_config.JOBSPY_KEYWORDS, conn_config.JOBSPY_LOCATIONS)),
+        # GAPS 3.1: the only source that reaches the India market the ATS boards miss.
+        # Paid per row, so the keyword/location lists are deliberately short.
+        ("linkedin", lambda: _fetch_linkedin_source(
+            conn_config.LINKEDIN_JOB_KEYWORDS, conn_config.LINKEDIN_JOB_LOCATIONS)),
     ):
         source_jobs, batches, run = _isolate(source_name, fetch)
         all_jobs.extend(source_jobs)

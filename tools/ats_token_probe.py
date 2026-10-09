@@ -183,7 +183,27 @@ def probe(slug):
     return hits
 
 
+def _force_utf8_stdout() -> None:
+    """Print job titles without dying on Windows.
+
+    Found 2026-10-09 mid-sweep: a real posting title contained characters outside
+    cp1252, Windows' default console encoding, and `print` raised UnicodeEncodeError
+    — killing the run at roughly the halfway mark and losing every result after it.
+    A probe whose output depends on the alphabetical position of the first accented
+    job title is not a measurement tool.
+
+    `errors="replace"` rather than strict: a mangled character in a title is a cosmetic
+    problem, and losing the whole sweep is not.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass  # already UTF-8, or a stream that cannot be reconfigured
+
+
 def main():
+    _force_utf8_stdout()
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("slugs", nargs="*")
     ap.add_argument("--file", help="file with one slug per line")
