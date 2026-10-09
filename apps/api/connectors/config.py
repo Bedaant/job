@@ -138,6 +138,51 @@ GREENHOUSE_BOARD_TOKENS = [
     # Bengaluru/Bangalore locations, 2 product roles ("Product Manager -
     # Integrations", "Technical Product Manager - Integrations").
     "netradyne",
+    # --- COLLECT-G, 2026-10-10: 69 tokens from the career-ops catalogue -------
+    # Slugs harvested from career-ops-hq/career-ops' templates/portals.example.yml
+    # (MIT) — facts only, no files copied, the same basis on which
+    # kalil0321/ats-scrapers' host->ATS mapping was adopted (DEPENDENCIES.md).
+    #
+    # 86 slugs probed -> 77 live on a platform we ingest -> **69 added, 8 rejected.**
+    # Every one re-fetched afterwards for RECENCY and IDENTITY, because the probe
+    # proves only that a board answers. Bar used: newest posting within 60 days.
+    #
+    # REJECTED ON IDENTITY — the slug/= company trap, caught twice more:
+    #   lovable (greenhouse)  61 postings in Modena, Savignano sul Rubicone and
+    #                         Grassobbio. An ITALIAN company. The real Lovable is
+    #                         the Ashby board below (Stockholm/London/New York).
+    #                         Two different companies, one slug, on two platforms.
+    #   sanctuary (ashby)     "Civil Engineer", department "Construction", Delhi +
+    #                         Dripping Springs and Austin, Texas. A construction
+    #                         firm, not Sanctuary AI (Vancouver robotics).
+    #
+    # REJECTED ON RECENCY — an account existing proves nothing (cf. cars24's 2018
+    # SmartRecruiters account):
+    #   hightouch (ashby)     1 posting, newest 2033 days old
+    #   inngest (ashby)       1 posting, newest 541 days old
+    #   glacis-ai (ashby)     2 postings, 92 days
+    #   humeai (greenhouse)   5 postings, 94 days
+    #
+    # REJECTED AS A CROSS-PLATFORM DUPLICATE — the same company's inventory
+    # reachable twice would double-ingest it, and GAPS 4.3 records that nothing
+    # re-collapses two live rows sharing a canonical_hash:
+    #   helsing  158 postings on BOTH greenhouse and ashby. Kept GREENHOUSE,
+    #            because its payload carries `company_name` and the other two
+    #            platforms carry none — one extra identity signal for free.
+    #   qonto    49 postings on BOTH lever and ashby. Kept ASHBY, whose location
+    #            strings are fuller ("Paris, France" vs "Paris"), which is what
+    #            `passes_hard_filters` reads.
+    #
+    # HONEST ON COVERAGE: these are predominantly US/EU companies, so this is a
+    # GLOBAL-REMOTE win and **not** an India one. GAPS 3.1's India gap is
+    # addressed by connectors/linkedin_jobs.py, not by these tokens. That said it
+    # is not zero — 10 of the 69 do carry India-located roles, led by celonis
+    # (33), gleanwork (24), openai (8), moniepoint (8) and anthropic (4).
+    "airtable", "amplemarket", "anthropic", "arizeai", "boomilp", "celonis",
+    "contentful", "coreweave", "getyourguide", "gleanwork", "hellofresh", "helsing",
+    "hootsuite", "intercom", "isomorphiclabs", "jumia", "later", "moniepoint",
+    "n26", "physicsx", "planetscale", "safariai", "scandit", "speechmatics",
+    "stabilityai", "sumup", "traderepublicbank", "vercel",
 ]
 
 LEVER_COMPANY_TOKENS = [
@@ -149,11 +194,20 @@ LEVER_COMPANY_TOKENS = [
     # 129 India-located, incl. "Product Management - Associate Product Manager"
     # in Noida. One of the 19 companies COLLECT-B recorded as unreachable.
     "paytm",
+    # COLLECT-G (see GREENHOUSE_BOARD_TOKENS for the full rejection record).
+    "contentsquare", "palantir", "pigment", "spotify", "tinybird",
 ]
 
 ASHBY_ORG_TOKENS = [
     "sarvam", "supabase",
     "atlan",  # added 2026-10-03: India + SF board, verified live
+    # COLLECT-G (see GREENHOUSE_BOARD_TOKENS for the full rejection record).
+    "andela", "attio", "bland", "causaly", "claylabs", "clerk",
+    "cohere", "corti", "cradlebio", "decagon", "deepgram", "elevenlabs",
+    "faculty", "forto", "klue", "langchain", "legora", "lovable",
+    "mollie", "n8n", "openai", "perk", "perplexity", "photoroom",
+    "pinecone", "pleo", "qonto", "resend", "runpod", "sierra",
+    "synthesia", "temporal", "vapi", "wayve", "workos", "zapier",
 ]
 
 # --- Workday (COLLECT-C, ADR-018) -------------------------------------------
@@ -243,4 +297,76 @@ TOKEN_COMPANY_NAMES: dict[str, str] = {
     # Workday tenants (COLLECT-C)
     "adobe": "Adobe",
     "cisco": "Cisco",
+    # COLLECT-G, 2026-10-10. Required, not optional: an unmapped token BECOMES
+    # the company value and therefore part of canonical_hash, and Lever/Ashby
+    # payloads carry no company name at all.
+    "airtable": "Airtable",
+    "amplemarket": "Amplemarket",
+    "anthropic": "Anthropic",
+    "arizeai": "Arize AI",
+    "boomilp": "Boomi",
+    "celonis": "Celonis",
+    "contentful": "Contentful",
+    "coreweave": "CoreWeave",
+    "getyourguide": "GetYourGuide",
+    "gleanwork": "Glean",
+    "hellofresh": "HelloFresh",
+    "helsing": "Helsing",
+    "hootsuite": "Hootsuite",
+    "intercom": "Intercom",
+    "isomorphiclabs": "Isomorphic Labs",
+    "jumia": "Jumia",
+    "later": "Later",
+    "moniepoint": "Moniepoint",
+    "n26": "N26",
+    "physicsx": "PhysicsX",
+    "planetscale": "PlanetScale",
+    "safariai": "Safari AI",
+    "scandit": "Scandit",
+    "speechmatics": "Speechmatics",
+    "stabilityai": "Stability AI",
+    "sumup": "SumUp",
+    "traderepublicbank": "Trade Republic",
+    "vercel": "Vercel",
+    "contentsquare": "Contentsquare",
+    "palantir": "Palantir",
+    "pigment": "Pigment",
+    "spotify": "Spotify",
+    "tinybird": "Tinybird",
+    "andela": "Andela",
+    "attio": "Attio",
+    "bland": "Bland",
+    "causaly": "Causaly",
+    "claylabs": "Clay",
+    "clerk": "Clerk",
+    "cohere": "Cohere",
+    "corti": "Corti",
+    "cradlebio": "Cradle",
+    "decagon": "Decagon",
+    "deepgram": "Deepgram",
+    "elevenlabs": "ElevenLabs",
+    "faculty": "Faculty",
+    "forto": "Forto",
+    "klue": "Klue",
+    "langchain": "LangChain",
+    "legora": "Legora",
+    "lovable": "Lovable",
+    "mollie": "Mollie",
+    "n8n": "n8n",
+    "openai": "OpenAI",
+    "perk": "TravelPerk",
+    "perplexity": "Perplexity",
+    "photoroom": "Photoroom",
+    "pinecone": "Pinecone",
+    "pleo": "Pleo",
+    "qonto": "Qonto",
+    "resend": "Resend",
+    "runpod": "RunPod",
+    "sierra": "Sierra",
+    "synthesia": "Synthesia",
+    "temporal": "Temporal",
+    "vapi": "Vapi",
+    "wayve": "Wayve",
+    "workos": "WorkOS",
+    "zapier": "Zapier",
 }
