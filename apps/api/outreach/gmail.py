@@ -327,13 +327,16 @@ def gmail_sender(db: Session, user_id: str):
             f"The Gmail permission is missing {cred.missing_scopes}. Reconnect to grant it."
         )
 
-    def sender(to: str, subject: str, body: str) -> str | None:
+    def sender(to: str, subject: str, body: str, attachments=None) -> str | None:
+        """`attachments`: optional `[(filename, bytes, mime_type)]`."""
         access_token = _access_token(db, cred)
         msg = EmailMessage()
         msg["To"], msg["Subject"] = to, subject
         if cred.email_address:
             msg["From"] = cred.email_address
         msg.set_content(body)
+        for name, data, mime in attachments or ():
+            msg.add_attachment(data, *mime.split("/", 1), filename=name)
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
 
         resp = httpx.post(

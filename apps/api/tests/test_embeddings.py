@@ -27,7 +27,7 @@ def test_embed_texts_calls_voyage_client(mock_settings, mock_client_cls):
     result = embed_texts(["hello"], input_type="document")
 
     assert result == [[0.1, 0.2]]
-    mock_client_cls.assert_called_once_with(api_key="fake-key")
+    mock_client_cls.assert_called_once_with(api_key="fake-key", timeout=60.0)
     mock_client.embed.assert_called_once_with(["hello"], model="voyage-3-lite", input_type="document")
 
 

@@ -8,6 +8,8 @@ one bulk INSERT of new rows, one bulk UPDATE of re-seen rows (Task 2,
 freshness — a re-seen job refreshes last_seen_at/delisted_at/fields instead
 of being silently skipped).
 """
+import hashlib
+import json
 from datetime import datetime
 
 from sqlalchemy import or_, tuple_
@@ -28,6 +30,11 @@ from matching.skills import extract_skills
 # carry NULL, and a token-scoped sweep deliberately skips NULL rows, so they
 # stay unsweepable until their board lists them again and fills it in.
 _UPDATE_FIELDS = ("title", "company", "location", "salary", "description", "apply_url", "posted_at", "canonical_hash", "board_token")
+
+
+def content_hash(job: dict) -> str:
+    """Fingerprint of what the source sent for the fields a re-seen row refreshes."""
+    return hashlib.sha256(json.dumps([job.get(f) for f in _UPDATE_FIELDS], default=str).encode()).hexdigest()
 
 # Source trust order for collapsing duplicate live rows (GAPS 4.3), best first.
 # The only question being answered is "which of these two rows should the user
@@ -75,6 +82,21 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int, int]:
     if not jobs:
         return 0, 0, 0
 
+    # Chunked: one `(source, external_id) IN (...)` over the whole pool failed on Neon at
+    # 8,426 jobs with StatementTooComplex (passes at 6,000) — and as the last step of
+    # discovery it cost the entire run. SQLite never fails it (tests/test_upsert_scale.py).
+    existing_rows: dict[str, models.Job] = {}
+    for start in range(0, len(jobs), UPSERT_LOOKUP_CHUNK):
+        chunk = jobs[start:start + UPSERT_LOOKUP_CHUNK]
+        for row in _existing_rows(db, chunk):
+            existing_rows[row.id] = row
+    return _upsert_resolved(db, jobs, list(existing_rows.values()))
+
+
+UPSERT_LOOKUP_CHUNK = 1000
+
+
+def _existing_rows(db: Session, jobs: list[dict]) -> list[models.Job]:
     batch_hashes = [j["canonical_hash"] for j in jobs]
     batch_keys = [(j["source"], j["external_id"]) for j in jobs]
     # defer(embedding): every matching row used to arrive carrying a 1024-dim
@@ -86,7 +108,7 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int, int]:
     # _UPDATE_FIELDS and the loop below reads `getattr(existing, field)` as a
     # fallback, so deferring it would lazy-load per row — an N+1 strictly worse
     # than the thing being fixed.
-    existing_rows = (
+    return (
         db.query(models.Job)
         .options(defer(models.Job.embedding))
         .filter(
@@ -97,6 +119,9 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int, int]:
         )
         .all()
     )
+
+
+def _upsert_resolved(db: Session, jobs: list[dict], existing_rows: list) -> tuple[int, int, int]:
     existing_by_key = {(row.source, row.external_id): row for row in existing_rows}
 
     seen_in_batch: set[str] = set()
@@ -111,6 +136,8 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int, int]:
     accepted_fingerprints: dict[str, list[int]] = {}
     to_insert = []
     to_update = []
+    # Re-seen rows whose content did not change: only last_seen_at moves, set-based below.
+    touch_ids: set[str] = set()
     updated = 0
     skipped = 0
     now = datetime.utcnow()
@@ -128,11 +155,22 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int, int]:
         existing = existing_by_key.get((job["source"], job["external_id"]))
         if existing is None:
             continue
-        mapping = {"id": existing.id, "last_seen_at": now, "delisted_at": None}
-        for field in _UPDATE_FIELDS:
-            mapping[field] = job.get(field) or getattr(existing, field)
-        to_update.append(mapping)
         updated += 1
+        digest = content_hash(job)
+        merged = {f: job.get(f) or getattr(existing, f) for f in _UPDATE_FIELDS}
+        # Rows stored before migration 0027 have no fingerprint: compare fields instead, and
+        # leave it NULL until the row really changes (writing it would cost a row each).
+        if existing.content_hash == digest or (
+            existing.content_hash is None and all(merged[f] == getattr(existing, f) for f in _UPDATE_FIELDS)
+        ):
+            touch_ids.add(existing.id)
+            continue
+        to_update.append({
+            "id": existing.id, "last_seen_at": now, "delisted_at": None, **merged,
+            "content_hash": digest,
+            "seniority": infer_seniority(merged["title"]),
+            "skills": extract_skills(f"{merged['title']}. {merged['description'] or ''}"),
+        })
 
     # The live hash set as of the end of this run. A row updated above counts at
     # its NEW hash, and a tombstoned row that an update revived (delisted_at reset
@@ -149,6 +187,8 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int, int]:
         if mapping is not None:
             final_hash = mapping["canonical_hash"]
             live = mapping.get("delisted_at") is None
+        elif row.id in touch_ids:
+            final_hash, live = row.canonical_hash, True
         else:
             final_hash = row.canonical_hash
             live = row.delisted_at is None
@@ -176,6 +216,7 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int, int]:
         seen_in_batch.add(h)
         to_insert.append({
             **job,
+            "content_hash": content_hash(job),
             "seniority": infer_seniority(job["title"]),
             "skills": extract_skills(f"{job['title']}. {job.get('description') or ''}"),
             "fetched_at": now,
@@ -256,41 +297,17 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int, int]:
             "collapsed %d duplicate live job row(s) sharing a canonical_hash", collapsed
         )
 
+    # Touch before the bulk update, so a collapse loser's tombstone (set in to_update) wins.
+    ids = sorted(touch_ids)
+    for start in range(0, len(ids), UPSERT_LOOKUP_CHUNK):
+        db.query(models.Job).filter(
+            models.Job.id.in_(ids[start:start + UPSERT_LOOKUP_CHUNK])
+        ).update({"last_seen_at": now, "delisted_at": None}, synchronize_session=False)
     if to_update:
         db.bulk_update_mappings(models.Job, to_update)
-
     if to_insert:
-        # Chunked to BACKFILL_REQUEST_CHARS, the same budget backfill_job_embeddings
-        # uses. This used to be ONE call with every new job's text: fine at ~100
-        # keyword-filtered inserts a run, guaranteed to fail once ADR-021 made
-        # discovery store whole boards. Measured on the first unfiltered run —
-        # 3,351 new jobs in one batch, one request, 429, and the except below
-        # silently saved every single one un-embedded (6 of 3,351 ended up with a
-        # vector). An unembedded job cannot be matched, so that was the whole
-        # pool invisible until the 2-minute backfill ground through it.
-        #
-        # First failure stops the pass and keeps what was embedded: on Voyage's
-        # free tier (3 RPM) the minute's budget is spent, and the rest is picked
-        # up by embed_backlog_task rather than retried in the worker.
-        texts = [_embed_text(j["title"], j["company"], j.get("description")) for j in to_insert]
-        for start, end in _embed_chunks(texts):
-            try:
-                embeddings = embed_texts(texts[start:end], input_type="document")
-            except Exception:
-                # An embeddings outage/rate limit must not throw away what discovery
-                # found: save the jobs un-embedded (matching skips them until backfilled).
-                logging.getLogger(__name__).exception(
-                    "embedding jobs %d-%d of %d failed; saving the rest un-embedded",
-                    start, end, len(to_insert),
-                )
-                break
-            if not embeddings:
-                break
-            for job, embedding in zip(to_insert[start:end], embeddings):
-                job["embedding"] = embedding
         db.bulk_insert_mappings(models.Job, to_insert)
-
-    if to_insert or to_update:
+    if to_insert or to_update or touch_ids:
         db.commit()
 
     return len(to_insert), updated, skipped
@@ -353,6 +370,9 @@ def backfill_job_embeddings(db, limit: int = 50, only_ids=None) -> int:
         batches[-1][1].append(text)
         size += len(text)
 
+    # The SELECT above opened a transaction; end it so no network call below runs inside one
+    # (Neon kills a transaction idle for 5 min).
+    db.commit()
     done = 0
     for jobs, texts in batches:
         try:

@@ -174,6 +174,9 @@ class Job(Base):
     # silently sweeps nothing. index=True — migration 0023 creates
     # ix_jobs_board_token and env.py autogenerates against this metadata.
     board_token = Column(String, nullable=True, index=True)
+    # sha256 over the source-supplied fields (connectors/pipeline.py::content_hash). An
+    # unchanged re-seen row is only marked seen; NULL for rows stored before migration 0027.
+    content_hash = Column(String, nullable=True)
 
     applications = relationship("Application", back_populates="job")
     matches = relationship("Match", back_populates="job", cascade="all, delete-orphan")
@@ -261,6 +264,9 @@ class Application(Base):
     # Never demographic. The review queue shows only the ones the answer bank still
     # can't answer, so saving an answer is what clears them.
     pending_questions = Column(JSON, default=list)
+    # The job's canonical_hash, frozen at creation (set by _stamp_role_key). The same role
+    # from two sources is two Job rows; this makes a second Application for it impossible.
+    role_key = Column(String, nullable=True)
     applied_at = Column(DateTime, nullable=True)
     next_follow_up_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -270,7 +276,18 @@ class Application(Base):
     job = relationship("Job", back_populates="applications")
     campaign = relationship("Campaign", back_populates="applications")
 
-    __table_args__ = (UniqueConstraint("profile_id", "job_id", name="uq_application_profile_job"),)
+    __table_args__ = (
+        UniqueConstraint("profile_id", "job_id", name="uq_application_profile_job"),
+        UniqueConstraint("profile_id", "role_key", name="uq_application_profile_role"),
+    )
+
+
+@sqlalchemy.event.listens_for(Application, "before_insert")
+def _stamp_role_key(_mapper, connection, target):
+    if target.role_key is None:
+        target.role_key = connection.execute(
+            sqlalchemy.select(Job.canonical_hash).where(Job.id == target.job_id)
+        ).scalar()
 
 
 class ResumeFact(Base):
@@ -375,6 +392,8 @@ class ConnectorRun(Base):
     error = Column(Text, nullable=True)
     notes = Column(JSON, nullable=True)  # structured payload, e.g. F5's proposed-pattern review row
     duration_ms = Column(sqlalchemy.Integer, nullable=True)
+    fetch_ms = Column(sqlalchemy.Integer, nullable=True)
+    save_ms = Column(sqlalchemy.Integer, nullable=True)
     ran_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -452,8 +471,47 @@ class FormPlan(Base):
     plan = Column(JSON, nullable=True)  # {"fields": [{"key", "label", "fill_from"}]}
     error = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # The active version; every good plan is also kept in form_plan_versions for rollback.
+    version = Column(Integer, nullable=False, default=0, server_default="0")
 
     __table_args__ = (UniqueConstraint("job_id", name="uq_form_plans_job_id"),)
+
+
+class FormPlanVersion(Base):
+    """Every good plan a job's form ever had. A re-plan appends; rollback copies one back."""
+    __tablename__ = "form_plan_versions"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    form_plan_id = Column(UUID(as_uuid=False), ForeignKey("form_plans.id", ondelete="CASCADE"), nullable=False)
+    version = Column(Integer, nullable=False)
+    plan = Column(JSON, nullable=False)
+    fingerprint = Column(String(16), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("form_plan_id", "version", name="uq_form_plan_versions_plan_version"),)
+
+
+class AtsControl(Base):
+    """Owner's per-ATS kill switch. No row = filling enabled."""
+    __tablename__ = "ats_controls"
+
+    ats = Column(String(32), primary_key=True)
+    fill_enabled = Column(Boolean, nullable=False, default=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class FillSnapshot(Base):
+    """What one fill did, for debugging without re-running it on a real site: labels,
+    value sources and statuses only, never a value. Global form data plus the app id."""
+    __tablename__ = "fill_snapshots"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    application_id = Column(
+        UUID(as_uuid=False), ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    plan_version = Column(Integer, nullable=True)
+    record = Column(JSON, nullable=False)  # {"page", "fields": [{label, source, status, required}]}
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class OutreachStatus(str, enum.Enum):

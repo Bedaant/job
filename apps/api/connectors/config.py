@@ -83,6 +83,18 @@ LINKEDIN_JOB_LOCATIONS = ["India"]
 # deliberately, not hopefully.
 LINKEDIN_JOB_ROWS = 50
 
+# Hiring POSTS (connectors/linkedin_posts.py), not job listings: "we're hiring, apply here or
+# email your CV". $0.002/post plus one LLM call for each post that carries an apply route.
+# Role-agnostic on purpose: storage is unfiltered and each user's description filters at match
+# time (ADR-021). These three measured 58/60 routable posts across every kind of role
+# (2026-10-10). All queries share one actor run; ROWS is per query, so ~$0.12 a pass.
+LINKEDIN_POST_QUERIES = [
+    "#hiring India apply",
+    "hiring send your resume India",
+    "we are hiring India email your CV",
+]
+LINKEDIN_POST_ROWS = 20
+
 JOBSPY_LOCATIONS = [
     "Bengaluru, India",
     "Mumbai, India",

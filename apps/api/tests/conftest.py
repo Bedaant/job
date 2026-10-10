@@ -9,7 +9,7 @@ os.environ["LLM_PROVIDER"] = "anthropic"
 from pathlib import Path
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -52,6 +52,7 @@ def _pg_engine():
     cfg = Config(str(api_dir / "alembic.ini"))
     cfg.set_main_option("script_location", str(api_dir / "alembic"))
     cfg.set_main_option("sqlalchemy.url", TEST_DATABASE_URL)
+    cfg.attributes["explicit_url"] = True
     # Downgrade-then-upgrade is deliberately NOT done here: 0025's downgrade drops an
     # enum type, and proving that path belongs in its own test rather than in every run's
     # setup.
@@ -89,7 +90,9 @@ def db_session(_pg_engine):
 
     connection = _pg_engine.connect()
     transaction = connection.begin()
-    session = sessionmaker(bind=connection)()
+    # Savepoints, so a test's own commit()/rollback() behave as on a real database; the
+    # default would make rollback() discard everything the test had committed.
+    session = sessionmaker(bind=connection, join_transaction_mode="create_savepoint")()
     try:
         yield session
     finally:
@@ -157,6 +160,31 @@ def no_real_network():
 
 
 @pytest.fixture(autouse=True)
+def no_real_redis():
+    """`REDIS_URL` in `.env` is the PRODUCTION Redis Cloud instance. Before this, every test
+    that approved or submitted an application enqueued a real job there — 39 leaked
+    `draft_outreach_task`s were found sitting in the live queue ahead of a real user's
+    tailoring job (tests/test_no_real_redis.py).
+
+    Sockets are blocked at the connection class, exactly as `no_real_network` blocks httpx,
+    and `Queue.enqueue` records instead of sending, so enqueue-then-commit code paths still
+    see a job back. A test about enqueueing patches `get_queue` itself; its patch wins.
+    """
+    import redis.connection
+    from rq import Queue
+
+    def blocked(self, *args, **kwargs):
+        raise RuntimeError(
+            "the test suite tried to open a real Redis connection — REDIS_URL is production. "
+            "Patch get_queue / get_redis_connection in the test instead."
+        )
+
+    with patch.object(redis.connection.AbstractConnection, "connect", blocked), \
+         patch.object(Queue, "enqueue", lambda self, *a, **k: MagicMock(id="test-job")):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def no_real_subprocess_scrapes():
     """`no_real_network` cannot see into a subprocess, and that gap has now cost a
     second slow suite.
@@ -189,3 +217,11 @@ def no_real_subprocess_scrapes():
 
     with patch("workers.jobs.fetch_jobspy_jobs", blocked):
         yield
+
+
+@pytest.fixture(autouse=True)
+def fresh_guard_state():
+    # The guard caches breaker state per process; one test's open breaker must not leak.
+    from providers import guard
+    guard._reset_local_state()
+    yield

@@ -38,8 +38,17 @@ def test_the_schema_came_from_alembic_not_create_all(db_session):
     If `alembic_version` is present and at head, the schema under test was migrated."""
     from sqlalchemy import text
 
+    from pathlib import Path
+
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    api_dir = Path(__file__).resolve().parent.parent
+    cfg = Config(str(api_dir / "alembic.ini"))
+    cfg.set_main_option("script_location", str(api_dir / "alembic"))
+    head = ScriptDirectory.from_config(cfg).get_current_head()
     row = db_session.execute(text("select version_num from alembic_version")).scalar()
-    assert row == "0026", f"expected the lane to migrate to head, got {row!r}"
+    assert row == head, f"expected the lane to migrate to head {head!r}, got {row!r}"
 
 
 @needs_pg

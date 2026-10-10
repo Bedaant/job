@@ -1,9 +1,22 @@
+import pytest
 import json
 from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from connectors.jobspy_connector import fetch_jobspy_jobs
+
+
+@pytest.fixture(autouse=True)
+def _jobspy_venv(tmp_path_factory, monkeypatch):
+    # The tests fake subprocess.run; only the interpreter lookup needs a venv to exist (CI has none).
+    import connectors.jobspy_connector as jc
+    tools = tmp_path_factory.mktemp("tools")
+    py = tools / ".venv-jobspy" / "bin" / "python"
+    py.parent.mkdir(parents=True)
+    py.write_text("")
+    monkeypatch.setattr(jc, "_TOOLS_DIR", str(tools))
+
 
 
 @patch("connectors.jobspy_connector.subprocess.run")

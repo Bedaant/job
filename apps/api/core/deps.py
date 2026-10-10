@@ -1,3 +1,5 @@
+import os
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import event, text
@@ -73,3 +75,11 @@ def get_owned_profile(
     profile_id is a path or query param (FastAPI resolves it automatically).
     """
     return resolve_profile_ownership(db, current_user, profile_id)
+
+
+def require_owner(user: models.User = Depends(get_current_user)) -> models.User:
+    # ponytail: env list, not a users.is_owner column; move to Settings if owners change at runtime.
+    owners = {e.strip().lower() for e in os.environ.get("OWNER_EMAILS", "").split(",") if e.strip()}
+    if (user.email or "").lower() not in owners:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Owner only")
+    return user

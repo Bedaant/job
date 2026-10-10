@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node --test src/content/fieldDecision.test.mjs src/content/combobox.test.mjs src/content/relink.test.mjs src/content/architectureInvariants.test.mjs src/background/driverCore.test.mjs src/content/submitVerification.test.mjs src/background/apiProxyCore.test.mjs src/deployConfig.test.mjs",
+    "test": "node --test src/content/fieldDecision.test.mjs src/content/combobox.test.mjs src/content/relink.test.mjs src/content/architectureInvariants.test.mjs src/background/driverCore.test.mjs src/content/submitVerification.test.mjs src/background/apiProxyCore.test.mjs src/deployConfig.test.mjs src/content/fillSnapshot.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

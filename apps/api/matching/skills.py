@@ -94,6 +94,10 @@ def _compile(name: str) -> re.Pattern:
 
 _PATTERNS = [(name, _compile(name)) for name in _SKILLS]
 _BY_NAME = {name.lower(): pattern for name, pattern in _PATTERNS}
+_PREFILTERED = [
+    (name, pattern, name.lower() if pattern.flags & re.I else name, bool(pattern.flags & re.I))
+    for name, pattern in _PATTERNS
+]
 
 
 def skill_pattern(name: str) -> re.Pattern:
@@ -113,7 +117,15 @@ def skill_occurrences(text: str | None) -> dict[str, int]:
     """
     if not text:
         return {}
-    return {name: len(pattern.findall(text)) for name, pattern in _PATTERNS if pattern.search(text)}
+    # Every pattern needs its literal name in the text, and a substring test runs at
+    # memchr speed while the lookbehind regex scans position by position: 145 searches
+    # over a 5 KB JD x 8k jobs was 290 s, inside an open Neon transaction.
+    lowered = text.lower()
+    found = {}
+    for name, pattern, needle, haystack_is_lowered in _PREFILTERED:
+        if needle in (lowered if haystack_is_lowered else text) and pattern.search(text):
+            found[name] = len(pattern.findall(text))
+    return found
 
 
 def extract_skills(text: str | None) -> list[str]:

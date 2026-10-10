@@ -16,6 +16,8 @@ exist and be tested before REACH-A's Gmail credential does.
 import logging
 from datetime import datetime
 
+from sqlalchemy import or_
+
 import models
 from campaigns import utc_day_start
 from outreach.suppression import is_suppressed
@@ -26,6 +28,52 @@ logger = logging.getLogger(__name__)
 # it is also what keeps us well inside Gmail's own quotas. Not configurable per profile:
 # a cap a user can raise is not a cap.
 DAILY_CAP = 10
+# One ceiling per user across both irreversible email channels (outreach + apply-by-email),
+# each of which also keeps its own 10: without it the two sum to 20 from one Gmail account.
+ACCOUNT_DAILY_CAP = 15
+# RQ queue for irreversible sends, so they never wait behind tailoring or discovery.
+EFFECTS_QUEUE = "effects"
+
+
+def email_applications_today(db, user_id: str) -> int:
+    """`mailto:` applications this user sent today, plus any in flight (`submitting`)."""
+    return (
+        db.query(models.Application)
+        .join(models.Profile, models.Application.profile_id == models.Profile.id)
+        .join(models.Job, models.Application.job_id == models.Job.id)
+        .filter(
+            models.Profile.user_id == user_id,
+            models.Job.apply_url.like("mailto:%"),
+            or_(
+                models.Application.applied_at >= utc_day_start(),
+                models.Application.status == models.ApplicationStatus.submitting,
+            ),
+        )
+        .count()
+    )
+
+
+def account_sends_today(db, user_id: str) -> int:
+    """Everything this user's mailbox sent today or is sending now, across all profiles.
+    Callers hold the user row lock (`lock_user`) so two workers cannot both count 14."""
+    outreach = (
+        db.query(models.Outreach)
+        .join(models.Profile, models.Outreach.profile_id == models.Profile.id)
+        .filter(
+            models.Profile.user_id == user_id,
+            or_(
+                (models.Outreach.status == models.OutreachStatus.sent)
+                & (models.Outreach.sent_at >= utc_day_start()),
+                models.Outreach.status == models.OutreachStatus.sending,
+            ),
+        )
+        .count()
+    )
+    return outreach + email_applications_today(db, user_id)
+
+
+def lock_user(db, user_id: str) -> None:
+    db.query(models.User).filter(models.User.id == user_id).with_for_update().first()
 
 
 def sent_today(db, profile_id: str) -> int:
@@ -101,9 +149,11 @@ def claim_outreach(db, outreach_id: str, profile_id: str) -> str | None:
     if not _unsubscribe_is_reachable(contact.email, row.profile):
         return "unsubscribe_unreachable"
 
-    if sent_today(db, profile_id) >= DAILY_CAP:
-        # Deliberately left `approved` rather than failed: the cap is a pacing rule, not
-        # an error, and this row should go out on the next day's first pass.
+    # Deliberately left `approved` rather than failed: the cap is a pacing rule, not
+    # an error, and this row should go out on the next day's first pass.
+    user_id = row.profile.user_id
+    lock_user(db, user_id)
+    if sent_today(db, profile_id) >= DAILY_CAP or account_sends_today(db, user_id) >= ACCOUNT_DAILY_CAP:
         return "daily_cap"
 
     row.status = models.OutreachStatus.sending

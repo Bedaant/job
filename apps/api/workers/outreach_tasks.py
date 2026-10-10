@@ -82,8 +82,8 @@ def smtp_outreach_sender():
 
     import digest
 
-    def sender(to: str, subject: str, body: str):
-        delivered = digest.smtp_sender(to, subject, body)
+    def sender(to: str, subject: str, body: str, attachments=None):
+        delivered = digest.smtp_sender(to, subject, body, attachments)
         return f"smtp:{uuid.uuid4()}" if delivered else None
 
     return sender

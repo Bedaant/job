@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from workers.jobs import discover_jobs_task
+from workers.jobs import discover_inline, discover_jobs_task
 
 
 def _patch_connectors():
@@ -17,25 +17,19 @@ def _patch_connectors():
     )
 
 
+@patch("workers.jobs.get_queue")
 @patch("workers.jobs.get_redis_connection")
 @patch("workers.jobs.session_scope")
-def test_discover_runs_when_claim_acquired(mock_session_scope, mock_get_redis):
+def test_discover_runs_when_claim_acquired(mock_session_scope, mock_get_redis, mock_get_queue):
     redis = MagicMock()
     redis.set.return_value = True  # SETNX succeeded
     mock_get_redis.return_value = redis
     mock_session_scope.return_value.__enter__.return_value = MagicMock()
 
-    patches = _patch_connectors()
-    for p in patches:
-        p.start()
-    try:
-        result = discover_jobs_task(job_id="discover:123")
-    finally:
-        for p in patches:
-            p.stop()
+    result = discover_jobs_task(job_id="discover:123")
 
     assert result.get("skipped") is not True
-    assert result["fetched"] == 0
+    assert result["enqueued"] == mock_get_queue.return_value.enqueue.call_count > 0
     redis.set.assert_called_once_with("idempotency:discover:discover:123", "1", nx=True, ex=600)
 
 
@@ -50,24 +44,18 @@ def test_discover_skips_when_claim_already_held(mock_get_redis):
     assert result == {"skipped": True, "reason": "already claimed"}
 
 
+@patch("workers.jobs.get_queue")
 @patch("workers.jobs.session_scope")
-def test_discover_without_job_id_runs_unguarded(mock_session_scope):
+def test_discover_without_job_id_runs_unguarded(mock_session_scope, mock_get_queue):
     """Scheduler-invoked path (no job_id) never attempts a Redis claim — the
     scheduler already prevents duplicate registration on its own (run_scheduler.py)."""
     mock_session_scope.return_value.__enter__.return_value = MagicMock()
 
-    patches = _patch_connectors()
-    for p in patches:
-        p.start()
-    try:
-        with patch("workers.jobs.get_redis_connection") as mock_get_redis:
-            result = discover_jobs_task()
-            mock_get_redis.assert_not_called()
-    finally:
-        for p in patches:
-            p.stop()
+    with patch("workers.jobs.get_redis_connection") as mock_get_redis:
+        result = discover_jobs_task()
+        mock_get_redis.return_value.set.assert_not_called()
 
-    assert result["fetched"] == 0
+    assert result["enqueued"] > 0
 
 
 @patch("workers.jobs.upsert_jobs", return_value=(1, 0, 0))
@@ -86,7 +74,7 @@ def test_ats_boards_keep_every_posting(mock_scope, _embed, mock_upsert):
         with patch("workers.jobs.conn_config.GREENHOUSE_BOARD_TOKENS", ["acme"]), \
              patch("workers.jobs.conn_config.FEED_KEYWORDS", ["product manager"]), \
              patch("workers.jobs.fetch_greenhouse_jobs", return_value=board):
-            discover_jobs_task()
+            discover_inline()
     finally:
         for p in patches:
             p.stop()

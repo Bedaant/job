@@ -31,6 +31,8 @@ import os
 
 import httpx
 
+from providers import guard
+
 from connectors.normalize import coerce_posted_at
 
 logger = logging.getLogger(__name__)
@@ -79,7 +81,7 @@ def fetch_linkedin_jobs(title: str, location: str, rows: int = 50) -> list[dict]
         return []
 
     try:
-        r = httpx.post(
+        r = guard.call("apify", lambda: httpx.post(
             _ENDPOINT,
             params={"timeout": _ACTOR_TIMEOUT},
             headers={"Authorization": f"Bearer {token}"},
@@ -90,7 +92,7 @@ def fetch_linkedin_jobs(title: str, location: str, rows: int = 50) -> list[dict]
                 "proxy": {"useApifyProxy": True},
             },
             timeout=_CLIENT_TIMEOUT,
-        )
+        ), cost_usd=rows * 0.0015, retries=0)
     except Exception as exc:
         # TYPE only: a vendor error body can echo the token.
         logger.warning("linkedin jobs fetch failed for %r in %r: %s",

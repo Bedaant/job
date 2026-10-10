@@ -43,7 +43,7 @@ import {
 // Which flag reasons stop the run (an optional EEO field does not — it is left
 // blank) and the needs_human message, both pure and tested in fieldDecision.test.mjs.
 import { NEEDS_USER_REASONS, needsHumanReason, type UnansweredQuestion } from "./fieldDecision.mjs";
-import { controlTypes, fillForm, isVisible, waitFor } from "./formFill.content";
+import { controlTypes, fillForm, isVisible, postFillSnapshot, waitFor } from "./formFill.content";
 import { submitApprovedApplication } from "./submitApprovedApplication";
 import { decideVerification, isCaptchaChallengeSrc, verificationReport } from "./submitVerification.mjs";
 
@@ -275,6 +275,7 @@ async function run(): Promise<void> {
           if (page > 1 && error instanceof Error && error.message === "no form found on page") return null;
           throw error;
         });
+        if (fill) void postFillSnapshot(item.application_id, page, fill.snapshot);
         const blocking = fill?.flagged.filter((f) => NEEDS_USER_REASONS.has(f.reason)) ?? [];
         if (fill && blocking.length > 0) {
           report(

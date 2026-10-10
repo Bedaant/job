@@ -116,12 +116,38 @@ def plan_job(db, job, url: str | None = None):
         plan, error = None, f"{type(exc).__name__}: {exc}"
 
     row = db.query(models.FormPlan).filter(models.FormPlan.job_id == job_id).first() or models.FormPlan(job_id=job_id)
-    row.url, row.ats, row.status = url, target["ats_type"], "ok" if plan else "failed"
-    row.plan, row.error, row.created_at = plan, error, datetime.utcnow()
-    row.fingerprint = fingerprint(f["key"] for f in plan["fields"]) if plan else None
+    row.url, row.ats, row.error, row.created_at = url, target["ats_type"], error, datetime.utcnow()
+    if plan:
+        row.status, row.plan = "ok", plan
+        row.fingerprint = fingerprint(f["key"] for f in plan["fields"])
+        row.version = (row.version or 0) + 1
+        db.add(row)
+        db.flush()
+        db.add(models.FormPlanVersion(form_plan_id=row.id, version=row.version, plan=plan, fingerprint=row.fingerprint))
+    elif row.status != "ok":
+        # A failed re-plan keeps the last good plan; only a job that never had one is "failed".
+        row.status, row.plan, row.fingerprint = "failed", None, None
     db.add(row)
     db.commit()
     return row
+
+
+def rollback(db, job_id: str, version: int):
+    """Make an earlier good plan the active one again. None if that version does not exist."""
+    row = db.query(models.FormPlan).filter(models.FormPlan.job_id == job_id).first()
+    old = row and db.query(models.FormPlanVersion).filter_by(form_plan_id=row.id, version=version).first()
+    if not old:
+        return None
+    row.plan, row.fingerprint, row.version, row.status = old.plan, old.fingerprint, old.version, "ok"
+    db.commit()
+    return row
+
+
+def active_version(db, job_id: str | None) -> int | None:
+    if not job_id:
+        return None
+    row = db.query(models.FormPlan.version).filter(models.FormPlan.job_id == job_id).first()
+    return row[0] if row else None
 
 
 def current_plan(db, job_id: str) -> dict | None:

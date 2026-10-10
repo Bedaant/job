@@ -7,7 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 import models
 from connectors.normalize import canonical_hash
-from connectors.pipeline import upsert_jobs
+from connectors.pipeline import backfill_job_embeddings, upsert_jobs
 from database import Base
 
 
@@ -330,11 +330,14 @@ def test_upsert_leaves_embedding_null_without_voyage_key(mock_settings):
 
 
 @patch("connectors.pipeline.embed_texts")
-def test_upsert_sets_embedding_from_voyage(mock_embed):
+def test_the_backlog_pass_sets_embedding_from_voyage(mock_embed):
+    """Saving never embeds (discovery must not wait on Voyage); the backlog pass does."""
     vec_a, vec_b = [0.1] * 512, [0.3] * 512
-    mock_embed.return_value = [vec_a, vec_b]
+    mock_embed.side_effect = lambda texts, input_type: [vec_a if "Backend" in t else vec_b for t in texts]
     db = _db()
     upsert_jobs(db, [_job("remotive", "1"), _job("remotive", "2", title="Frontend Engineer")])
+    mock_embed.assert_not_called()
+    assert backfill_job_embeddings(db) == 2
     embeddings = {j.title: list(j.embedding) for j in db.query(models.Job).all()}
     assert embeddings["Backend Engineer"] == vec_a
     assert embeddings["Frontend Engineer"] == vec_b

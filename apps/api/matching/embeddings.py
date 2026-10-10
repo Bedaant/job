@@ -5,8 +5,10 @@ configured, same pattern as the Reed connector for optional external config.
 import voyageai
 
 from core.config import get_settings
+from providers import guard
 
 MODEL = "voyage-3-lite"  # 512-dim, matches models.EMBEDDING_DIM
+_USD_PER_TOKEN = 0.02 / 1_000_000  # voyage-3-lite list price
 
 
 def embed_texts(texts: list[str], input_type: str) -> list[list[float]] | None:
@@ -18,8 +20,10 @@ def embed_texts(texts: list[str], input_type: str) -> list[list[float]] | None:
     api_key = get_settings().voyage_api_key
     if not api_key:
         return None
-    client = voyageai.Client(api_key=api_key)
-    result = client.embed(texts, model=MODEL, input_type=input_type)
+    client = voyageai.Client(api_key=api_key, timeout=guard.timeout("voyage"))
+    cost = sum(len(t) for t in texts) / 4 * _USD_PER_TOKEN
+    result = guard.call("voyage", lambda: client.embed(texts, model=MODEL, input_type=input_type),
+                        cost_usd=cost)
     return result.embeddings
 
 

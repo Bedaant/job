@@ -45,6 +45,47 @@ jobs:
         working-directory: apps/api
         run: python -m pytest -q
 
+  # GAPS 5.4: the same suite on a real, Alembic-migrated Postgres. SQLite hid both
+  # 2026-10-10 discovery failures (StatementTooComplex, idle-in-transaction kill).
+  api-postgres:
+    name: api (pytest on real Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # pgvector image: migration 0004 runs CREATE EXTENSION vector.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: jobcopilot
+          POSTGRES_PASSWORD: jobcopilot
+          POSTGRES_DB: jobcopilot_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jobcopilot -d jobcopilot_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: "sqlite:///./ci.db"
+      ANTHROPIC_API_KEY: "ci-placeholder-not-a-real-key"
+      JWT_SECRET: "ci-placeholder-not-a-real-secret"
+      LLM_PROVIDER: "anthropic"
+      # tests/conftest.py migrates this to head once per session and rolls back per test.
+      TEST_DATABASE_URL: "postgresql://jobcopilot:jobcopilot@localhost:5432/jobcopilot_test"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: apps/api/requirements.txt
+      - name: Install dependencies
+        working-directory: apps/api
+        run: pip install -r requirements.txt
+      - name: Run tests on Postgres
+        working-directory: apps/api
+        run: python -m pytest -q
+
   web:
     name: web (vitest)
     runs-on: ubuntu-latest

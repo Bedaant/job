@@ -33,7 +33,8 @@ import {
 } from "./combobox.mjs";
 import { readLive, relink } from "./relink.mjs";
 import { base64ToBytes } from "../background/apiProxyCore.mjs";
-import { fillsOnPopup } from "../background/driverCore.mjs";
+import { fillsOnPopup, pausedMessage } from "../background/driverCore.mjs";
+import { buildFillSnapshot, type SnapshotField } from "./fillSnapshot.mjs";
 import type { ApiProxyResponse } from "../background/apiProxy";
 
 // ADR-001 runtime guard, defense-in-depth alongside the static source-text
@@ -314,7 +315,7 @@ const selectComboboxOption = (el: HTMLInputElement, kind: ComboKind, label: stri
 async function callApi(method: string, path: string, body?: unknown) {
   const resp: ApiProxyResponse | undefined = await chrome.runtime.sendMessage({ type: "jc:api", method, path, body });
   if (!resp) throw new Error("the extension's background worker did not answer");
-  if (!resp.ok) throw new Error(resp.error);
+  if (!resp.ok) throw Object.assign(new Error(resp.error), { status: resp.status });
   return resp;
 }
 
@@ -332,6 +333,7 @@ export type FillOutcome = {
   flagged: { field_id: string; reason: string; label: string | null }[];
   // Labels of flagged fields the user can answer once into the answer bank.
   questions: UnansweredQuestion[];
+  snapshot: SnapshotField[];
 };
 
 // Keyed by fieldDecision.mjs's flag reasons. `essay_no_stored_answer` is the
@@ -410,6 +412,9 @@ export async function fillForm(profileId: string, atsType?: string | null, jobId
       });
       mappings = resp.json as FieldMapping[];
     } catch (error) {
+      // The owner's kill switch: nothing on the page has been touched yet.
+      const paused = pausedMessage((error as { status?: number }).status, atsType);
+      if (paused) throw new Error(paused);
       throw new Error(`could not map fields (${error instanceof Error ? error.message : error})`);
     }
   }
@@ -432,6 +437,8 @@ export async function fillForm(profileId: string, atsType?: string | null, jobId
   // it) and Lever parses the resume into its own fields.
   let resume: File | null = null;
   let filled = 0;
+  const filledIds = new Set<string>();
+  const resumeIds = new Set<string>();
   for (const { descriptor, key } of files) {
     const kind = classifyFileInput(descriptor);
     if (kind === "resume") {
@@ -439,6 +446,8 @@ export async function fillForm(profileId: string, atsType?: string | null, jobId
       attachFile(controls[key] as HTMLInputElement, resume);
       markField(controls[key], "filled", "Resume attached by ApplyScout — verify before submitting.");
       filled++;
+      filledIds.add(descriptor.field_id);
+      resumeIds.add(descriptor.field_id);
     } else if (kind === "flag") {
       flag.push({ field_id: descriptor.field_id, reason: "file_upload" });
     }
@@ -467,6 +476,7 @@ export async function fillForm(profileId: string, atsType?: string | null, jobId
     }
     markField(el, "filled", "Auto-filled by ApplyScout — verify before submitting.");
     filled++;
+    filledIds.add(field_id);
   }
 
   // A location typeahead has no options until typed, so nothing could bind to it:
@@ -486,6 +496,7 @@ export async function fillForm(profileId: string, atsType?: string | null, jobId
     flag.splice(flag.indexOf(f), 1);
     markField(el, "filled", "Auto-filled by ApplyScout — verify before submitting.");
     filled++;
+    filledIds.add(f.field_id);
   }
 
   for (const { field_id, reason } of flag) {
@@ -505,7 +516,13 @@ export async function fillForm(profileId: string, atsType?: string | null, jobId
       return { field_id: f.field_id, reason: f.reason, label: d?.label_text?.trim() || d?.name || null };
     }),
     questions: unansweredQuestions(descriptors, flag),
+    snapshot: buildFillSnapshot([...descriptors, ...files.map((x) => x.descriptor)], mappings, flag, filledIds, resumeIds),
   };
+}
+
+/** Debug record of one page's fill. Never blocks or fails the application. */
+export async function postFillSnapshot(applicationId: string, page: number, fields: SnapshotField[]): Promise<void> {
+  await callApi("POST", "/extension/fill-snapshots", { application_id: applicationId, page, fields }).catch(() => undefined);
 }
 
 /** Input types (or tag names) of this frame's controls — driverCore.holdsApplicationForm decides. */

@@ -25,6 +25,8 @@ const REASON_MAX = 2000; // schemas.SubmissionResultIn caps `reason` at 2000
 // Failures a human can actually resolve. Everything else is transient or ours to
 // fix, so it stays retryable. Ordered by how unambiguous the signal is.
 const NEEDS_HUMAN_PATTERNS = [
+  // The owner paused this ATS server-side (423 from /map-fields): wait for them, don't retry.
+  /filling paused for/i,
   /captcha/i,
   /recaptcha/i,
   /hcaptcha/i,
@@ -69,6 +71,14 @@ function messageOf(error) {
  * Defaulting to `failed` is the safe direction: a retry costs a page load,
  * whereas wrongly parking something as needs_human silently stops applying to it.
  */
+// HTTP 423 from /map-fields = the owner's kill switch for this ATS. Checked before any field is touched.
+export const PAUSED_STATUS = 423;
+
+export function pausedMessage(status, atsType) {
+  if (status !== PAUSED_STATUS) return null;
+  return `Filling paused for ${atsType || "this job site"}. ApplyScout left this page untouched.`;
+}
+
 export function classifyFailure(error) {
   const message = messageOf(error);
   const reason = message.slice(0, REASON_MAX);

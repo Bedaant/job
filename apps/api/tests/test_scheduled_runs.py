@@ -243,6 +243,8 @@ def test_scheduler_registers_discovery_and_campaign_sweep(mock_scheduler_cls, _r
         jobs.sweep_form_plans_task: 3600,
         jobs.embed_backlog_task: jobs.EMBED_BACKLOG_INTERVAL_SECONDS,
         run_scheduler.daily_digest_task: run_scheduler.DIGEST_INTERVAL_SECONDS,
+        run_scheduler.check_and_alert_task: 15 * 60,
+        run_scheduler.canary_task: run_scheduler.DIGEST_INTERVAL_SECONDS,
     }
 
 

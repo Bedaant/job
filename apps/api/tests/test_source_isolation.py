@@ -61,6 +61,7 @@ def _offline(db=None, **overrides):
         "fetch_jobspy_jobs": MagicMock(return_value=[]),
         # Same reason as jobspy: without a stub, discovery calls a PAID Apify actor.
         "fetch_linkedin_jobs": MagicMock(return_value=[]),
+        "fetch_linkedin_posts": MagicMock(return_value=[]),
         "fetch_enabled_feeds": MagicMock(return_value=([], {})),
         **overrides,
     }
@@ -98,7 +99,7 @@ def test_a_raising_source_does_not_throw_away_the_other_sources(mock_upsert):
     ), patch("workers.jobs.conn_config.GREENHOUSE_BOARD_TOKENS", ["acme"]), \
          patch("workers.jobs.conn_config.FEED_KEYWORDS", ["product manager"]), \
          patch("workers.jobs.conn_config.REMOTIVE_KEYWORDS", ["product manager"]):
-        result = wj.discover_jobs_task()
+        result = wj.discover_inline()
 
     assert [j["title"] for j in mock_upsert.call_args.args[1]] == [PM]
     assert result["inserted"] == 1
@@ -116,7 +117,7 @@ def test_a_raising_ats_source_is_never_swept(_upsert, db):
 
     with _offline(db=db, fetch_greenhouse_jobs=MagicMock(side_effect=RuntimeError("boom"))), \
          patch("workers.jobs.conn_config.GREENHOUSE_BOARD_TOKENS", ["acme"]):
-        wj.discover_jobs_task()
+        wj.discover_inline()
 
     db.expire_all()
     assert db.query(models.Job).one().delisted_at is None
@@ -134,7 +135,7 @@ def test_every_source_writes_a_connector_run_row(_upsert, db):
          patch("workers.jobs.conn_config.FEED_KEYWORDS", ["product manager"]), \
          patch("workers.jobs.conn_config.REMOTIVE_KEYWORDS", ["product manager"]), \
          patch("workers.jobs.conn_config.REED_KEYWORDS", []):
-        wj.discover_jobs_task()
+        wj.discover_inline()
 
     runs = _runs(db)
     assert runs["greenhouse"].fetched == 1
@@ -152,7 +153,7 @@ def test_the_feed_report_becomes_connector_run_rows(_upsert, db):
     """
     report = {"remoteok": 3, "jobicy": "HTTPStatusError: 502", "nosuchfeed": "unknown feed name"}
     with _offline(db=db, fetch_enabled_feeds=MagicMock(return_value=([], report))):
-        wj.discover_jobs_task()
+        wj.discover_inline()
 
     runs = _runs(db)
     assert runs["remoteok"].fetched == 3 and runs["remoteok"].failed == 0
@@ -173,10 +174,11 @@ def test_requests_inside_one_source_are_paced(db):
          patch("workers.jobs.conn_config.WORKDAY_BOARDS", {}), \
          patch("workers.jobs.conn_config.JOBSPY_KEYWORDS", []), \
          patch("workers.jobs.conn_config.LINKEDIN_JOB_KEYWORDS", []), \
+         patch("workers.jobs.conn_config.LINKEDIN_POST_QUERIES", []), \
          patch("workers.jobs.upsert_jobs", MagicMock(return_value=(0, 0, 0))), \
          patch("workers.jobs.HOST_PACING_SECONDS", 0.25), \
          patch("workers.jobs.time.sleep") as sleep:
-        wj.discover_jobs_task()
+        wj.discover_inline()
 
     # Three tokens, one host: paced between them, never before the first.
     # Every other source is zeroed above so this counts Greenhouse alone — jobspy is in
@@ -195,9 +197,10 @@ def test_pacing_is_configurable_and_skipped_for_a_single_request(db):
          patch("workers.jobs.conn_config.WORKDAY_BOARDS", {}), \
          patch("workers.jobs.conn_config.JOBSPY_KEYWORDS", []), \
          patch("workers.jobs.conn_config.LINKEDIN_JOB_KEYWORDS", []), \
+         patch("workers.jobs.conn_config.LINKEDIN_POST_QUERIES", []), \
          patch("workers.jobs.upsert_jobs", MagicMock(return_value=(0, 0, 0))), \
          patch("workers.jobs.time.sleep") as sleep:
-        wj.discover_jobs_task()
+        wj.discover_inline()
 
     sleep.assert_not_called()
 

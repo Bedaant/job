@@ -6,6 +6,8 @@ from datetime import datetime
 
 import httpx
 
+from providers import guard
+
 from core.config import get_settings
 
 BASE_URL = "https://www.reed.co.uk/api/1.0/search"
@@ -20,12 +22,12 @@ def fetch_reed_jobs(keywords: str, limit: int = 50):
     if not api_key:
         return []
 
-    resp = httpx.get(
+    resp = guard.call("reed", lambda: httpx.get(
         BASE_URL,
         params={"keywords": keywords, "resultsToTake": limit},
         auth=(api_key, ""),
         timeout=20,
-    )
+    ))
     resp.raise_for_status()
     data = resp.json()
 

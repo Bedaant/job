@@ -18,8 +18,18 @@ settings = get_settings()
 # Falls back to `database_url` when `app_database_url` is unset (e.g. before
 # the role/password exist yet, or on the SQLite test engine, which has no
 # concept of Postgres roles at all).
-engine = create_engine(settings.database_url, pool_pre_ping=True)
-app_engine = create_engine(settings.app_database_url or settings.database_url, pool_pre_ping=True)
+def engine_kwargs(url: str) -> dict:
+    # Neon's pooler is PgBouncer in transaction mode: keep the client pool small and recycle
+    # before its idle limits. Statement timeouts are role-level (migration 0029): the pooler
+    # rejects startup `options` and SET does not survive transaction pooling (verified 2026-10-10).
+    if not url.startswith("postgresql"):
+        return {"pool_pre_ping": True}
+    return {"pool_pre_ping": True, "pool_size": 5, "max_overflow": 5, "pool_recycle": 300}
+
+
+engine = create_engine(settings.database_url, **engine_kwargs(settings.database_url))
+_app_url = settings.app_database_url or settings.database_url
+app_engine = create_engine(_app_url, **engine_kwargs(_app_url))
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 AppSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=app_engine)

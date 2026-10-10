@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Depends, HTTPException, Query, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
@@ -13,6 +14,8 @@ from rq.job import Job as RQJob
 from rq.worker import Worker as RQWorker
 
 import answer_bank as answer_bank_service
+import apply_email
+import ats_controls
 from needs_input import attempt_history, last_attempt, needs_input
 from core.config import get_settings
 from core.deps import get_current_user, get_owned_profile, resolve_profile_ownership
@@ -24,9 +27,7 @@ from auth.router import router as auth_router
 from outreach import api as outreach_api
 from outreach import gmail
 from connectors.apply_target import resolve_apply_target
-from documents.ats_safety import lint_docx
-from documents.generate_docx import generate_resume_docx
-from documents.parse_back import parse_back_check
+from documents.tailored_resume import DOCX_MIME, ResumeNotRenderable, render_verified_resume, tailored_facts
 from events.outbox import write_event
 from events.sse import event_stream
 from formfill.deterministic import bind_to_options
@@ -35,9 +36,11 @@ from formplans import current_plan
 from parsing.extract import extract_text_from_docx, extract_text_from_pdf
 from parsing.llm_extract import extract_basics, extract_facts_from_text
 from workers.jobs import (
-    discover_jobs_task, get_queue, get_redis_connection, prepare_applications_task, run_campaign_task,
+    BACKGROUND_QUEUE, DISCOVERY_TIMEOUT_SECONDS, discover_jobs_task, get_queue, get_redis_connection, prepare_applications_task,
+    run_campaign_task,
 )
 from workers.outreach_tasks import draft_outreach_task
+from observability import router as ops_router
 import campaigns as campaigns_service
 from matching.service import refresh_fact_vectors
 from matching.keyword_gap import compute_keyword_gap
@@ -68,6 +71,8 @@ app.include_router(auth_router)
 # unsubscribe route, and `outreach.gmail` the OAuth grant REACH-D's send path needs.
 app.include_router(outreach_api.router)
 app.include_router(gmail.router)
+app.include_router(ats_controls.router)
+app.include_router(ops_router)
 
 
 # ---------- Job discovery ----------
@@ -96,7 +101,10 @@ def run_discovery(_user: models.User = Depends(get_current_user)):
         raise HTTPException(503, NO_WORKER)
     job_id = f"discover-{int(time.time() // 60)}"  # rq: [A-Za-z0-9_-] only
     try:
-        job = get_queue().enqueue(discover_jobs_task, job_id=job_id, unique=True, kwargs={"job_id": job_id})
+        job = get_queue(BACKGROUND_QUEUE).enqueue(
+            discover_jobs_task, job_id=job_id, unique=True, kwargs={"job_id": job_id},
+            job_timeout=DISCOVERY_TIMEOUT_SECONDS,
+        )
     except DuplicateJobError:
         job = RQJob.fetch(job_id, connection=get_redis_connection())
     return {"task_id": job.id, "status": job.get_status()}
@@ -140,9 +148,21 @@ def create_application(
         profile_id=profile.id, job_id=payload.job_id, portal=payload.portal, notes=payload.notes
     )
     db.add(application)
-    db.commit()
+    _commit_new_application(db)
     db.refresh(application)
     return application
+
+
+_DUPLICATE_ROLE = "You already have an application for this role (possibly listed by another source)."
+
+
+def _commit_new_application(db: Session) -> None:
+    """uq_application_profile_job / uq_application_profile_role: a duplicate is a 409, not a 500."""
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, _DUPLICATE_ROLE)
 
 
 # ---------- Review queue (sub-projects #2/#3, ADR-001's approval checkpoint) ----------
@@ -301,6 +321,10 @@ def batch_approve_applications(
         )
         approved_ids.append(row.id)
     db.commit()
+    # mailto: jobs never reach the extension queue; the email task is their submit path.
+    for row in rows:
+        if (row.job.apply_url or "").startswith("mailto:"):
+            apply_email.enqueue_send(db, row)
     return schemas.BatchApproveResponse(approved=approved_ids)
 
 
@@ -388,6 +412,9 @@ def _work_queue_query(db: Session, user: models.User):
             # guaranteed failure report and burns a retry for nothing.
             models.Job.apply_url != "",
             models.Job.apply_url.isnot(None),
+            # A mailto: has no form to fill. Hiring posts that say "email your CV" land
+            # here as jobs the user sees but the extension must never be handed.
+            ~models.Job.apply_url.like("mailto:%"),
         )
     )
 
@@ -1242,55 +1269,21 @@ def download_tailored_resume_docx(
     whose every source_fact_id resolves to this profile's facts go in (ADR-009);
     the LLM's free-text summary does not. Same linter + parse-back as the base."""
     application = _owned_application(db, current_user, application_id)
-    facts = {
-        f.id: f for f in
-        db.query(models.ResumeFact).filter(models.ResumeFact.profile_id == application.profile_id)
-    }
-    facts_list = []
-    for i, bullet in enumerate((application.tailored_resume_json or {}).get("bullets") or []):
-        ids = bullet.get("source_fact_ids") or []
-        text = (bullet.get("text") or "").strip()
-        if not text or not ids or any(fid not in facts for fid in ids):
-            continue
-        cited = [facts[fid] for fid in ids]
-        # Dates only when every cited fact agrees — a merged bullet has no one period.
-        same_period = len({(f.period_from, f.period_to) for f in cited}) == 1
-        facts_list.append({
-            "id": f"bullet-{i}", "category": cited[0].category, "achievement": text,
-            "period_from": cited[0].period_from if same_period else None,
-            "period_to": cited[0].period_to if same_period else None,
-        })
+    facts_list = tailored_facts(db, application)
     if not facts_list:
         raise HTTPException(409, "This application has no tailored bullets grounded in your facts, so there is no tailored resume to generate.")
     return _verified_resume_response(application.profile, facts_list, "tailored-resume.docx")
 
 
-def _contact_header(profile: models.Profile) -> tuple[str | None, list[str]]:
-    """Name + one contact line from the profile's own basics; never guessed."""
-    name = profile.full_name or " ".join(p for p in (profile.given_name, profile.family_name) if p) or None
-    place = ", ".join(p for p in (profile.city, profile.region) if p)
-    links = [profile.website_url] + [n.get("url") for n in (profile.network_profiles or []) if isinstance(n, dict)]
-    contact = [profile.user.email, profile.phone, place, *links]
-    return name, list(dict.fromkeys(c for c in contact if c))
-
-
 def _verified_resume_response(profile: models.Profile, facts_list: list[dict], filename: str) -> Response:
-    """Render, then lint and parse-back before any bytes leave the server —
-    a document that fails either never ships."""
-    name, contact = _contact_header(profile)
-    docx_bytes = generate_resume_docx(profile.headline, facts_list, name=name, contact=contact)
-
-    violations = lint_docx(docx_bytes)
-    if violations:
-        raise HTTPException(500, f"Generated resume failed ATS-safety checks: {violations}")
-
-    failed_parse_back = [r for r in parse_back_check(docx_bytes, facts_list) if not r["passed"]]
-    if failed_parse_back:
-        raise HTTPException(500, f"Generated resume failed parse-back check: {failed_parse_back}")
+    try:
+        docx_bytes = render_verified_resume(profile, facts_list)
+    except ResumeNotRenderable as exc:
+        raise HTTPException(500, str(exc)) from None
 
     return Response(
         content=docx_bytes,
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        media_type=DOCX_MIME,
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
@@ -1320,6 +1313,7 @@ def extension_map_fields(
     """
     profile = resolve_profile_ownership(db, current_user, payload.profile_id)
     _mark_extension_seen(db, current_user)
+    ats_controls.ensure_fill_enabled(db, payload.ats_type, payload.url)
 
     profile_summary = build_profile_summary(profile, current_user.email)
     fields = [f.model_dump() for f in payload.fields]
@@ -1693,7 +1687,7 @@ def prepare_match(
         )
         db.add(application)
     match.state = "saved"
-    db.commit()
+    _commit_new_application(db)
     db.refresh(application)
     if application.status != models.ApplicationStatus.saved:
         return schemas.PrepareOut(application_id=application.id, status=application.status.value, queued=False)

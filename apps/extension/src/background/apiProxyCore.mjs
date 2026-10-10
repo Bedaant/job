@@ -12,6 +12,8 @@ const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
 const ROUTES = [
   { method: "POST", pattern: /^\/extension\/map-fields$/, response: "json" },
+  // What a fill did (labels, sources, statuses; no values), for debugging a failed form.
+  { method: "POST", pattern: /^\/extension\/fill-snapshots$/, response: "json" },
   // The ADR-001/015 claim that must succeed before the one native submit.
   { method: "POST", pattern: new RegExp(`^/applications/${UUID}/claim-submission$`, "i"), response: "json" },
   { method: "GET", pattern: new RegExp(`^/profiles/${UUID}/resume\\.docx$`, "i"), response: "bytes" },
