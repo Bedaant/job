@@ -1,0 +1,232 @@
+<!doctype html><html lang="en" data-theme="a"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ApplyScout design prototype</title><style>@font-face{font-family:"Plex";font-weight:400;font-display:block;src:url(../fonts/ibm-plex-sans-latin-400-normal.woff2)}@font-face{font-family:"Plex";font-weight:500;font-display:block;src:url(../fonts/ibm-plex-sans-latin-500-normal.woff2)}@font-face{font-family:"Plex";font-weight:600;font-display:block;src:url(../fonts/ibm-plex-sans-latin-600-normal.woff2)}@font-face{font-family:"Plex";font-weight:700;font-display:block;src:url(../fonts/ibm-plex-sans-latin-700-normal.woff2)}@font-face{font-family:"Geist";font-weight:400;font-display:block;src:url(../fonts/geist-sans-latin-400-normal.woff2)}@font-face{font-family:"Geist";font-weight:500;font-display:block;src:url(../fonts/geist-sans-latin-500-normal.woff2)}@font-face{font-family:"Geist";font-weight:600;font-display:block;src:url(../fonts/geist-sans-latin-600-normal.woff2)}@font-face{font-family:"Geist";font-weight:700;font-display:block;src:url(../fonts/geist-sans-latin-700-normal.woff2)}@font-face{font-family:"SerifD";font-weight:400;font-display:block;src:url(../fonts/source-serif-4-latin-400-normal.woff2)}@font-face{font-family:"SerifD";font-weight:600;font-display:block;src:url(../fonts/source-serif-4-latin-600-normal.woff2)}@font-face{font-family:"SerifD";font-weight:700;font-display:block;src:url(../fonts/source-serif-4-latin-700-normal.woff2)}[data-theme="a"]{--bg:#FAF7F0;--surface:#FFFFFF;--surface-2:#F3EEE3;--sunken:#F0EADD;--border:#E2DACB;--border-strong:#857D6D;--text:#14213D;--text-muted:#46506A;--text-subtle:#5C6377;--primary:#14213D;--primary-hover:#22325A;--primary-active:#0C1529;--on-primary:#FFFFFF;--secondary:#FFFFFF;--secondary-hover:#F3EEE3;--on-secondary:#14213D;--accent:#2C5AA8;--accent-bg:#E8EEF8;--accent-text:#1F447F;--focus:#2C5AA8;--success:#1D7447;--success-bg:#E5F3EA;--success-text:#155C38;--warning:#8A5600;--warning-bg:#FBEFD8;--warning-text:#6B4300;--error:#B42318;--error-bg:#FCEAE8;--error-text:#8F1C13;--mark-dot:#2C5AA8;--chip-bg:#E8EEF8;--chip-text:#1F447F;--font-display:"Plex",system-ui,sans-serif;--font-body:"Plex",system-ui,sans-serif;--display-weight:600;--display-track:-0.02em;--r-sm:6px;--r-md:8px;--r-lg:12px;--shadow-1:0 1px 2px rgb(20 33 61/.06),0 1px 1px rgb(20 33 61/.04);--shadow-pop:0 12px 32px -12px rgb(20 33 61/.25),0 0 0 1px #E2DACB}[data-theme="b"]{--bg:#F6F5F1;--surface:#FFFFFF;--surface-2:#EFEEE9;--sunken:#EBE9E3;--border:#D9D7D0;--border-strong:#7E7C74;--text:#111111;--text-muted:#4F4D47;--text-subtle:#6C6A63;--primary:#1D4ED8;--primary-hover:#1A43BA;--primary-active:#15369A;--on-primary:#FFFFFF;--secondary:#FFFFFF;--secondary-hover:#EFEEE9;--on-secondary:#111111;--accent:#1D4ED8;--accent-bg:#E9EEFC;--accent-text:#173EAD;--focus:#1D4ED8;--success:#1B7340;--success-bg:#E4F2E8;--success-text:#145A31;--warning:#8A5A0C;--warning-bg:#F7ECD6;--warning-text:#6B4508;--error:#B3261E;--error-bg:#FBE9E7;--error-text:#8C1D17;--mark-dot:#B8892D;--chip-bg:#F2E6C6;--chip-text:#5A420F;--font-display:"SerifD",system-ui,sans-serif;--font-body:"Geist",system-ui,sans-serif;--display-weight:600;--display-track:-0.015em;--r-sm:2px;--r-md:4px;--r-lg:4px;--shadow-1:none;--shadow-pop:0 0 0 1px #111111}[data-theme="c"]{--bg:#121211;--surface:#1A1A18;--surface-2:#222220;--sunken:#0E0E0D;--border:#2F2E2B;--border-strong:#76726A;--text:#F2EEE6;--text-muted:#B8B2A7;--text-subtle:#9C968B;--primary:#D9A84E;--primary-hover:#E4B866;--primary-active:#C99A40;--on-primary:#17120A;--secondary:#222220;--secondary-hover:#2B2B28;--on-secondary:#F2EEE6;--accent:#E0B565;--accent-bg:#2A2316;--accent-text:#F0CD8A;--focus:#F0CD8A;--success:#6CCB97;--success-bg:#15281D;--success-text:#8FDCB1;--warning:#E6B95A;--warning-bg:#2A2111;--warning-text:#F1CD84;--error:#F28B82;--error-bg:#2D1715;--error-text:#F7ABA4;--mark-dot:#D9A84E;--chip-bg:#3A2F1A;--chip-text:#F0CD8A;--font-display:"Geist",system-ui,sans-serif;--font-body:"Geist",system-ui,sans-serif;--display-weight:600;--display-track:-0.03em;--r-sm:6px;--r-md:8px;--r-lg:10px;--shadow-1:inset 0 1px 0 rgb(255 255 255/.04);--shadow-pop:0 16px 40px -12px rgb(0 0 0/.7),0 0 0 1px #2F2E2B}
+[data-theme="c"]{color-scheme:dark}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.i{flex:none;display:inline-block;vertical-align:middle}
+a{color:var(--accent-text);text-underline-offset:3px}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:var(--r-sm)}
+.wrap{max-width:1200px;margin:0 auto;padding-inline:32px}
+h1,h2,h3{font-family:var(--font-display);font-weight:var(--display-weight);letter-spacing:var(--display-track);text-wrap:balance;line-height:1.12}
+h1{font-size:clamp(36px,5vw,58px)}h2{font-size:clamp(26px,3vw,34px)}h3{font-size:20px;line-height:1.3}
+.lead{font-size:19px;color:var(--text-muted);max-width:62ch}
+.muted{color:var(--text-muted)}.sm{font-size:14px}.xs{font-size:13px}
+.tnum{font-variant-numeric:tabular-nums}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border-radius:var(--r-md);font:600 15px/1 var(--font-body);border:1px solid transparent;cursor:pointer;text-decoration:none;transition:background-color .12s ease,border-color .12s ease,color .12s ease}
+.btn-primary{background:var(--primary);color:var(--on-primary)}.btn-primary:hover{background:var(--primary-hover)}.btn-primary:active{background:var(--primary-active)}
+.btn-secondary{background:var(--secondary);color:var(--on-secondary);border-color:var(--border-strong)}.btn-secondary:hover{background:var(--secondary-hover)}
+.btn-ghost{background:transparent;color:var(--text-muted)}.btn-ghost:hover{color:var(--text);background:var(--surface-2)}
+.btn[disabled]{background:var(--surface-2);color:var(--text-subtle);border-color:var(--border);cursor:not-allowed}
+.btn-lg{min-height:52px;padding:0 24px;font-size:16px}
+.surface{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-1)}
+.section{padding-block:56px;border-bottom:1px solid var(--border)}
+.shot-label{font:600 12.5px var(--font-body);color:var(--text-subtle);margin-bottom:18px;display:block}
+/* header */
+.site-h{display:flex;align-items:center;gap:28px;height:68px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px;color:var(--text);text-decoration:none;letter-spacing:-.01em}
+.site-h nav{display:flex;gap:24px;margin-left:auto}.site-h nav a{color:var(--text-muted);text-decoration:none;font-size:15px;font-weight:500}
+/* hero */
+.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;padding-block:56px 72px}
+.hero .cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px}
+.facts-note{display:flex;gap:8px;align-items:center;margin-top:16px;font-size:14px;color:var(--text-muted)}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:32px;margin-top:28px;counter-reset:s}
+.step{border-top:2px solid var(--text);padding-top:16px}
+.step b{display:block;font-size:17px;margin-bottom:4px}.step .n{font:600 13px var(--font-body);color:var(--text-subtle)}
+.rules{display:grid;grid-template-columns:1fr 1fr;gap:0 40px;margin-top:24px;list-style:none}
+.rules li{display:flex;gap:12px;padding:16px 0;border-top:1px solid var(--border)}
+.rules .i{color:var(--text);margin-top:3px}
+/* review component (used in hero, resume review) */
+.review{padding:22px 24px}
+.review-h{display:flex;justify-content:space-between;gap:16px;align-items:baseline;padding-bottom:14px;border-bottom:1px solid var(--border)}
+.review-h b{font-size:16px}
+.line{padding:14px 0;border-bottom:1px solid var(--border)}
+.line:last-child{border-bottom:0}
+.line .was{color:var(--text-subtle);text-decoration:line-through;font-size:14.5px}
+.line .now{margin-top:4px}
+.src{display:inline-flex;align-items:center;gap:4px;font:600 12px var(--font-body);background:var(--chip-bg);color:var(--chip-text);border-radius:var(--r-sm);padding:2px 7px;margin-left:6px;vertical-align:1px}
+.status{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;margin-top:8px}
+.status.ok{color:var(--success-text)}.status.warn{color:var(--warning-text)}.status.err{color:var(--error-text)}
+.callout{display:flex;gap:10px;border-radius:var(--r-md);padding:12px 14px;font-size:14.5px;border:1px solid}
+.callout.warn{background:var(--warning-bg);border-color:color-mix(in srgb,var(--warning) 35%,transparent);color:var(--warning-text)}
+.callout.err{background:var(--error-bg);border-color:color-mix(in srgb,var(--error) 35%,transparent);color:var(--error-text)}
+.callout.ok{background:var(--success-bg);border-color:color-mix(in srgb,var(--success) 35%,transparent);color:var(--success-text)}
+.callout b{display:block;color:inherit}
+/* app shell */
+.app{border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;background:var(--bg)}
+.app-h{display:flex;align-items:center;gap:6px;height:60px;padding-inline:20px;background:var(--surface);border-bottom:1px solid var(--border)}
+.app-h .brand{font-size:16px;margin-right:18px}
+.tab{padding:8px 12px;border-radius:var(--r-md);color:var(--text-muted);text-decoration:none;font-weight:500;font-size:15px;display:inline-flex;align-items:center;gap:8px}
+.tab[aria-current="page"]{color:var(--text);background:var(--surface-2)}
+.count{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:var(--warning-bg);color:var(--warning-text);font:700 12px var(--font-body);border:1px solid color-mix(in srgb,var(--warning) 40%,transparent)}
+.app-h .sp{flex:1}.ext{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text-muted)}.ext .i{color:var(--success)}
+.app-b{display:grid;grid-template-columns:1fr 300px;gap:28px;padding:28px}
+.today h2{font-size:28px}.today .sub{margin-top:6px;color:var(--text-muted)}
+.list{margin-top:16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+.list h3{font:600 14px var(--font-body);letter-spacing:0;padding:12px 18px;background:var(--surface-2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;color:var(--text)}
+.row{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid var(--border)}
+.row:last-child{border-bottom:0}
+.row .t{flex:1;min-width:0}.row .t b{display:block;font-weight:600}.row .t span{font-size:14.5px;color:var(--text-muted)}
+.pin{width:10px;height:10px;border-radius:50%;background:var(--warning);flex:none}
+.aside{display:flex;flex-direction:column;gap:14px}
+.aside .surface{padding:18px}
+.kv{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:15px}.kv:last-child{border-bottom:0}.kv b{font-variant-numeric:tabular-nums}
+.live{display:flex;gap:8px;align-items:center;font-weight:600}.live i{width:9px;height:9px;border-radius:50%;background:var(--success)}
+.rulelist{list-style:none;margin-top:10px;font-size:14px;color:var(--text-muted)}.rulelist li{display:flex;gap:8px;padding:3px 0}.rulelist .i{color:var(--success-text);margin-top:3px}
+/* job card */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start}
+.job{padding:24px}
+.job-h{display:flex;justify-content:space-between;gap:16px}
+.fit{text-align:right}.fit b{font-size:24px;display:block;font-variant-numeric:tabular-nums}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;list-style:none}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;border:1px solid var(--border);border-radius:var(--r-sm);padding:4px 10px;background:var(--surface)}
+.chip.have .i{color:var(--success-text)}.chip.miss{color:var(--text-muted);border-style:dashed}
+.field{margin-top:16px}.field label,.legend{display:block;font-weight:600;font-size:14.5px;margin-bottom:6px}
+.input{width:100%;min-height:44px;border:1px solid var(--border-strong);border-radius:var(--r-md);background:var(--surface);color:var(--text);font:16px var(--font-body);padding:10px 12px}
+.input::placeholder{color:var(--text-subtle)}
+.input[aria-invalid="true"]{border-color:var(--error);box-shadow:0 0 0 1px var(--error)}
+.help{font-size:13.5px;color:var(--text-muted);margin-top:6px}.err-msg{display:flex;gap:6px;align-items:center;font-size:13.5px;color:var(--error-text);margin-top:6px;font-weight:500}
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px;align-items:center}
+.radios{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.radio{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--border-strong);border-radius:var(--r-md);padding:14px;background:var(--surface);cursor:pointer}
+.radio input{margin-top:4px;width:18px;height:18px;accent-color:var(--primary)}
+.radio:has(input:checked){border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
+.radio b{display:block}.radio span{font-size:14px;color:var(--text-muted)}
+fieldset{border:0}
+.tagsel{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid var(--border-strong);border-radius:var(--r-md);padding:6px;min-height:44px;background:var(--surface)}
+.tagsel .chip{background:var(--surface-2)}
+.tagsel button{background:none;border:0;color:var(--text-muted);cursor:pointer;display:inline-flex;padding:2px;border-radius:var(--r-sm)}
+.states{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.state{padding:22px;min-height:220px}
+.sk{height:12px;border-radius:var(--r-sm);background:var(--surface-2);margin:10px 0}
+.empty{text-align:center}.empty .i{color:var(--text-subtle)}
+.toast{display:flex;gap:12px;align-items:center;background:var(--text);color:var(--bg);border-radius:var(--r-md);padding:12px 14px;font-size:14.5px;box-shadow:var(--shadow-pop)}
+.toast .btn{min-height:36px;background:transparent;color:var(--bg);border-color:color-mix(in srgb,var(--bg) 55%,transparent);padding:0 12px}
+.tok{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+.sw{border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;font-size:12px}.sw div{height:52px}.sw p{padding:6px 8px;background:var(--surface)}
+.typescale p{margin:6px 0}
+@media (max-width:760px){
+ .wrap{padding-inline:16px}
+ .site-h nav{display:none}
+ .hero,.two,.app-b,.states,.rules,.steps,.radios{grid-template-columns:1fr}
+ .hero{gap:28px;padding-block:32px 40px}
+ .app-h .tab:not([aria-current]),.ext{display:none}
+ .app-b{padding:16px}
+ .tok{grid-template-columns:repeat(2,1fr)}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+</style>
+<script>var t=(new URLSearchParams(location.search).get("t")||"a");document.documentElement.setAttribute("data-theme",t);</script></head><body>
+<a href="#main" class="btn btn-primary" style="position:absolute;left:-9999px">Skip to content</a>
+<main id="main"><section class="section" data-shot="landing" aria-labelledby="h-land"><div class="wrap">
+<span class="shot-label">Landing page</span>
+<header class="site-h"><a class="brand" href="#"><svg width="28" height="28" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="currentColor" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="19" fill="var(--mark-dot)"/></svg>ApplyScout</a><nav aria-label="Primary"><a href="#">How it works</a><a href="#">What Maggie won’t do</a><a href="#">Sign in</a></nav><a class="btn btn-primary" href="#">Get started</a></header>
+<div class="hero"><div><h1 id="h-land">A tailored resume for every job. Every line true.</h1>
+<p class="lead" style="margin-top:20px">ApplyScout finds roles that fit you, rewrites your resume for each one using only facts you have confirmed, and fills in the application from your own browser. You decide what gets sent.</p>
+<div class="cta"><a class="btn btn-primary btn-lg" href="#"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12" />
+  <path d="m17 8-5-5-5 5" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></svg>Upload your resume</a><a class="btn btn-secondary btn-lg" href="#">See how it works</a></div>
+<p class="facts-note"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+  <path d="m9 12 2 2 4-4" /></svg>PDF or DOCX. You check every fact before anything is used.</p></div>
+<div class="surface review" aria-label="Tailored resume for Senior Product Manager at Lumen Pay">
+<div class="review-h"><b>Senior Product Manager, Lumen Pay</b><span class="xs muted">Tailored resume</span></div>
+<div class="line"><div class="was">Responsible for various payment initiatives across teams.</div>
+<div class="now">Led the checkout redesign that cut payment drop-off by 18% across 2 markets.<span class="src" title="Fact 1: Payments team, Q2 2025">F1</span><span class="src" title="Fact 2: drop-off fell from 31% to 25%">F2</span></div>
+<div class="status ok"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" />
+  <path d="m16 9-5.5 5.5L8 12" /></svg>Backed by 2 of your confirmed facts</div></div>
+<div class="line"><div class="now">Owned the merchant onboarding roadmap for 40+ partners.<span class="src">F4</span></div><div class="status ok"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" />
+  <path d="m16 9-5.5 5.5L8 12" /></svg>Backed by 1 fact</div></div>
+<div class="line"><div class="callout warn" role="note"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" />
+  <path d="M8 12h8" /></svg><div><b>Not added: Kubernetes</b>The job lists it, but it isn’t in your confirmed facts. Maggie flags gaps instead of inventing them.</div></div></div></div></div>
+<h2>How it works</h2>
+<ol class="steps" style="list-style:none">
+<li class="step"><span class="n">Step 1</span><b>Confirm your facts</b><span class="muted">Your resume becomes 25 to 40 short facts. Fix anything that’s wrong.</span></li>
+<li class="step"><span class="n">Step 2</span><b>Maggie finds and tailors</b><span class="muted">She matches roles to your whole profile and rewrites your resume for each.</span></li>
+<li class="step"><span class="n">Step 3</span><b>You approve, she applies</b><span class="muted">Press Send yourself, or let her send within your daily limit.</span></li></ol>
+<h2 style="margin-top:48px">What Maggie will never do</h2>
+<ul class="rules">
+<li><svg class="i" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" />
+  <path d="M4.929 4.929 19.07 19.071" /></svg><div><b>Invent experience</b><div class="muted sm">Every line traces back to a fact you confirmed.</div></div></li>
+<li><svg class="i" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+  <path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg><div><b>Type your password</b><div class="muted sm">At a sign-in page she stops and hands the form to you.</div></div></li>
+<li><svg class="i" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" />
+  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+  <path d="M12 17h.01" /></svg><div><b>Guess your work rights or demographics</b><div class="muted sm">Those answers come from you, or your saved answers.</div></div></li>
+<li><svg class="i" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m12 14 4-4" />
+  <path d="M3.34 19a10 10 0 1 1 17.32 0" /></svg><div><b>Send more than you allow</b><div class="muted sm">A daily limit you set, and a pause that works at once.</div></div></li></ul>
+</div></section><section class="section" data-shot="dashboard" aria-labelledby="h-today"><div class="wrap">
+<span class="shot-label">Dashboard</span>
+<div class="app"><div class="app-h"><a class="brand" href="#"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="currentColor" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="19" fill="var(--mark-dot)"/></svg>ApplyScout</a>
+<a class="tab" href="#" aria-current="page">Today</a><a class="tab" href="#">Review <span class="count" aria-label="5 waiting">5</span></a><a class="tab" href="#">Applications</a><a class="tab" href="#">Campaign</a><a class="tab" href="#">Profile</a>
+<span class="sp"></span><span class="ext"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 22v-5" />
+  <path d="M15 8V2" />
+  <path d="M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z" />
+  <path d="M9 8V2" /></svg>Extension connected</span><button class="btn btn-ghost" aria-label="Account menu"><svg class="i" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" />
+  <circle cx="12" cy="10" r="3" />
+  <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662" /></svg></button></div>
+<div class="app-b"><div class="today"><p class="xs muted">Saturday 10 October</p><h2 id="h-today">2 applications need your answer</h2>
+<p class="sub">Maggie sent 7 today and found 14 new roles. 3 more are ready for you to send.</p>
+<div class="list"><h3><span class="pin" aria-hidden="true"></span>Needs your answer</h3>
+<div class="row"><div class="t"><b>Growth Product Manager, Northwind</b><span>Singapore. The form asks if you can work there without sponsorship.</span></div><a class="btn btn-primary" href="#">Answer</a></div>
+<div class="row"><div class="t"><b>Senior Product Manager, Harbor Cloud</b><span>Bengaluru. Stopped at a sign-in page, so this one is yours to finish.</span></div><a class="btn btn-secondary" href="#"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 3h6v6" />
+  <path d="M10 14 21 3" />
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></svg>Open the form</a></div></div>
+<div class="list"><h3>Ready for you to send</h3>
+<div class="row"><div class="t"><b>Product Manager, Lumen Pay</b><span>Tailored resume and cover letter ready.</span></div><a class="btn btn-secondary" href="#">Send it</a></div>
+<div class="row"><div class="t"><b>Associate Product Manager, Brightpath</b><span>Tailored resume ready. No cover letter asked for.</span></div><a class="btn btn-secondary" href="#">Send it</a></div></div></div>
+<div class="aside" role="region" aria-label="Today’s summary"><div class="surface"><div class="live"><i aria-hidden="true"></i>Maggie is applying</div>
+<ul class="rulelist"><li><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5" /></svg>You approve each application</li><li><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5" /></svg>Daily limit 10, resets 5:30 am</li><li><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5" /></svg>Uses only facts you confirmed</li></ul>
+<button class="btn btn-secondary" style="width:100%;margin-top:14px"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="14" y="3" width="5" height="18" rx="1" />
+  <rect x="5" y="3" width="5" height="18" rx="1" /></svg>Pause Maggie</button></div>
+<div class="surface"><div class="kv"><span>Sent today</span><b>7 <span class="muted" style="font-weight:400">of 10</span></b></div><div class="kv"><a href="#">Not confirmed yet</a><b>1</b></div><div class="kv"><a href="#">New matches</a><b>14</b></div></div></div></div></div>
+</div></section><section class="section" data-shot="jobcard" aria-label="Job card and resume review"><div class="wrap">
+<span class="shot-label">Job card and resume review</span>
+<div class="two"><article class="surface job" aria-labelledby="h-job"><div class="job-h"><div><h3 id="h-job">Growth Product Manager</h3><p class="muted sm">Northwind, Singapore, hybrid. Posted 2 days ago.</p></div><div class="fit"><b>82%</b><span class="xs muted">7 of 9 required skills</span></div></div>
+<ul class="chips" aria-label="Required skills"><li class="chip have"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5" /></svg>SQL</li><li class="chip have"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5" /></svg>A/B testing</li><li class="chip have"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5" /></svg>Growth loops</li><li class="chip miss"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14" /></svg>Kubernetes<span class="sr" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"> (missing)</span></li></ul>
+<div class="callout warn" role="note" style="margin-top:16px"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" />
+  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+  <path d="M12 17h.01" /></svg><div><b>Maggie stopped at one question</b>“Are you legally allowed to work in Singapore without sponsorship?” She won’t guess this for you.</div></div>
+<div class="field"><label for="ans">Your answer</label><input class="input" id="ans" placeholder="Type your answer"><p class="help">Saved to your answers and reused when another form asks the same thing.</p></div>
+<div class="actions"><button class="btn btn-primary">Save and continue</button><a class="btn btn-secondary" href="#"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 3h6v6" />
+  <path d="M10 14 21 3" />
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></svg>View listing</a><button class="btn btn-ghost">Not for me</button></div></article>
+<div class="surface review" aria-label="Truth check results"><div class="review-h"><b>Truth check</b><span class="xs muted">Before anything is sent</span></div>
+<div class="line"><div class="now">Led the checkout redesign that cut payment drop-off by 18% across 2 markets.<span class="src">F1</span><span class="src">F2</span></div><div class="status ok"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" />
+  <path d="m16 9-5.5 5.5L8 12" /></svg>Backed by your facts</div></div>
+<div class="line"><div class="now">Managed a team of 12 engineers across 3 time zones.</div><div class="status err"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" />
+  <path d="m15 9-6 6" />
+  <path d="m9 9 6 6" /></svg>Not in your facts. This line blocks sending.</div><div class="actions" style="margin-top:10px"><button class="btn btn-secondary">Remove line</button><button class="btn btn-ghost">Add as a fact</button></div></div>
+<div class="line"><div class="callout warn" role="note"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" />
+  <path d="M8 12h8" /></svg><div><b>Not added: Kubernetes</b>Listed by the job, missing from your facts.</div></div></div>
+<div class="line"><div class="callout err" role="alert"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+  <path d="M12 9v4" />
+  <path d="M12 17h.01" /></svg><div><b>Can’t send yet</b>1 line isn’t backed by your facts. Remove it or add the fact first.</div></div></div></div></div>
+</div></section><section class="section" data-shot="form" aria-labelledby="h-form"><div class="wrap">
+<span class="shot-label">Form</span>
+<form class="surface job" style="max-width:760px" onsubmit="event.preventDefault()"><h3 id="h-form">Campaign</h3><p class="muted sm">What Maggie looks for and how she applies.</p>
+<div class="field"><span class="legend" id="roles-l">Job titles</span><div class="tagsel" role="group" aria-labelledby="roles-l"><span class="chip">Product Manager <button type="button" aria-label="Remove Product Manager"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18" />
+  <path d="m6 6 12 12" /></svg></button></span><span class="chip">Growth Product Manager <button type="button" aria-label="Remove Growth Product Manager"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18" />
+  <path d="m6 6 12 12" /></svg></button></span><input class="input" style="border:0;min-height:32px;flex:1;min-width:140px;padding:4px" aria-label="Add a job title" placeholder="Add a title"></div></div>
+<div class="two" style="gap:16px"><div class="field"><label for="loc">Locations</label><input class="input" id="loc" value="Mumbai, Bengaluru, Remote in India"></div>
+<div class="field"><label for="cap">Daily limit</label><input class="input tnum" id="cap" value="0" aria-invalid="true" aria-describedby="cap-e"><p class="err-msg" id="cap-e"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" />
+  <line x1="12" x2="12" y1="8" y2="12" />
+  <line x1="12" x2="12.01" y1="16" y2="16" /></svg>Enter 1 or more.</p></div></div>
+<fieldset class="field"><legend class="legend">How applications are sent</legend><div class="radios">
+<label class="radio"><input type="radio" name="mode" checked><div><b>I press Send</b><span>Maggie prepares each one. Nothing goes out until you send it.</span></div></label>
+<label class="radio"><input type="radio" name="mode"><div><b>Send automatically</b><span>Within your daily limit. Pause at any time.</span></div></label></div></fieldset>
+<div class="actions" style="justify-content:flex-end;border-top:1px solid var(--border);padding-top:18px"><button type="button" class="btn btn-ghost">Cancel</button><button class="btn btn-primary" disabled>Save changes</button></div></form>
+</div></section><section class="section" data-shot="states" aria-label="States"><div class="wrap">
+<span class="shot-label">Empty, error, loading and confirmation states</span>
+<div class="states">
+<div class="surface state" aria-busy="true"><p class="xs muted" style="font-weight:600">Loading</p><div class="sk" style="width:55%"></div><div class="sk"></div><div class="sk" style="width:80%"></div><p class="xs muted" style="margin-top:14px">Loading today…</p></div>
+<div class="surface state empty"><p class="xs muted" style="font-weight:600;text-align:left">Empty</p><div style="margin-top:14px"><svg class="i" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.286" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" />
+  <circle cx="11" cy="11" r="8" /></svg></div><p style="font-weight:600;margin-top:8px">No new matches today</p><p class="sm muted" style="margin:4px 0 14px">Maggie checks again tomorrow morning. More titles or locations find more roles.</p><a class="btn btn-secondary" href="#">Edit campaign</a></div>
+<div class="surface state"><p class="xs muted" style="font-weight:600">Error and undo</p><div class="callout err" role="alert" style="margin-top:10px"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+  <path d="M12 9v4" />
+  <path d="M12 17h.01" /></svg><div><b>Couldn’t load today</b>We couldn’t reach the server. Nothing was sent or changed.</div></div><div class="actions" style="margin-top:12px"><button class="btn btn-secondary"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+  <path d="M21 3v5h-5" /></svg>Try again</button></div>
+<div class="toast" role="status" style="margin-top:16px">Dismissed Growth PM at Northwind<span style="flex:1"></span><button class="btn">Undo</button></div></div></div>
+</div></section><section class="section" data-shot="tokens" aria-label="Tokens"><div class="wrap"><span class="shot-label">Tokens</span>
+<div class="tok"><div class="sw"><div style="background:var(--bg)"></div><p><b>Background</b><br><span class="muted" data-var="bg"></span></p></div><div class="sw"><div style="background:var(--surface)"></div><p><b>Surface</b><br><span class="muted" data-var="surface"></span></p></div><div class="sw"><div style="background:var(--surface-2)"></div><p><b>Surface 2</b><br><span class="muted" data-var="surface-2"></span></p></div><div class="sw"><div style="background:var(--border)"></div><p><b>Border</b><br><span class="muted" data-var="border"></span></p></div><div class="sw"><div style="background:var(--border-strong)"></div><p><b>Input border</b><br><span class="muted" data-var="border-strong"></span></p></div><div class="sw"><div style="background:var(--text)"></div><p><b>Text</b><br><span class="muted" data-var="text"></span></p></div><div class="sw"><div style="background:var(--text-muted)"></div><p><b>Muted text</b><br><span class="muted" data-var="text-muted"></span></p></div><div class="sw"><div style="background:var(--primary)"></div><p><b>Primary</b><br><span class="muted" data-var="primary"></span></p></div><div class="sw"><div style="background:var(--accent)"></div><p><b>Accent</b><br><span class="muted" data-var="accent"></span></p></div><div class="sw"><div style="background:var(--focus)"></div><p><b>Focus</b><br><span class="muted" data-var="focus"></span></p></div><div class="sw"><div style="background:var(--success)"></div><p><b>Success</b><br><span class="muted" data-var="success"></span></p></div><div class="sw"><div style="background:var(--warning)"></div><p><b>Warning</b><br><span class="muted" data-var="warning"></span></p></div><div class="sw"><div style="background:var(--error)"></div><p><b>Error</b><br><span class="muted" data-var="error"></span></p></div><div class="sw"><div style="background:var(--chip-bg)"></div><p><b>Source chip</b><br><span class="muted" data-var="chip-bg"></span></p></div><div class="sw"><div style="background:var(--mark-dot)"></div><p><b>Brand mark</b><br><span class="muted" data-var="mark-dot"></span></p></div></div>
+<div class="typescale" style="margin-top:24px"><h1 style="font-size:44px">Display 58/65</h1><h2>Heading 34/38</h2><h3>Title 20/26</h3><p>Body 16/25. Maggie tailors your resume from facts you confirmed.</p><p class="sm muted">Small 14/22. Daily limit 10, resets 5:30 am.</p></div></div></section></main>
+<script>document.querySelectorAll("[data-var]").forEach(function(e){e.textContent=getComputedStyle(document.documentElement).getPropertyValue("--"+e.dataset.var).trim()});</script>
+</body></html>

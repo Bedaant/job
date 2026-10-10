@@ -1,0 +1,260 @@
+{
+ "a": {
+  "axe_desktop": [],
+  "tab_order": [
+   {
+    "tag": "A",
+    "text": "Skip to content",
+    "outline": "solid 2px rgb(44, 90, 168)"
+   },
+   {
+    "tag": "A",
+    "text": "ApplyScout",
+    "outline": "solid 2px rgb(44, 90, 168)"
+   },
+   {
+    "tag": "A",
+    "text": "How it works",
+    "outline": "solid 2px rgb(44, 90, 168)"
+   },
+   {
+    "tag": "A",
+    "text": "What Maggie won’t do",
+    "outline": "solid 2px rgb(44, 90, 168)"
+   },
+   {
+    "tag": "A",
+    "text": "Sign in",
+    "outline": "solid 2px rgb(44, 90, 168)"
+   },
+   {
+    "tag": "A",
+    "text": "Get started",
+    "outline": "solid 2px rgb(44, 90, 168)"
+   },
+   {
+    "tag": "A",
+    "text": "Upload your resume",
+    "outline": "solid 2px rgb(44, 90, 168)"
+   },
+   {
+    "tag": "A",
+    "text": "See how it works",
+    "outline": "solid 2px rgb(44, 90, 168)"
+   },
+   {
+    "tag": "A",
+    "text": "ApplyScout",
+    "outline": "solid 2px rgb(44, 90, 168)"
+   },
+   {
+    "tag": "A",
+    "text": "Today",
+    "outline": "solid 2px rgb(44, 90, 168)"
+   },
+   {
+    "tag": "A",
+    "text": "Review 5",
+    "outline": "solid 2px rgb(44, 90, 168)"
+   },
+   {
+    "tag": "A",
+    "text": "Applications",
+    "outline": "solid 2px rgb(44, 90, 168)"
+   },
+   {
+    "tag": "A",
+    "text": "Campaign",
+    "outline": "solid 2px rgb(44, 90, 168)"
+   },
+   {
+    "tag": "A",
+    "text": "Profile",
+    "outline": "solid 2px rgb(44, 90, 168)"
+   }
+  ],
+  "focus_visible_all": true,
+  "reduced_motion_btn_transition": "0s",
+  "mobile_overflow": {
+   "scrollWidth": 390,
+   "innerWidth": 390
+  },
+  "axe_mobile": []
+ },
+ "b": {
+  "axe_desktop": [],
+  "tab_order": [
+   {
+    "tag": "A",
+    "text": "Skip to content",
+    "outline": "solid 2px rgb(29, 78, 216)"
+   },
+   {
+    "tag": "A",
+    "text": "ApplyScout",
+    "outline": "solid 2px rgb(29, 78, 216)"
+   },
+   {
+    "tag": "A",
+    "text": "How it works",
+    "outline": "solid 2px rgb(29, 78, 216)"
+   },
+   {
+    "tag": "A",
+    "text": "What Maggie won’t do",
+    "outline": "solid 2px rgb(29, 78, 216)"
+   },
+   {
+    "tag": "A",
+    "text": "Sign in",
+    "outline": "solid 2px rgb(29, 78, 216)"
+   },
+   {
+    "tag": "A",
+    "text": "Get started",
+    "outline": "solid 2px rgb(29, 78, 216)"
+   },
+   {
+    "tag": "A",
+    "text": "Upload your resume",
+    "outline": "solid 2px rgb(29, 78, 216)"
+   },
+   {
+    "tag": "A",
+    "text": "See how it works",
+    "outline": "solid 2px rgb(29, 78, 216)"
+   },
+   {
+    "tag": "A",
+    "text": "ApplyScout",
+    "outline": "solid 2px rgb(29, 78, 216)"
+   },
+   {
+    "tag": "A",
+    "text": "Today",
+    "outline": "solid 2px rgb(29, 78, 216)"
+   },
+   {
+    "tag": "A",
+    "text": "Review 5",
+    "outline": "solid 2px rgb(29, 78, 216)"
+   },
+   {
+    "tag": "A",
+    "text": "Applications",
+    "outline": "solid 2px rgb(29, 78, 216)"
+   },
+   {
+    "tag": "A",
+    "text": "Campaign",
+    "outline": "solid 2px rgb(29, 78, 216)"
+   },
+   {
+    "tag": "A",
+    "text": "Profile",
+    "outline": "solid 2px rgb(29, 78, 216)"
+   }
+  ],
+  "focus_visible_all": true,
+  "reduced_motion_btn_transition": "0s",
+  "mobile_overflow": {
+   "scrollWidth": 390,
+   "innerWidth": 390
+  },
+  "axe_mobile": []
+ },
+ "c": {
+  "axe_desktop": [],
+  "tab_order": [
+   {
+    "tag": "A",
+    "text": "Skip to content",
+    "outline": "solid 2px rgb(240, 205, 138)"
+   },
+   {
+    "tag": "A",
+    "text": "ApplyScout",
+    "outline": "solid 2px rgb(240, 205, 138)"
+   },
+   {
+    "tag": "A",
+    "text": "How it works",
+    "outline": "solid 2px rgb(240, 205, 138)"
+   },
+   {
+    "tag": "A",
+    "text": "What Maggie won’t do",
+    "outline": "solid 2px rgb(240, 205, 138)"
+   },
+   {
+    "tag": "A",
+    "text": "Sign in",
+    "outline": "solid 2px rgb(240, 205, 138)"
+   },
+   {
+    "tag": "A",
+    "text": "Get started",
+    "outline": "solid 2px rgb(240, 205, 138)"
+   },
+   {
+    "tag": "A",
+    "text": "Upload your resume",
+    "outline": "solid 2px rgb(240, 205, 138)"
+   },
+   {
+    "tag": "A",
+    "text": "See how it works",
+    "outline": "solid 2px rgb(240, 205, 138)"
+   },
+   {
+    "tag": "A",
+    "text": "ApplyScout",
+    "outline": "solid 2px rgb(240, 205, 138)"
+   },
+   {
+    "tag": "A",
+    "text": "Today",
+    "outline": "solid 2px rgb(240, 205, 138)"
+   },
+   {
+    "tag": "A",
+    "text": "Review 5",
+    "outline": "solid 2px rgb(240, 205, 138)"
+   },
+   {
+    "tag": "A",
+    "text": "Applications",
+    "outline": "solid 2px rgb(240, 205, 138)"
+   },
+   {
+    "tag": "A",
+    "text": "Campaign",
+    "outline": "solid 2px rgb(240, 205, 138)"
+   },
+   {
+    "tag": "A",
+    "text": "Profile",
+    "outline": "solid 2px rgb(240, 205, 138)"
+   }
+  ],
+  "focus_visible_all": true,
+  "reduced_motion_btn_transition": "0s",
+  "mobile_overflow": {
+   "scrollWidth": 390,
+   "innerWidth": 390
+  },
+  "axe_mobile": []
+ },
+ "baseline": {
+  "/today": [],
+  "/review": [],
+  "/applications": [],
+  "/campaign": [],
+  "/onboarding": [],
+  "/login": [],
+  "today_mobile_overflow": {
+   "scrollWidth": 390,
+   "innerWidth": 390
+  }
+ }
+}
