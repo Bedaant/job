@@ -1,0 +1,285 @@
+<!doctype html><meta charset="utf-8"><title>Option 1: Ink and marigold</title><style>
+@font-face{font-family:F;font-weight:400;src:url(../fonts/ibm-plex-sans-latin-400-normal.woff2)}
+@font-face{font-family:F;font-weight:500;src:url(../fonts/ibm-plex-sans-latin-500-normal.woff2)}
+@font-face{font-family:F;font-weight:600;src:url(../fonts/ibm-plex-sans-latin-600-normal.woff2)}
+@font-face{font-family:F;font-weight:700;src:url(../fonts/ibm-plex-sans-latin-700-normal.woff2)}
+:root{--n1:#fdfdfc;--n2:#f9f9f8;--n3:#f1f0ef;--n4:#e9e8e6;--n5:#e2e1de;--n6:#dad9d6;--n7:#cfceca;--n8:#bcbbb5;--n9:#8d8d86;--n11:#63635e;--n12:#21201c;
+--a3:#fff7c2;--a4:#ffee9c;--a6:#f3d673;--a9:#ffc53d;--a11:#ab6400;--a12:#4f3422;
+--pr:#21201c;--onpr:#ffffff;--prh:#3b3a37;
+--ok:#218358;--ok3:#e6f6eb;--ok12:#193b2d;--bad:#ce2c31;--bad3:#feebec;--bad12:#641723;
+--rc:6px;--rs:10px;--ov:0 12px 32px -12px rgb(0 0 0 / .22),0 0 0 1px var(--n6)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1720px;font-family:F,system-ui,sans-serif;color:var(--n12);background:#e4e4e4;padding:56px 64px;font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+h1.b{font-size:52px;line-height:1.05;letter-spacing:-.02em;font-weight:600}
+.blead{font-size:20px;line-height:1.5;color:#3a3a3a;max-width:900px;margin-top:12px}
+.lbl{font-size:16px;font-weight:600;color:#3a3a3a;margin:48px 0 14px}
+.lbl span{font-weight:400;color:#6a6a6a;margin-left:10px}
+.frame{background:var(--n2);border-radius:12px;overflow:hidden;box-shadow:0 1px 0 rgba(0,0,0,.04),0 24px 48px -28px rgba(0,0,0,.35)}
+.row{display:flex;gap:28px;align-items:flex-start}
+.i{flex:none;vertical-align:middle}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:var(--rc);font:600 15px/1 F,sans-serif;border:1px solid transparent;white-space:nowrap}
+.btn.lg{height:48px;padding:0 22px;font-size:16px}
+.btn.p{background:var(--pr);color:var(--onpr)}
+.btn.s{background:var(--n1);border-color:var(--n7);color:var(--n12)}
+.btn.gh{background:transparent;color:var(--n11);padding:0 10px}
+.btn.d{background:var(--bad);color:#fff}
+.btn[aria-disabled]{background:var(--n3);color:var(--n9);border-color:var(--n5)}
+.focus{outline:2px solid var(--n12);outline-offset:2px}
+.mut{color:var(--n11)}
+.att{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--a9);flex:none}
+/* nav */
+.nav{height:60px;background:var(--n1);border-bottom:1px solid var(--n5);display:flex;align-items:center;gap:6px;padding:0 28px}
+.nav .brand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:17px;margin-right:22px;letter-spacing:-.01em}
+.nav a{padding:7px 12px;border-radius:var(--rc);color:var(--n11);font-weight:500;text-decoration:none;font-size:15px;position:relative}
+.nav a.on{color:var(--n12);font-weight:600}
+.nav a.on:after{content:"";position:absolute;left:12px;right:12px;bottom:-14px;height:2px;background:var(--n12)}
+.nav .cnt{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--a9);color:var(--n12);font-size:12px;font-weight:700;margin-left:6px}
+.nav .sp{flex:1}
+.ext{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--n11)}
+.ext .i{color:var(--ok)}
+/* landing */
+.land{background:var(--n1)}
+.land .top{height:72px;display:flex;align-items:center;padding:0 56px;gap:28px;font-size:15px;font-weight:500;color:var(--n11)}
+.land .top .brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:19px;color:var(--n12);margin-right:auto}
+.hero{display:grid;grid-template-columns:1fr 600px;gap:64px;padding:56px 56px 64px;align-items:center}
+.hero h2{font-size:52px;line-height:1.08;letter-spacing:-.025em;font-weight:600;text-wrap:balance}
+.hero p.l{font-size:19px;line-height:1.6;color:var(--n11);margin-top:20px;max-width:560px}
+.hero .cta{display:flex;gap:12px;margin-top:30px}
+.promise{margin-top:40px;display:grid;grid-template-columns:1fr 1fr;gap:14px 28px;max-width:620px}
+.promise div{display:flex;gap:10px;font-size:15px;line-height:1.45}
+.promise .i{color:var(--n12);margin-top:1px}
+.promise b{font-weight:600;display:block}
+/* note card */
+.note{background:var(--n1);border:1px solid var(--n5);border-radius:var(--rs);padding:24px 26px}
+.sig{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--n11)}
+.sig b{color:var(--n12);font-weight:600}
+.sig .av{width:34px;height:34px;border-radius:var(--rc);background:var(--n3);display:flex;align-items:center;justify-content:center}
+.say{font-size:21px;line-height:1.5;font-weight:500;margin-top:14px;letter-spacing:-.01em}
+.say em{font-style:normal;white-space:nowrap;background:var(--a4);color:var(--a12);padding:1px 6px;border-radius:4px;box-decoration-break:clone}
+.say u{text-decoration-thickness:1px;text-underline-offset:4px;text-decoration-color:var(--n8)}
+.note .acts{display:flex;gap:10px;margin-top:18px}
+/* today */
+.today{display:grid;grid-template-columns:1fr 320px;gap:28px;padding:32px 36px}
+.h1{font-size:30px;line-height:1.2;font-weight:600;letter-spacing:-.02em}
+.h2{font-size:17px;font-weight:600;line-height:1.4}
+.q{margin-top:26px}
+.q .h2{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.q .h2 small{font-size:14px;color:var(--n11);font-weight:500}
+.list{background:var(--n1);border:1px solid var(--n5);border-radius:var(--rs);overflow:hidden}
+.it{display:flex;gap:14px;align-items:center;padding:14px 18px;border-top:1px solid var(--n4)}
+.it:first-child{border-top:0}
+.it .t{flex:1;min-width:0}.it .t b{font-weight:600;display:block}.it .t small{display:block;font-size:14px;color:var(--n11);line-height:1.45;margin-top:1px}
+.it .gap{width:9px;flex:none}
+.side .box{background:var(--n1);border:1px solid var(--n5);border-radius:var(--rs);padding:18px 20px}
+.side .box+.box{margin-top:14px}
+.stat{display:flex;justify-content:space-between;align-items:baseline;padding:7px 0;border-top:1px solid var(--n4);font-size:15px}
+.stat:first-of-type{border-top:0}.stat b{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.stat a{color:var(--n12);text-underline-offset:3px}
+.status{display:flex;align-items:center;gap:10px;font-weight:600}
+.pulse{width:10px;height:10px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--ok3)}
+.rules{list-style:none;margin-top:12px;font-size:14px;color:var(--n11)}
+.rules li{display:flex;gap:8px;padding:3px 0}.rules .i{color:var(--n11);margin-top:3px}
+/* phone */
+.phone{width:390px;height:740px;border-radius:40px;border:9px solid #1a1a1a;overflow:hidden;background:var(--n2);position:relative;flex:none}
+.phone .pn{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;background:var(--n1);border-bottom:1px solid var(--n5);margin-top:34px}
+.phone .tab{position:absolute;left:0;right:0;bottom:0;height:72px;background:var(--n1);border-top:1px solid var(--n5);display:flex;justify-content:space-around;padding-top:9px;font-size:11px;font-weight:600;color:var(--n11)}
+.phone .tab div{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:56px;position:relative}
+.phone .tab .on{color:var(--n12)}
+.phone .tab .bd{position:absolute;top:-2px;right:12px;width:9px;height:9px;border-radius:50%;background:var(--a9);border:2px solid var(--n1)}
+/* job card */
+.card{background:var(--n1);border:1px solid var(--n5);border-radius:var(--rs);padding:22px 24px;width:780px}
+.card .hd{display:flex;justify-content:space-between;gap:16px}
+.card h3{font-size:20px;font-weight:600;line-height:1.3;letter-spacing:-.01em}
+.meta{color:var(--n11);font-size:15px;margin-top:2px}
+.fit{text-align:right;flex:none}.fit b{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}.fit small{display:block;font-size:13px;color:var(--n11)}
+.stop{display:flex;gap:12px;background:var(--a3);border:1px solid var(--a6);border-radius:var(--rc);padding:14px 16px;margin-top:16px;color:var(--a12)}
+.stop .i{color:var(--a11);margin-top:2px}.stop b{display:block;font-weight:600}
+.field{margin-top:12px}.field label{display:block;font-weight:600;font-size:14px;margin-bottom:6px}
+.inp{height:40px;border:1px solid var(--n9);border-radius:var(--rc);background:var(--n1);padding:0 12px;display:flex;align-items:center;font-size:15px;color:var(--n12)}
+.inp.ph{color:var(--n9)}
+.hint{font-size:13px;color:var(--n11);margin-top:6px;line-height:1.45}
+.err .inp{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad)}
+.err .msg{display:flex;gap:6px;align-items:center;color:var(--bad);font-size:13px;font-weight:500;margin-top:6px}
+.tail{margin-top:18px;border-top:1px solid var(--n4);padding-top:14px}
+.tail h4{font-size:14px;font-weight:600;margin-bottom:8px}
+.bul{font-size:15px;line-height:1.55;padding-left:14px;border-left:2px solid var(--n6);margin-top:8px}
+.src{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ok);margin-top:4px;font-weight:500}
+.cacts{display:flex;gap:8px;margin-top:18px;align-items:center}
+.cacts .sp{flex:1}
+/* form */
+.form{background:var(--n1);border:1px solid var(--n5);border-radius:var(--rs);padding:24px;width:780px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;border:1px solid var(--n9);border-radius:var(--rc);padding:6px;min-height:40px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 6px 0 10px;border-radius:calc(var(--rc) - 2px);background:var(--n3);font-size:14px;font-weight:500}
+.chip .i{color:var(--n11)}
+.radios{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+.rad{border:1px solid var(--n6);border-radius:var(--rc);padding:14px 16px;display:flex;gap:12px}
+.rad.on{border-color:var(--n12);box-shadow:0 0 0 1px var(--n12)}
+.rad .o{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--n8);flex:none;margin-top:2px}
+.rad.on .o{border:5px solid var(--n12)}
+.rad b{display:block;font-weight:600}.rad small{display:block;font-size:13.5px;color:var(--n11);line-height:1.45;margin-top:2px}
+.fft{display:flex;gap:10px;justify-content:flex-end;margin-top:22px;border-top:1px solid var(--n4);padding-top:18px}
+/* states */
+.states{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+.st{background:var(--n1);border:1px solid var(--n5);border-radius:var(--rs);padding:20px;min-height:230px}
+.st h5{font-size:13px;font-weight:600;color:var(--n11);margin-bottom:14px}
+.sk{height:12px;border-radius:4px;background:var(--n3);margin:10px 0}
+.empty{text-align:center;padding:12px 6px}.empty .i{color:var(--n9)}
+.empty b{display:block;font-weight:600;margin-top:10px}.empty p{font-size:14px;color:var(--n11);margin:4px 0 14px}
+.alert{display:flex;gap:10px;background:var(--bad3);border-radius:var(--rc);padding:12px 14px;color:var(--bad12);font-size:14px;line-height:1.45}
+.alert .i{color:var(--bad);margin-top:1px}
+.toast{display:flex;align-items:center;gap:12px;background:var(--n12);color:var(--n1);border-radius:var(--rc);padding:12px 14px;font-size:14px;box-shadow:var(--ov);margin-top:8px}
+.toast .btn{height:32px;background:transparent;color:var(--n1);border-color:var(--n9);padding:0 12px;font-size:14px}
+/* tokens */
+.tok{display:grid;grid-template-columns:1.35fr 1fr 1fr;gap:28px}
+.tbox{background:#fff;border-radius:12px;padding:22px}
+.tbox h6{font-size:15px;font-weight:600;margin-bottom:12px}
+.scale{display:grid;grid-template-columns:repeat(12,1fr);gap:4px}
+.scale div{height:44px;border-radius:4px;position:relative}
+.scale span{position:absolute;bottom:-18px;left:0;font-size:11px;color:#666}
+.roles{display:grid;grid-template-columns:repeat(2,1fr);gap:8px 16px;margin-top:30px;font-size:13px}
+.roles div{display:flex;align-items:center;gap:8px}
+.roles i{width:22px;height:22px;border-radius:5px;flex:none;border:1px solid rgba(0,0,0,.08)}
+.ts div{display:flex;align-items:baseline;gap:14px;padding:3px 0}.ts small{width:110px;flex:none;font-size:12px;color:#666}
+.icons{display:flex;flex-wrap:wrap;gap:16px;color:var(--n12)}
+.shapes{display:flex;gap:14px;margin-top:16px;align-items:center}
+.shapes div{width:64px;height:48px;background:var(--n3);border:1px solid var(--n6);font-size:11px;display:flex;align-items:flex-end;padding:4px 6px;color:#555}
+.why{display:grid;grid-template-columns:repeat(4,1fr);gap:28px;font-size:15.5px;line-height:1.55;color:#2c2c2c}
+.why b{display:block;margin-bottom:4px}
+</style><body>
+<h1 class="b">Option 1: Ink and marigold</h1><p class="blead">Warm neutrals, black actions, marigold only where Maggie needs you. The furthest from every blue job site.</p>
+<div class="lbl">Landing page <span>New. The site has no landing page today; “/” goes straight to sign in.</span></div><div class="frame land"><div class="top"><span class="brand"><svg width="30" height="30" viewBox="0 0 256 256" aria-hidden="true"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="#21201c" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="18" fill="#ffc53d"/></svg>ApplyScout</span><span>How it works</span><span>Sign in</span><span class="btn p">Get started</span></div>
+<div class="hero"><div><h2>Apply to the right jobs, with a resume that tells the truth.</h2>
+<p class="l">ApplyScout finds roles that fit your experience, tailors your resume to each one using only facts you have confirmed, and fills in the application from your own browser. Nothing is sent without your say.</p>
+<div class="cta"><span class="btn p lg"><svg class="i " width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12" />
+  <path d="m17 8-5-5-5 5" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></svg>Upload your resume</span><span class="btn s lg">See how it works</span></div>
+<div class="promise">
+<div><svg class="i " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" />
+  <path d="m16 9-5.5 5.5L8 12" /></svg><span><b>You approve every application</b>Or let it send within a daily limit you set.</span></div>
+<div><svg class="i " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
+  <path d="M14 2v5a1 1 0 0 0 1 1h5" />
+  <path d="m9 15 2 2 4-4" /></svg><span><b>Only facts you confirmed</b>Nothing is invented. Each line is checked.</span></div>
+<div><svg class="i " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 10 2 2 4-4" />
+  <rect width="20" height="14" x="2" y="3" rx="2" />
+  <path d="M12 17v4" />
+  <path d="M8 21h8" /></svg><span><b>Your browser, your login</b>Forms are filled where you already sign in.</span></div>
+<div><svg class="i " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="14" y="3" width="5" height="18" rx="1" />
+  <rect x="5" y="3" width="5" height="18" rx="1" /></svg><span><b>Pause any time</b>Maggie stops at once and tells you why.</span></div></div></div>
+<div class="note" style="box-shadow:var(--ov);border:0">
+<div class="sig"><span class="av"><svg width="22" height="22" viewBox="0 0 256 256" aria-hidden="true"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="#21201c" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="18" fill="#ffc53d"/></svg></span><span><b>Maggie</b>, your applying assistant</span></div>
+<p class="say">I sent <u>7 applications</u> today and found <u>14 new roles</u>. <em>2 need your answer</em> before I can finish them.</p>
+<div class="acts"><span class="btn p">Answer 2 questions</span><span class="btn s">See what I sent</span></div></div></div></div>
+<div class="lbl">Today, desktop and phone <span>Your real navigation and features. Maggie’s note on top, then only what is waiting for you.</span></div><div class="row"><div class="frame" style="width:1180px;flex:none"><div class="nav"><span class="brand"><svg width="26" height="26" viewBox="0 0 256 256" aria-hidden="true"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="#21201c" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="18" fill="#ffc53d"/></svg>ApplyScout</span><a class="on">Today</a><a class="">Review<span class=cnt aria-label='5 waiting'>5</span></a><a class="">Applications</a><a class="">Campaign</a><a class="">Profile</a><span class="sp"></span><span class="ext"><svg class="i " width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22v-5" />
+  <path d="M15 8V2" />
+  <path d="M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z" />
+  <path d="M9 8V2" /></svg>Extension connected</span><span class="btn gh" style="margin-left:8px"><svg class="i " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Account"><circle cx="12" cy="12" r="10" />
+  <circle cx="12" cy="10" r="3" />
+  <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662" /></svg></span></div><div class="today"><div>
+<div class="note"><div class="sig"><span class="av"><svg width="22" height="22" viewBox="0 0 256 256" aria-hidden="true"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="#21201c" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="18" fill="#ffc53d"/></svg></span><span><b>Maggie</b> at 5:45 pm</span></div>
+<p class="say">Good evening. I sent <u>7 applications</u> today and found <u>14 new roles</u>. <em>2 need your answer</em> before I can finish them, and 3 are ready for you to send.</p></div>
+<div class="q"><div class="h2"><span class="att"></span>Needs your answer <small>2</small></div><div class="list">
+<div class="it"><div class="t"><b>Growth Product Manager, Northwind</b><small>Singapore. The form asks if you can work there without sponsorship.</small></div><span class="btn p">Answer</span></div>
+<div class="it"><div class="t"><b>Senior Product Manager, Harbor Cloud</b><small>Bengaluru. Stopped at a sign-in page, so finish this one yourself.</small></div><span class="btn s"><svg class="i " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6" />
+  <path d="M10 14 21 3" />
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></svg>Open the form</span></div></div></div>
+<div class="q"><div class="h2">Ready for you to send <small>3</small></div><div class="list">
+<div class="it"><div class="t"><b>Product Manager, Lumen Pay</b><small>Tailored resume and cover letter ready.</small></div><span class="btn s">Send it</span></div>
+<div class="it"><div class="t"><b>Associate Product Manager, Brightpath</b><small>Tailored resume ready. No cover letter asked for.</small></div><span class="btn s">Send it</span></div></div></div></div>
+<div class="side"><div class="box"><div class="status"><span class="pulse"></span>Maggie is applying</div>
+<ul class="rules"><li><svg class="i " width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>You approve each application</li><li><svg class="i " width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>Daily limit 10, resets 5:30 am</li><li><svg class="i " width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>Uses only facts you confirmed</li></ul>
+<div style="margin-top:14px"><span class="btn s" style="width:100%"><svg class="i " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="14" y="3" width="5" height="18" rx="1" />
+  <rect x="5" y="3" width="5" height="18" rx="1" /></svg>Pause Maggie</span></div></div>
+<div class="box"><div class="h2" style="margin-bottom:6px">Today so far</div>
+<div class="stat"><span>Sent</span><b>7 <span class="mut" style="font-size:14px;font-weight:400">of 10</span></b></div>
+<div class="stat"><span><a>Not confirmed yet</a></span><b>1</b></div>
+<div class="stat"><span><a>New matches</a></span><b>14</b></div></div></div></div></div><div class="phone"><div class="pn"><span style="display:flex;align-items:center;gap:8px;font-weight:600"><svg width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="#21201c" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="18" fill="#ffc53d"/></svg>ApplyScout</span><span class="status" style="font-size:13px"><span class="pulse"></span>Applying</span></div>
+<div style="padding:18px 16px"><div class="note" style="padding:18px"><p class="say" style="margin:0;font-size:18px">I sent <u>7 applications</u> today. <em>2 need your answer</em>, and 3 are ready to send.</p></div>
+<div class="q" style="margin-top:18px"><div class="h2"><span class="att"></span>Needs your answer <small>2</small></div><div class="list">
+<div class="it" style="flex-direction:column;align-items:stretch;gap:12px"><div class="t"><b>Growth PM, Northwind</b><small>Can you work in Singapore without sponsorship?</small></div><span class="btn p lg">Answer</span></div>
+<div class="it"><div class="t"><b>Senior PM, Harbor Cloud</b><small>Stopped at a sign-in page</small></div><svg class="i " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></div></div></div></div>
+<div class="tab"><div class="on"><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+  <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>Today</div><div class=""><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+  <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>Review<span class=bd></span></div><div class=""><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12h.01" />
+  <path d="M16 6V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+  <path d="M22 13a18.15 18.15 0 0 1-20 0" />
+  <rect width="20" height="14" x="2" y="6" rx="2" /></svg>Applications</div><div class=""><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="19" r="3" />
+  <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15" />
+  <circle cx="18" cy="5" r="3" /></svg>Campaign</div><div class=""><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" />
+  <circle cx="12" cy="10" r="3" />
+  <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662" /></svg>Profile</div></div></div></div>
+<div class="lbl">Job card and form <span>Review card with the real actions; campaign form with an error and the send-mode choice spelled out.</span></div><div class="row"><div class="card"><div class="hd"><div><h3>Growth Product Manager</h3><p class="meta">Northwind, Singapore, hybrid</p></div><div class="fit"><b>82%</b><small>7 of 9 required skills</small></div></div>
+<div class="stop"><svg class="i " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" />
+  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+  <path d="M12 17h.01" /></svg><div><b>Maggie stopped at one question</b>“Are you legally allowed to work in Singapore without sponsorship?” She will not guess this for you.</div></div>
+<div class="field"><label for="a">Your answer</label><div class="inp ph focus" id="a">Type your answer</div><p class="hint">Saved to your answers and reused when another form asks the same thing. You can edit it in Profile.</p></div>
+<div class="tail"><h4>What changed in your resume</h4>
+<p class="bul">Led checkout redesign that cut payment drop-off by 18% across 2 markets.</p><p class="src"><svg class="i " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+  <path d="m9 12 2 2 4-4" /></svg>Backed by 2 of your confirmed facts</p></div>
+<div class="cacts"><span class="btn p">Save and continue</span><span class="btn s"><svg class="i " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+  <path d="m7 10 5 5 5-5" /></svg>Download base resume</span><span class="btn s"><svg class="i " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6" />
+  <path d="M10 14 21 3" />
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></svg>View listing</span><span class="sp"></span><span class="btn gh">Not interested</span></div></div><div class="form"><div class="h2" style="font-size:20px">Campaign</div><p class="mut" style="font-size:14.5px;margin-top:2px">What Maggie looks for and how she applies.</p>
+<div class="field" style="margin-top:18px"><label>Job titles</label><div class="chips"><span class="chip">Product Manager <svg class="i " width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Remove"><path d="M18 6 6 18" />
+  <path d="m6 6 12 12" /></svg></span><span class="chip">Growth Product Manager <svg class="i " width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Remove"><path d="M18 6 6 18" />
+  <path d="m6 6 12 12" /></svg></span><span class="mut" style="font-size:14px;padding-left:4px">Add a title</span></div></div>
+<div class="row" style="gap:16px"><div class="field" style="flex:1"><label>Locations</label><div class="inp">Mumbai, Bengaluru, Remote in India</div></div>
+<div class="field err" style="width:220px"><label>Daily limit</label><div class="inp">0</div><p class="msg"><svg class="i " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" />
+  <line x1="12" x2="12" y1="8" y2="12" />
+  <line x1="12" x2="12.01" y1="16" y2="16" /></svg>Enter 1 or more</p></div></div>
+<div class="field"><label>How applications are sent</label><div class="radios">
+<div class="rad on"><span class="o"></span><div><b>I press Send</b><small>Maggie prepares each application. Nothing goes out until you send it.</small></div></div>
+<div class="rad"><span class="o"></span><div><b>Send automatically</b><small>Maggie sends within your daily limit. You can pause at any time.</small></div></div></div></div>
+<div class="fft"><span class="btn gh">Cancel</span><span class="btn p" aria-disabled="true">Save changes</span></div></div></div>
+<div class="lbl">States</div><div class="states">
+<div class="st"><h5>Loading</h5><div class="sk" style="width:60%"></div><div class="sk"></div><div class="sk" style="width:85%"></div><div class="sk" style="width:40%;margin-top:22px"></div><div class="sk"></div><p class="mut" style="font-size:13px;margin-top:14px">Loading today…</p></div>
+<div class="st"><h5>Empty</h5><div class="empty"><svg class="i " width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.286" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34" />
+  <circle cx="11" cy="11" r="8" /></svg><b>No new matches today</b><p>Maggie checks again in the morning. Wider locations or more titles find more roles.</p><span class="btn s">Edit campaign</span></div></div>
+<div class="st"><h5>Error</h5><div class="alert"><svg class="i " width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+  <path d="M12 9v4" />
+  <path d="M12 17h.01" /></svg><div><b>Couldn’t load today.</b> We couldn’t reach the server. Nothing was sent or changed.</div></div><div style="margin-top:12px"><span class="btn s"><svg class="i " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+  <path d="M21 3v5h-5" /></svg>Try again</span></div></div>
+<div class="st"><h5>Undo after a dismiss</h5><p class="mut" style="font-size:14px">Dismissing is reversible, so it needs no confirmation dialog, only a clear undo.</p><div class="toast">Dismissed Growth PM at Northwind<span style="flex:1"></span><span class="btn">Undo</span></div></div></div>
+<div class="lbl">Tokens</div><div class="tok"><div class="tbox"><h6>Colour: Radix sand neutrals with Radix amber for attention</h6>
+<div class="scale"><div style="background:#fdfdfc"><span>1</span></div><div style="background:#f9f9f8"><span>2</span></div><div style="background:#f1f0ef"><span>3</span></div><div style="background:#e9e8e6"><span>4</span></div><div style="background:#e2e1de"><span>5</span></div><div style="background:#dad9d6"><span>6</span></div><div style="background:#cfceca"><span>7</span></div><div style="background:#bcbbb5"><span>8</span></div><div style="background:#8d8d86"><span>9</span></div><div style="background:#82827c"><span>10</span></div><div style="background:#63635e"><span>11</span></div><div style="background:#21201c"><span>12</span></div></div><div class="scale" style="margin-top:26px"><div style="background:#fefdfb"><span>1</span></div><div style="background:#fefbe9"><span>2</span></div><div style="background:#fff7c2"><span>3</span></div><div style="background:#ffee9c"><span>4</span></div><div style="background:#fbe577"><span>5</span></div><div style="background:#f3d673"><span>6</span></div><div style="background:#e9c162"><span>7</span></div><div style="background:#e2a336"><span>8</span></div><div style="background:#ffc53d"><span>9</span></div><div style="background:#ffba18"><span>10</span></div><div style="background:#ab6400"><span>11</span></div><div style="background:#4f3422"><span>12</span></div></div>
+<div class="roles"><div><i style="background:#f9f9f8"></i>Page <span style="color:#777">#f9f9f8</span></div><div><i style="background:#fdfdfc"></i>Surface <span style="color:#777">#fdfdfc</span></div><div><i style="background:#f1f0ef"></i>Subtle fill <span style="color:#777">#f1f0ef</span></div><div><i style="background:#e2e1de"></i>Border <span style="color:#777">#e2e1de</span></div><div><i style="background:#8d8d86"></i>Input border <span style="color:#777">#8d8d86</span></div><div><i style="background:#63635e"></i>Muted text <span style="color:#777">#63635e</span></div><div><i style="background:#21201c"></i>Text <span style="color:#777">#21201c</span></div><div><i style="background:#21201c"></i>Primary action <span style="color:#777">#21201c</span></div><div><i style="background:#ffc53d"></i>Needs you (fill) <span style="color:#777">#ffc53d</span></div><div><i style="background:#fff7c2"></i>Needs you (tint, text) <span style="color:#777">#fff7c2</span></div><div><i style="background:#218358"></i>Success <span style="color:#777">#218358</span></div><div><i style="background:#ce2c31"></i>Danger <span style="color:#777">#ce2c31</span></div></div><div style="margin-top:16px;font-size:13px"><div style="display:flex;justify-content:space-between;padding:2px 0"><span>Text on page</span><b>15.5:1 pass</b></div><div style="display:flex;justify-content:space-between;padding:2px 0"><span>Muted text on page</span><b>5.7:1 pass</b></div><div style="display:flex;justify-content:space-between;padding:2px 0"><span>White on primary</span><b>16.3:1 pass</b></div><div style="display:flex;justify-content:space-between;padding:2px 0"><span>Text on needs-you tint</span><b>10.5:1 pass</b></div><div style="display:flex;justify-content:space-between;padding:2px 0"><span>Count text on marker fill</span><b>10.3:1 pass</b></div><div style="display:flex;justify-content:space-between;padding:2px 0"><span>Danger text on its tint</span><b>10.8:1 pass</b></div><div style="display:flex;justify-content:space-between;padding:2px 0"><span>Input border vs surface (3:1 non-text)</span><b>3.3:1 pass</b></div></div></div>
+<div class="tbox"><h6>Type: IBM Plex Sans</h6><div class="ts">
+<div><small>Display 52/56, 600</small><span style="font-size:34px;font-weight:600;letter-spacing:-.02em">Tells the truth</span></div>
+<div><small>Title 30/36, 600</small><span style="font-size:26px;font-weight:600">Today</span></div>
+<div><small>Heading 17/24, 600</small><span style="font-size:17px;font-weight:600">Needs your answer</span></div>
+<div><small>Body 15/24, 400</small><span>Tailored resume ready.</span></div>
+<div><small>Small 13/20, 400</small><span style="font-size:13px">Daily limit 10, resets 5:30 am</span></div></div>
+<p style="font-size:13px;color:#555;margin-top:12px">Numerals are tabular in counts and times. Sentence case everywhere; no all-caps labels.</p></div>
+<div class="tbox"><h6>Icons: Lucide, 1.5px stroke at every size</h6><div class="icons"><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+  <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+  <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12h.01" />
+  <path d="M16 6V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+  <path d="M22 13a18.15 18.15 0 0 1-20 0" />
+  <rect width="20" height="14" x="2" y="6" rx="2" /></svg><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="19" r="3" />
+  <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15" />
+  <circle cx="18" cy="5" r="3" /></svg><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" />
+  <circle cx="12" cy="10" r="3" />
+  <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662" /></svg><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" />
+  <path d="m16 9-5.5 5.5L8 12" /></svg><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" />
+  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+  <path d="M12 17h.01" /></svg><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+  <path d="M12 9v4" />
+  <path d="M12 17h.01" /></svg><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" />
+  <line x1="12" x2="12" y1="8" y2="12" />
+  <line x1="12" x2="12.01" y1="16" y2="16" /></svg><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6" />
+  <path d="M10 14 21 3" />
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></svg><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+  <path d="m7 10 5 5 5-5" /></svg><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12" />
+  <path d="m17 8-5-5-5 5" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></svg><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="14" y="3" width="5" height="18" rx="1" />
+  <rect x="5" y="3" width="5" height="18" rx="1" /></svg><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+  <path d="m9 12 2 2 4-4" /></svg><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34" />
+  <circle cx="11" cy="11" r="8" /></svg><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22v-5" />
+  <path d="M15 8V2" />
+  <path d="M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z" />
+  <path d="M9 8V2" /></svg></div>
+<p style="font-size:13px;color:#555;margin-top:12px">16 px in dense rows, 20 px in buttons and lists, 24 px in the phone tab bar. Icons sit beside a word; the only icon-only control (account) has a label.</p>
+<h6 style="margin-top:18px">Shape and depth</h6><div class="shapes"><div style="border-radius:6px">6px controls</div><div style="border-radius:10px">10px surfaces</div><div style="border-radius:999px;width:48px">badge</div></div>
+<p style="font-size:13px;color:#555;margin-top:10px">Surfaces are separated by 1px borders. One shadow exists, for things that float (toasts, menus, dialogs).</p></div></div>
+<div class="lbl">Why, and the risk</div><div class="why"><div><b>Type</b>IBM Plex Sans has matching Devanagari, Arabic and Thai families, so Hindi, Arabic and Thai screens later keep one voice.</div><div><b>Colour</b>Black buttons read as serious and calm, and colour is spent only on what needs attention. Marigold is warm and positive in India and belongs to no competitor here.</div><div><b>Shape</b>6px controls and 10px surfaces: crisp without feeling sharp. Borders separate surfaces; only floating things get a shadow.</div><div><b>Risk</b>Black and warm grey can feel stark if the copy is cold. Marigold can never be text (2:1); it is only a fill under dark text.</div></div></body>
