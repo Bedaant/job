@@ -42,6 +42,9 @@ LOCATION_ALIASES = {
     "mumbai": ["bombay"], "bombay": ["mumbai"],
     "delhi ncr": ["delhi", "noida", "gurugram", "gurgaon"],
 }
+# A city campaign also accepts a posting that names only the city's country ("India"): many Indian
+# postings give no city, and the job may well be in it.
+CITY_COUNTRY = {c: "india" for c in [*LOCATION_ALIASES["india"], "bombay", "delhi ncr", "new delhi"]}
 _COUNTRY_NAMES = {"IN": "india"}
 _COUNTRY_REGIONS = {"IN": ["apac", "asia"]}
 # Words a remote job's location uses when it names no place ("Anywhere in the World").

@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 import models
 from batch_prep import prepare_application_for_review
 from events.outbox import write_event
-from matching.filters import LOCATION_ALIASES, remote_open_to
+from matching.filters import CITY_COUNTRY, LOCATION_ALIASES, remote_open_to
 
 # Per-job "Skipped X" rows per run; the rest are only counted in the summary row.
 SKIP_EVENT_LIMIT = 20
@@ -143,6 +143,35 @@ def select_candidates(db: Session, campaign: models.Campaign, limit: int) -> lis
     return matches[:limit]
 
 
+SIMILAR_JOBS_LIMIT = 50
+
+
+def similar_jobs(db: Session, profile, limit: int = SIMILAR_JOBS_LIMIT) -> list[tuple]:
+    """(job, role) the LLM judged a near miss for one of this profile's active campaigns: inside
+    the campaign's other bounds, and not a match for any of its roles. Shown, never auto-applied."""
+    from types import SimpleNamespace
+
+    out, seen = [], set()
+    campaigns = db.query(models.Campaign).filter(
+        models.Campaign.profile_id == profile.id, models.Campaign.status == models.CampaignStatus.active
+    ).order_by(models.Campaign.created_at).all()
+    for campaign in campaigns:
+        roles = [r.strip() for r in campaign.roles or [] if r and r.strip()]
+        bounds = SimpleNamespace(**{k: getattr(campaign, k) for k in (
+            "remote_only", "sources", "locations", "include_older_postings")}, roles=None)
+        not_a_match = ~or_(*[_verdict(r, match=True) for r in roles]) if roles else True
+        for role in roles:
+            rows = (_in_bounds(db.query(models.Job), bounds)
+                    .filter(_verdict(role, similar=True), not_a_match)
+                    .order_by(models.Job.posted_at.desc().nullslast(), models.Job.fetched_at.desc())
+                    .limit(limit).all())
+            for job in rows:
+                if job.id not in seen:
+                    seen.add(job.id)
+                    out.append((job, role))
+    return out[:limit]
+
+
 # Older postings are usually filled even while still listed (26% of the pool was 90+ days old,
 # measured 2026-10-10). Unknown dates stay in: missing data never excludes a job.
 MAX_POSTING_AGE_DAYS = 60
@@ -193,14 +222,16 @@ def role_key(text: str) -> str:
     return text.strip().lower()
 
 
-def _verdict(role: str, match: bool | None):
-    """EXISTS a stored LLM verdict for (role, this job's title); `match=None` = any verdict."""
+def _verdict(role: str, match: bool | None = None, similar: bool | None = None):
+    """EXISTS a stored LLM verdict for (role, this job's title), optionally of one kind."""
     query = select(models.TitleVerdict.id).where(
         models.TitleVerdict.role_key == role_key(role),
         models.TitleVerdict.title_key == func.lower(func.trim(models.Job.title)),
     )
     if match is not None:
         query = query.where(models.TitleVerdict.match.is_(match))
+    if similar is not None:
+        query = query.where(models.TitleVerdict.similar.is_(similar))
     return query.exists()
 
 
@@ -213,7 +244,7 @@ def _role_filter(roles):
         if not variants:
             continue
         words = or_(*[and_(*[_whole_word(w) for w in v]) for v in variants])
-        clauses.append(or_(_verdict(role, True), and_(~_verdict(role, None), words)))
+        clauses.append(or_(_verdict(role, match=True), and_(~_verdict(role), words)))
     return or_(*clauses) if clauses else None
 
 
@@ -238,7 +269,11 @@ def _in_bounds(query, campaign: models.Campaign):
         query = query.filter(role_filter)
     if campaign.locations:
         terms = [t for l in campaign.locations for t in [l, *LOCATION_ALIASES.get(l.strip().lower(), [])]]
-        query = query.filter(or_(*[models.Job.location.ilike(f"%{t}%") for t in terms]))
+        countries = {CITY_COUNTRY[l.strip().lower()] for l in campaign.locations if l.strip().lower() in CITY_COUNTRY}
+        place = [models.Job.location.ilike(f"%{t}%") for t in terms]
+        if countries:
+            place.append(func.lower(func.trim(models.Job.location)).in_(countries))
+        query = query.filter(or_(*place))
     return query
 
 

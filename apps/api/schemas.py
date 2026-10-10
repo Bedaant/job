@@ -280,6 +280,11 @@ class SourceOut(BaseModel):
     job_count: int  # jobs it has contributed so far; 0 = nothing yet
 
 
+class SimilarJobOut(BaseModel):
+    job: JobOut
+    role: str  # the campaign role this is a near miss for
+
+
 class MatchOut(BaseModel):
     id: str
     job: JobOut

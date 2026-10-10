@@ -89,6 +89,11 @@ export interface MatchBreakdown {
   missing_skills: string[];
 }
 
+export interface SimilarJob {
+  job: Job;
+  role: string;
+}
+
 export interface Match {
   id: string;
   job: Job;
@@ -350,6 +355,14 @@ export const api = {
     await send(`/profiles/${profileId}/answers/${answerId}`, { method: "DELETE" });
   },
   listMatches: (profileId: string) => request<Match[]>(`/matches?profile_id=${profileId}`),
+  /** Near misses the role judge kept: not the campaign's role, never auto-applied. */
+  listSimilarJobs: (profileId: string) => request<SimilarJob[]>(`/similar-jobs?profile_id=${profileId}`),
+  /** Save a job into Applications (409 if this role already has one). */
+  saveJob: (profileId: string, jobId: string) =>
+    request<{ id: string }>("/applications", {
+      method: "POST",
+      body: JSON.stringify({ profile_id: profileId, job_id: jobId }),
+    }),
   setMatchState: (matchId: string, state: Match["state"]) =>
     request<Match>(`/matches/${matchId}`, { method: "PATCH", body: JSON.stringify({ state }) }),
   /** "Prepare this one": creates the application and queues Maggie's tailoring. */
