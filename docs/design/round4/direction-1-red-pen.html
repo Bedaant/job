@@ -1,0 +1,96 @@
+<style>
+.d1{--paper:#ffffff;--desk:#efeeeb;--ink:#1b1a17;--mute:#5f5e58;--red:#c8322a;--gold:#ffc53d;--rule:#e2e1dd;background:var(--paper);color:var(--ink)}
+.d1 .nav{display:flex;align-items:center;gap:30px;height:76px;padding:0 72px;font-size:16px;font-weight:500;color:var(--mute)}
+.d1 .nav .b{display:flex;align-items:center;gap:10px;font-weight:600;font-size:20px;color:var(--ink);margin-right:auto}
+.btn{display:inline-flex;align-items:center;gap:9px;height:50px;padding:0 22px;border-radius:6px;font:600 16.5px/1 Plex,sans-serif;white-space:nowrap}
+.btn.ink{background:var(--ink);color:#fff}.btn.out{border:1px solid #b9b8b2;color:var(--ink);background:#fff}
+.d1 .hero{display:grid;grid-template-columns:520px 1fr;gap:56px;padding:64px 72px 88px;background:var(--desk);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+.d1 h1{font-family:Serif,serif;font-weight:600;font-size:66px;line-height:1.02;letter-spacing:-.02em;text-wrap:balance}
+.d1 h1 i{font-style:italic;font-weight:400}
+.d1 .lede{font-size:20px;line-height:1.55;color:var(--mute);margin-top:22px}
+.d1 .cta{display:flex;gap:12px;margin-top:32px}
+.d1 .fine{font-size:14.5px;color:var(--mute);margin-top:14px}
+.sheetwrap{position:relative;height:600px}
+.sheet{position:absolute;left:0;top:0;width:470px;background:#fff;box-shadow:0 1px 2px rgb(0 0 0/.06),0 18px 40px -18px rgb(0 0 0/.25);padding:38px 40px 44px;font-family:Serif,serif;color:#24231f}
+.sheet .nm{font-size:26px;font-weight:700;letter-spacing:-.01em}.sheet .ti{font-size:15px;color:#6a6963;margin-top:2px;font-family:Plex,sans-serif}
+.sheet h5{font-family:Plex,sans-serif;font-size:12.5px;font-weight:600;letter-spacing:.06em;color:#6a6963;margin:22px 0 8px;border-bottom:1px solid #e6e5e1;padding-bottom:5px}
+.sheet .co{font-weight:600;font-size:16px}.sheet .co span{font-weight:400;color:#6a6963}
+.sheet ul{list-style:none;margin-top:6px}.sheet li{font-size:15.5px;line-height:1.5;padding-left:14px;position:relative;margin:5px 0}
+.sheet li:before{content:"";position:absolute;left:0;top:10px;width:5px;height:5px;border-radius:50%;background:#9a9993}
+.strike{text-decoration:line-through;text-decoration-color:var(--red);text-decoration-thickness:2px;color:#8b8a84}
+.ins{position:relative}
+.caret{position:absolute;left:-26px;top:2px;font-family:Kalam,cursive;color:var(--red);font-size:22px;font-weight:700}
+.f{display:inline-flex;align-items:center;justify-content:center;font-family:Plex,sans-serif;font-size:10.5px;font-weight:700;background:var(--gold);color:#1b1a17;border-radius:3px;padding:0 4px;height:16px;margin-left:3px;vertical-align:3px}
+.rej{color:#8b8a84}
+.circ{position:relative;display:inline-block;padding:0 4px}
+.circ svg{position:absolute;left:-8px;top:-7px;overflow:visible}
+.mnote{position:absolute;font-family:Kalam,cursive;color:var(--red);font-size:20px;line-height:1.2;width:220px}
+.mnote.g{color:#1b1a17}
+.mnote small{display:block;font-family:Plex,sans-serif;font-size:13.5px;line-height:1.45;color:#3d3c37;margin-top:4px}
+.facts{position:absolute;left:500px;top:262px;width:220px;background:#fff;border-left:3px solid var(--gold);padding:12px 14px;font-size:14px;line-height:1.45;box-shadow:0 10px 24px -14px rgb(0 0 0/.3)}
+.facts b{display:block;font-weight:600;font-size:13px;color:#6a6963;margin-bottom:4px}
+.facts div{display:flex;gap:8px;margin-top:6px}
+.d1 section{padding:96px 72px;border-bottom:1px solid var(--rule)}
+.d1 h2{font-family:Serif,serif;font-weight:600;font-size:48px;letter-spacing:-.015em;line-height:1.1}
+.d1 .sub{font-size:19px;color:var(--mute);margin-top:12px;max-width:720px;line-height:1.55}
+.marks{display:grid;grid-template-columns:repeat(3,1fr);gap:56px;margin-top:56px}
+.marks .glyph{height:86px;display:flex;align-items:flex-end;font-family:Serif,serif;font-size:30px}
+.marks h4{font-size:21px;font-weight:600;margin-top:18px}.marks p{font-size:17px;color:var(--mute);margin-top:6px;line-height:1.55}
+.never{display:grid;grid-template-columns:1fr 1fr;gap:0 64px;margin-top:40px}
+.never div{border-top:1px solid var(--rule);padding:22px 0}
+.never s{font-family:Serif,serif;font-size:30px;text-decoration-color:var(--red);text-decoration-thickness:3px;color:var(--ink)}
+.never p{font-size:16.5px;color:var(--mute);margin-top:6px}
+.end{display:flex;justify-content:space-between;align-items:center}
+.ph{background:var(--paper)}
+</style><!doctype html><meta charset="utf-8"><style>@font-face{font-family:"Plex";font-weight:400;src:url(../fonts/ibm-plex-sans-latin-400-normal.woff2)}@font-face{font-family:"Plex";font-weight:500;src:url(../fonts/ibm-plex-sans-latin-500-normal.woff2)}@font-face{font-family:"Plex";font-weight:600;src:url(../fonts/ibm-plex-sans-latin-600-normal.woff2)}@font-face{font-family:"Plex";font-weight:700;src:url(../fonts/ibm-plex-sans-latin-700-normal.woff2)}@font-face{font-family:"Serif";font-weight:400;src:url(../fonts/source-serif-4-latin-400-normal.woff2)}@font-face{font-family:"Serif";font-weight:600;src:url(../fonts/source-serif-4-latin-600-normal.woff2)}@font-face{font-family:"Serif";font-weight:700;src:url(../fonts/source-serif-4-latin-700-normal.woff2)}@font-face{font-family:"Serif";font-style:italic;font-weight:400;src:url(../fonts/source-serif-4-latin-400-italic.woff2)}@font-face{font-family:"Kalam";font-weight:400;src:url(../fonts/kalam-latin-400-normal.woff2)}@font-face{font-family:"Kalam";font-weight:700;src:url(../fonts/kalam-latin-700-normal.woff2)}@font-face{font-family:"Brico";font-weight:400;src:url(../fonts/bricolage-grotesque-latin-400-normal.woff2)}@font-face{font-family:"Brico";font-weight:600;src:url(../fonts/bricolage-grotesque-latin-600-normal.woff2)}@font-face{font-family:"Brico";font-weight:800;src:url(../fonts/bricolage-grotesque-latin-800-normal.woff2)}@font-face{font-family:"Archivo";font-weight:400;src:url(../fonts/archivo-latin-400-normal.woff2)}@font-face{font-family:"Archivo";font-weight:500;src:url(../fonts/archivo-latin-500-normal.woff2)}@font-face{font-family:"Archivo";font-weight:700;src:url(../fonts/archivo-latin-700-normal.woff2)}@font-face{font-family:"Archivo";font-weight:800;src:url(../fonts/archivo-latin-800-normal.woff2)}*{box-sizing:border-box;margin:0;padding:0}
+body{width:2020px;background:#d9d8d4;font-family:Plex,sans-serif;color:#1b1a17;padding:64px 72px;-webkit-font-smoothing:antialiased}
+.bh{font-size:52px;font-weight:600;letter-spacing:-.025em;line-height:1.05}
+.bp{font-size:20px;line-height:1.5;color:#46453f;max-width:1000px;margin-top:12px}
+.lab{font-size:16px;font-weight:600;color:#3a3935;margin:44px 0 16px}.lab span{font-weight:400;color:#6b6a65;margin-left:10px}
+.row{display:flex;gap:44px;align-items:flex-start}
+.desk{width:1440px;flex:none;border-radius:12px;overflow:hidden;box-shadow:0 30px 60px -30px rgb(0 0 0/.4)}
+.phone{width:390px;flex:none;border-radius:46px;border:10px solid #161615;overflow:hidden;box-shadow:0 30px 60px -30px rgb(0 0 0/.45)}
+.notes{display:grid;grid-template-columns:repeat(3,1fr);gap:40px;margin-top:40px;font-size:16.5px;line-height:1.55;color:#2c2b27}.notes b{display:block;margin-bottom:4px;font-size:17px}
+.i{flex:none;vertical-align:middle}
+</style><body><div class="bh">Direction 1: The red pen</div><p class="bp">Tailoring is editing, so the brand speaks in an editor’s marks: a red pencil for changes, a marigold mark for what needs you. A resume serif for the document, handwritten notes in Kalam, Plex for everything you operate.</p><div class="lab">Desktop and phone <span>Sample resume; the person, companies and facts are fictional.</span></div><div class="row"><div class="desk d1"><div class="nav"><span class="b"><svg width="32" height="32" viewBox="0 0 256 256" aria-hidden="true"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="#1b1a17" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="18" fill="#ffc53d"/></svg>ApplyScout</span><span>How Maggie edits</span><span>What she won’t do</span><span>Sign in</span><span class="btn ink" style="height:42px;font-size:15px">Get started</span></div>
+<div class="hero"><div><h1>Your resume, edited for every job. <i>Nothing made up.</i></h1>
+<p class="lede">ApplyScout finds jobs that fit you and rewrites your resume for each one, using only facts you have confirmed. Then it fills in the application from your own browser, and you decide what gets sent.</p>
+<div class="cta"><span class="btn ink"><svg class="i" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12" />
+  <path d="m17 8-5-5-5 5" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></svg>Upload your resume</span><span class="btn out">See an edited resume</span></div>
+<p class="fine">PDF or DOCX. You check every fact before anything is used.</p></div><div class="sheetwrap"><div class="sheet"><div class="nm">Aarav Mehta</div><div class="ti">Product Manager, Bengaluru</div>
+<h5>EXPERIENCE</h5><div class="co">Lumen Pay <span>Product Manager, 2023 to now</span></div><ul>
+<li><span class="strike">Responsible for various payment initiatives across teams.</span></li>
+<li class="ins"><span class="caret">^</span>Led the checkout redesign that cut payment drop-off by 18% across 2 markets.<span class="f">F1</span><span class="f">F2</span></li>
+<li>Owned the merchant onboarding roadmap for 40+ partners.</li></ul>
+<div class="co" style="margin-top:14px">Kite Labs <span>Associate PM, 2021 to 2023</span></div><ul>
+<li>Shipped UPI autopay for subscriptions, adopted by 1.2 lakh users.</li></ul>
+<h5>SKILLS</h5><div style="font-size:15.5px">SQL, Figma, A/B testing, payment flows <span class="rej strike">Kubernetes</span></div></div><div class="mnote" style="left:500px;top:118px">Matches what they asked for:<small>“Experience reducing drop-off in payment flows”</small></div>
+<div class="facts"><b>Backed by your confirmed facts</b><div><span class="f">F1</span><span>Payments team, Q2 2025. Redesigned checkout for India and Indonesia.</span></div><div><span class="f">F2</span><span>Drop-off fell from 31% to 25% after launch.</span></div></div>
+<div class="mnote" style="left:500px;top:500px">Not added.<small>The job lists Kubernetes, but you haven’t confirmed it. Maggie won’t claim it for you.</small></div><div style="position:absolute;left:374px;top:420px"><svg width="130" height="100" style="position:absolute;overflow:visible" aria-hidden="true"><path d="M0 2 C 40 6, 80 60, 122 92" fill="none" stroke="#c8322a" stroke-width="2" stroke-linecap="round"/></svg></div><div style="position:absolute;left:418px;top:132px"><svg width="80" height="40" style="position:absolute;overflow:visible" aria-hidden="true"><path d="M78 2 C 50 4, 24 22, 2 34" fill="none" stroke="#c8322a" stroke-width="2" stroke-linecap="round"/></svg></div></div></div>
+<section><h2>How Maggie edits</h2><p class="sub">Three marks, the same ones an editor would use. Every change she makes to your resume is one of these.</p>
+<div class="marks">
+<div><div class="glyph"><span style="font-family:Kalam,cursive;color:#c8322a;font-size:64px;font-weight:700;line-height:1">^</span><span style="margin-left:8px">led the redesign</span></div><h4>She adds what the job asks for</h4><p>Only from your confirmed facts, in the employer’s own wording, with the source marked next to it.</p></div>
+<div><div class="glyph"><span class="strike" style="font-size:30px">various initiatives</span></div><h4>She cuts what doesn’t help</h4><p>Vague lines go. What stays is reordered so the most relevant work is read first.</p></div>
+<div><div class="glyph"><span class="circ" style="font-size:30px">work rights?<svg width="190" height="56" viewBox="0 0 190 56"><ellipse cx="92" cy="27" rx="90" ry="24" fill="none" stroke="#ffc53d" stroke-width="4" transform="rotate(-2 92 27)"/></svg></span></div><h4>She circles what needs you</h4><p>A question only you can answer stops her. It shows up first on your Today screen.</p></div></div></section>
+<section><h2>What Maggie will never do</h2>
+<div class="never">
+<div><s>Invent a role or skill you don’t have</s><p>Every line traces back to a fact you confirmed.</p></div>
+<div><s>Type your password</s><p>At a sign-in page she stops and hands the form to you.</p></div>
+<div><s>Guess your work rights or demographics</s><p>Those answers come from you or your saved answers, never from her.</p></div>
+<div><s>Send more than you allow</s><p>A daily limit you set, and a pause that works at once.</p></div></div></section>
+<section class="end" style="border:0"><h2 style="font-size:44px">See your resume edited<br>before anything is sent.</h2><span class="btn ink"><svg class="i" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12" />
+  <path d="m17 8-5-5-5 5" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></svg>Upload your resume</span></section></div><div class="phone d1"><div style="height:30px"></div><div class="nav" style="padding:0 20px;height:60px"><span class="b" style="font-size:18px"><svg width="28" height="28" viewBox="0 0 256 256" aria-hidden="true"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="#1b1a17" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="18" fill="#ffc53d"/></svg>ApplyScout</span><svg class="i" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16" />
+  <path d="M4 12h16" />
+  <path d="M4 19h16" /></svg></div>
+<div class="hero" style="display:block;padding:28px 20px 34px"><h1 style="font-size:40px">Your resume, edited for every job. <i>Nothing made up.</i></h1>
+<p class="lede" style="font-size:17px">Rewritten for each job from facts you confirmed. You decide what gets sent.</p>
+<div class="cta" style="flex-direction:column"><span class="btn ink" style="justify-content:center"><svg class="i" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12" />
+  <path d="m17 8-5-5-5 5" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></svg>Upload your resume</span></div>
+<div style="background:#fff;margin-top:28px;padding:22px 20px 22px 34px;font-family:Serif,serif;font-size:15px;line-height:1.5;box-shadow:0 14px 30px -16px rgb(0 0 0/.3);position:relative">
+<p class="strike">Responsible for various payment initiatives.</p>
+<p class="ins" style="margin-top:8px"><span class="caret" style="left:-22px">^</span>Led the checkout redesign that cut payment drop-off by 18% across 2 markets.<span class="f">F1</span><span class="f">F2</span></p>
+<p style="font-family:Kalam,cursive;color:#c8322a;font-size:18px;margin-top:12px;line-height:1.25">Matches what they asked for. Backed by 2 of your facts.</p>
+<p style="margin-top:12px"><span class="strike">Kubernetes</span> <span style="font-family:Kalam,cursive;color:#c8322a;font-size:18px">not added</span></p></div></div></div></div><div class="notes"><div><b>Why it could win</b>Nobody else in the category can own this, and it explains the product without a diagram: you see the edit, the reason and the source in one picture. Freshers get the idea in 5 seconds; professionals see restraint and evidence.</div><div><b>Risk</b>Red pencil reads as “correction” and can feel like being graded. The red is kept for marks on the resume only, never for the person’s own mistakes, and errors in the app keep their own red with an icon and words.</div><div><b>What it needs</b>Kalam is used only for the margin notes, never for anything you must read to act. The resume itself must look like a real, good resume, so a designer should check the sample with recruiters.</div></div></body></div>

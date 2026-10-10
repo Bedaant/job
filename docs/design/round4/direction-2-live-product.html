@@ -1,0 +1,86 @@
+<style>
+.d2{--bg:#0f0f0e;--s1:#171716;--s2:#1f1f1d;--line:#2c2c29;--tx:#eeeeec;--mu:#a9a7a0;--gold:#ffc53d;--ok:#3dd68c;background:var(--bg);color:var(--tx)}
+.d2 .nav{display:flex;align-items:center;gap:30px;height:76px;padding:0 72px;font-size:16px;font-weight:500;color:var(--mu)}
+.d2 .nav .b{display:flex;align-items:center;gap:10px;font-weight:600;font-size:20px;color:var(--tx);margin-right:auto}
+.d2 .btn{display:inline-flex;align-items:center;gap:9px;height:52px;padding:0 24px;border-radius:6px;font:600 17px/1 Plex,sans-serif;white-space:nowrap}
+.d2 .gold{background:var(--gold);color:#1b1a17}.d2 .ghost{border:1px solid #4a4944;color:var(--tx)}
+.d2 .top{padding:72px 72px 40px;display:grid;grid-template-columns:1fr 420px;gap:56px;align-items:end}
+.d2 h1{font-size:76px;line-height:1;letter-spacing:-.035em;font-weight:600;text-wrap:balance}
+.d2 h1 span{color:var(--mu)}
+.d2 .lede{font-size:19px;line-height:1.55;color:var(--mu)}
+.win{margin:24px 72px 0;border:1px solid var(--line);border-radius:12px;background:var(--s1);overflow:hidden}
+.wbar{height:44px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 18px;font-size:14px;color:var(--mu)}
+.panes{display:grid;grid-template-columns:1fr 1.25fr .9fr}
+.pane{padding:24px 26px;border-right:1px solid var(--line);min-height:420px}.pane:last-child{border:0}
+.pane h6{font-size:13px;font-weight:600;color:var(--mu);margin-bottom:14px}
+.job p{font-size:15.5px;line-height:1.6;color:#cfcdc6;margin-top:10px}
+.job mark{background:transparent;color:var(--tx);box-shadow:inset 0 -3px 0 var(--gold);padding:0 1px}
+.res .l{font-size:15.5px;line-height:1.55;padding:10px 12px;border-radius:6px;margin-bottom:6px;color:#cfcdc6}
+.res .old{text-decoration:line-through;text-decoration-color:#6f6d66;color:#6f6d66;padding-bottom:0}
+.res .new{background:var(--s2);color:var(--tx);border:1px solid #3a3936}
+.cur{display:inline-block;width:2px;height:18px;background:var(--gold);vertical-align:-3px;margin-left:2px}
+.src{display:flex;gap:6px;margin-top:8px}
+.chip{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:4px;font-size:12px;font-weight:700;background:var(--gold);color:#1b1a17}
+.fact{border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px;font-size:14.5px;line-height:1.45;color:#8f8d86}
+.fact b{display:block;font-weight:600;color:#bdbbb4;font-size:14px}
+.fact.on{border-color:var(--gold);color:#dcdad3;background:rgb(255 197 61/.07)}.fact.on b{color:var(--tx)}
+.fact .k{float:right}
+.status{display:flex;gap:28px;align-items:center;border-top:1px solid var(--line);padding:14px 22px;font-size:14.5px;color:var(--mu)}
+.status b{color:var(--tx);font-weight:600}.status .ok{color:var(--ok)}
+.story{padding:80px 72px 40px}
+.d2 h2{font-size:44px;letter-spacing:-.025em;font-weight:600;line-height:1.1}
+.frames{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:36px}
+.fr{background:var(--s1);border:1px solid var(--line);border-radius:10px;padding:18px;min-height:190px}
+.fr .t{font-size:13px;color:var(--mu);font-variant-numeric:tabular-nums}
+.fr h4{font-size:18px;font-weight:600;margin-top:6px}.fr p{font-size:15px;color:var(--mu);margin-top:6px;line-height:1.5}
+.bar{height:6px;border-radius:3px;background:var(--line);margin-top:16px;overflow:hidden}.bar i{display:block;height:100%;background:var(--gold)}
+.d2 .never{padding:56px 72px 88px;display:grid;grid-template-columns:repeat(4,1fr);gap:28px;border-top:1px solid var(--line);margin-top:40px}
+.d2 .never div{font-size:16px;color:var(--mu);line-height:1.5}.d2 .never b{display:block;color:var(--tx);font-size:18px;margin-bottom:6px;font-weight:600}
+</style><!doctype html><meta charset="utf-8"><style>@font-face{font-family:"Plex";font-weight:400;src:url(../fonts/ibm-plex-sans-latin-400-normal.woff2)}@font-face{font-family:"Plex";font-weight:500;src:url(../fonts/ibm-plex-sans-latin-500-normal.woff2)}@font-face{font-family:"Plex";font-weight:600;src:url(../fonts/ibm-plex-sans-latin-600-normal.woff2)}@font-face{font-family:"Plex";font-weight:700;src:url(../fonts/ibm-plex-sans-latin-700-normal.woff2)}@font-face{font-family:"Serif";font-weight:400;src:url(../fonts/source-serif-4-latin-400-normal.woff2)}@font-face{font-family:"Serif";font-weight:600;src:url(../fonts/source-serif-4-latin-600-normal.woff2)}@font-face{font-family:"Serif";font-weight:700;src:url(../fonts/source-serif-4-latin-700-normal.woff2)}@font-face{font-family:"Serif";font-style:italic;font-weight:400;src:url(../fonts/source-serif-4-latin-400-italic.woff2)}@font-face{font-family:"Kalam";font-weight:400;src:url(../fonts/kalam-latin-400-normal.woff2)}@font-face{font-family:"Kalam";font-weight:700;src:url(../fonts/kalam-latin-700-normal.woff2)}@font-face{font-family:"Brico";font-weight:400;src:url(../fonts/bricolage-grotesque-latin-400-normal.woff2)}@font-face{font-family:"Brico";font-weight:600;src:url(../fonts/bricolage-grotesque-latin-600-normal.woff2)}@font-face{font-family:"Brico";font-weight:800;src:url(../fonts/bricolage-grotesque-latin-800-normal.woff2)}@font-face{font-family:"Archivo";font-weight:400;src:url(../fonts/archivo-latin-400-normal.woff2)}@font-face{font-family:"Archivo";font-weight:500;src:url(../fonts/archivo-latin-500-normal.woff2)}@font-face{font-family:"Archivo";font-weight:700;src:url(../fonts/archivo-latin-700-normal.woff2)}@font-face{font-family:"Archivo";font-weight:800;src:url(../fonts/archivo-latin-800-normal.woff2)}*{box-sizing:border-box;margin:0;padding:0}
+body{width:2020px;background:#d9d8d4;font-family:Plex,sans-serif;color:#1b1a17;padding:64px 72px;-webkit-font-smoothing:antialiased}
+.bh{font-size:52px;font-weight:600;letter-spacing:-.025em;line-height:1.05}
+.bp{font-size:20px;line-height:1.5;color:#46453f;max-width:1000px;margin-top:12px}
+.lab{font-size:16px;font-weight:600;color:#3a3935;margin:44px 0 16px}.lab span{font-weight:400;color:#6b6a65;margin-left:10px}
+.row{display:flex;gap:44px;align-items:flex-start}
+.desk{width:1440px;flex:none;border-radius:12px;overflow:hidden;box-shadow:0 30px 60px -30px rgb(0 0 0/.4)}
+.phone{width:390px;flex:none;border-radius:46px;border:10px solid #161615;overflow:hidden;box-shadow:0 30px 60px -30px rgb(0 0 0/.45)}
+.notes{display:grid;grid-template-columns:repeat(3,1fr);gap:40px;margin-top:40px;font-size:16.5px;line-height:1.55;color:#2c2b27}.notes b{display:block;margin-bottom:4px;font-size:17px}
+.i{flex:none;vertical-align:middle}
+</style><body><div class="bh">Direction 2: Live product</div><p class="bp">The hero is the product working: a job, your resume rewriting, and the facts that justify each line, in one window. Dark canvas so the product glows; marigold marks only what is being matched right now.</p><div class="lab">Desktop and phone <span>Static frame of an animated hero; the strip below the window describes the motion.</span></div><div class="row"><div class="desk d2"><div class="nav"><span class="b"><svg width="32" height="32" viewBox="0 0 256 256" aria-hidden="true"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="#eeeeec" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="18" fill="#ffc53d"/></svg>ApplyScout</span><span>How it works</span><span>What Maggie won’t do</span><span>Sign in</span><span class="btn gold" style="height:42px;font-size:15px">Get started</span></div>
+<div class="top"><h1>Watch your resume rewrite itself for each job. <span>Using only what’s true.</span></h1>
+<div><p class="lede">Paste any job. Maggie lines up what it asks for with the facts you’ve confirmed, rewrites your resume, and shows the source of every line.</p><div style="display:flex;gap:12px;margin-top:24px"><span class="btn gold"><svg class="i" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12" />
+  <path d="m17 8-5-5-5 5" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></svg>Upload your resume</span><span class="btn ghost">Try it on a job</span></div></div></div>
+<div class="win"><div class="wbar"><svg width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="#a9a7a0" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="18" fill="#ffc53d"/></svg><span>Tailoring for Senior Product Manager, Lumen Pay</span><span style="flex:1"></span><span>Step 3 of 4</span></div>
+<div class="panes">
+<div class="pane job"><h6>The job</h6><p style="color:var(--tx);font-weight:600;font-size:17px;margin:0">Senior Product Manager</p><p style="margin-top:2px">Lumen Pay, Bengaluru</p>
+<p>We’re looking for a PM with <mark>experience reducing drop-off in payment flows</mark>, strong SQL, and comfort running A/B tests across markets.</p>
+<p>Nice to have: familiarity with Kubernetes-based platforms.</p></div>
+<div class="pane res"><h6>Your resume, rewriting</h6>
+<div class="l old">Responsible for various payment initiatives across teams.</div>
+<div class="l new">Led the checkout redesign that cut payment drop-off by 18% across 2 markets.<span class="cur"></span><div class="src"><span class="chip">F1</span><span class="chip">F2</span></div></div>
+<div class="l">Owned the merchant onboarding roadmap for 40+ partners.</div>
+<div class="l">Shipped UPI autopay for subscriptions, adopted by 1.2 lakh users.</div></div>
+<div class="pane"><h6>Your confirmed facts</h6>
+<div class="fact on"><span class="chip k">F1</span><b>Payments team, Q2 2025</b>Redesigned checkout for India and Indonesia.</div>
+<div class="fact on"><span class="chip k">F2</span><b>Checkout drop-off</b>Fell from 31% to 25% after launch.</div>
+<div class="fact"><b>Merchant onboarding</b>Roadmap for 40+ partners.</div>
+<div class="fact"><b>UPI autopay</b>1.2 lakh users in 6 months.</div></div></div>
+<div class="status"><span class="ok"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+  <path d="m9 12 2 2 4-4" /></svg> <b style="color:inherit">Truth check passed</b></span><span><b>6 of 6</b> lines backed by your facts</span><span><b>Kubernetes</b> not added: you haven’t confirmed it</span></div></div>
+<div class="story"><h2>What you’d see, second by second</h2><div class="frames">
+<div class="fr"><span class="t">0.0 s</span><h4>The ask lights up</h4><p>The requirement Maggie is answering is underlined in the job.</p><div class="bar"><i style="width:25%"></i></div></div>
+<div class="fr"><span class="t">0.8 s</span><h4>Your facts are found</h4><p>The two facts that prove it light up on the right.</p><div class="bar"><i style="width:50%"></i></div></div>
+<div class="fr"><span class="t">1.6 s</span><h4>The line rewrites</h4><p>The old line strikes through and the new one types in, sources attached.</p><div class="bar"><i style="width:75%"></i></div></div>
+<div class="fr"><span class="t">3.0 s</span><h4>The truth check</h4><p>Every line is checked; anything unbacked, like Kubernetes, is left out and said so.</p><div class="bar"><i style="width:100%"></i></div></div></div></div>
+<div class="never"><div><b>Never invents</b>Every line traces to a fact you confirmed.</div><div><b>Never types your password</b>At sign-in pages the form is yours.</div><div><b>Never guesses about you</b>Work rights and demographics come from you.</div><div><b>Never exceeds your limit</b>A daily cap, and pause works at once.</div></div></div><div class="phone d2"><div style="height:30px"></div><div class="nav" style="padding:0 20px;height:60px"><span class="b" style="font-size:18px"><svg width="28" height="28" viewBox="0 0 256 256" aria-hidden="true"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="#eeeeec" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="18" fill="#ffc53d"/></svg>ApplyScout</span><svg class="i" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16" />
+  <path d="M4 12h16" />
+  <path d="M4 19h16" /></svg></div>
+<div style="padding:24px 20px 30px"><h1 style="font-size:42px">Watch your resume rewrite itself for each job. <span>Using only what’s true.</span></h1>
+<span class="btn gold" style="width:100%;justify-content:center;margin-top:22px"><svg class="i" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12" />
+  <path d="m17 8-5-5-5 5" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></svg>Upload your resume</span>
+<div class="win" style="margin:26px 0 0"><div class="wbar" style="font-size:13px">Senior PM, Lumen Pay</div><div class="pane res" style="min-height:0;border:0;padding:16px">
+<div class="l old" style="font-size:14.5px">Responsible for various payment initiatives.</div><div class="l new" style="font-size:14.5px">Led the checkout redesign that cut payment drop-off by 18% across 2 markets.<span class="cur"></span><div class="src"><span class="chip">F1</span><span class="chip">F2</span></div></div></div>
+<div class="status" style="flex-direction:column;align-items:flex-start;gap:6px;font-size:13.5px"><span class="ok"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+  <path d="m9 12 2 2 4-4" /></svg> Truth check passed</span><span>Kubernetes not added</span></div></div></div></div></div><div class="notes"><div><b>Why it could win</b>It is the most credible for working professionals: no claims, just the machine doing the job in front of you. It also demos the truth check, which is the reason to trust ApplyScout over a keyword stuffer.</div><div><b>Risk</b>Dark, product-led sites are a common SaaS look (Linear, Raycast), so it is less ownable than the red pen. The animation must be fast and skippable, and the page must read fully without it.</div><div><b>What it needs</b>Real motion design: about 3 seconds, one orchestrated moment, respecting reduced motion. “Try it on a job” would later need a real sandbox; until then it opens a recorded example.</div></div></body></div>
