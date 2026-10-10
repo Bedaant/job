@@ -1,0 +1,36 @@
+{
+  "brand": "ApplyScout",
+  "tagline": "Apply smarter. Get the interview.",
+  "brief": "A job-application autopilot for job seekers in India and across the Gulf and Southeast Asia. It finds matching jobs, tailors the resume truthfully to each one, fills the application form, and asks for referrals. It should feel trustworthy, fast, smart and human, and look different from the blue-and-rocket job-tool category.",
+  "adjectives": ["trustworthy", "fast", "smart", "human"],
+  "criteria": "Success: distinct in the job-tool category, recognisable at 16 px, works in one colour, and feels forward-moving without clichés (no briefcase, rocket, magnifier or handshake).",
+  "industry": "saas",
+  "nav": ["How it works", "Pricing", "Sign in"],
+  "brand_color": "#4F46E5",
+  "greyscale": false,
+  "final": true,
+  "round": 2,
+  "designer": "ApplyScout",
+  "concepts": [
+    {
+      "name": "Chevron A",
+      "symbol": "applyscout-symbol.svg",
+      "lockup": "applyscout-horizontal.svg",
+      "stacked": "applyscout-stacked.svg",
+      "symbol_on_tile": "applyscout-symbol-reversed.svg",
+      "symbol_on_dark": "applyscout-symbol-reversed.svg",
+      "lockup_on_dark": "applyscout-horizontal-reversed.svg",
+      "stacked_on_dark": "applyscout-stacked-reversed.svg",
+      "stacked_on_tile": "applyscout-stacked-reversed.svg",
+      "lockup_on_tile": "applyscout-horizontal-reversed.svg",
+      "idea": "An A drawn as an upward chevron with a dot in its counter: a scout's trail marker pointing forward.",
+      "rationale": [
+        "The brand's initial and 'forward' in one shape; no category cliché",
+        "Built from two equal round-capped strokes at exactly 60 degrees, so it is simple to reproduce",
+        "A thicker dot-free cut keeps it legible at 16 px for favicons"
+      ]
+    }
+  ],
+  "recommendation": "Chevron A, the most ownable and the strongest at small sizes.",
+  "next_steps": ["Trademark search for 'ApplyScout'", "Use the web icon set in apps/web", "Adopt the colour and usage rules in GUIDELINES.md"]
+}
