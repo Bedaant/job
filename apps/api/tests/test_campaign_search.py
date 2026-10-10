@@ -6,6 +6,7 @@ keyword list. A campaign's own titles and locations now drive a search the momen
 and daily after. Separately, 1,332 "live" rows had not been seen for over a week (feeds that
 never return a full listing, so nothing could delist them) and 26% were posted 90+ days ago.
 """
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
@@ -99,7 +100,7 @@ def test_a_paused_or_missing_campaign_searches_nothing(db_session):
                   status=models.CampaignStatus.paused)
     with _offline(db_session) as s:
         assert wj.campaign_search_task(c.id)["skipped"] is True
-        assert wj.campaign_search_task("nope")["skipped"] is True
+        assert wj.campaign_search_task(str(uuid.uuid4()))["skipped"] is True
     s["fetch_linkedin_jobs"].assert_not_called()
 
 
