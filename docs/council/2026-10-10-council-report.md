@@ -262,3 +262,20 @@ All of these need real data, not more review.
 - a per-user sent log
 
 It closes the only route by which the product can break its central promise in a recruiter's inbox under a real person's name. It is days of work, not weeks. Every later step (pilot, pricing, marketing) depends on it being true. The one-line token-purpose fix (P0-3) can ship the same day.
+
+---
+
+## Corrections after follow-up verification (2026-10-10)
+
+Two findings in sections A, C and E were wrong. The chairman repeated them without checking, and they are corrected here.
+
+- **"Every job source searches only Product Manager titles": mostly wrong.**
+  - Activating a campaign queues a search built from **that campaign's own roles and locations**, covering LinkedIn jobs, LinkedIn hiring posts and Glassdoor (`main.py::_queue_campaign_search`, `workers/jobs.py::campaign_search_task`), with a daily refresh (`refresh_campaign_searches_task`).
+  - ATS boards and keyless feeds store whole boards (ADR-021).
+  - Only the hourly generic discovery and the Remotive, Reed and Workday sources use the fixed PM lists in `connectors/config.py`.
+  - P0-5 becomes: *prove non-PM yield with one real test campaign; move the remaining static lists to campaign roles later.*
+- **"Campaigns start as drafts, so first matches are junk": not true for normal signup.**
+  - `apps/web/lib/onboarding.ts::launchCampaign` activates the campaign straight after creating it.
+  - `main.py::list_matches` returns only matches within active campaigns' bounds.
+  - Remaining gap: the role search runs in the background, so onboarding's "First matches" can look empty for a few minutes and needs a "searching" state.
+- **Still correct:** onboarding's developer-mode extension instructions (`StepDone.tsx:57-62`) are the real activation blocker.
