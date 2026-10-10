@@ -300,7 +300,10 @@ def test_the_sender_matches_the_digest_contract(db):
     with patch("outreach.gmail.httpx.post", return_value=_Resp(json_body=_token_response())):
         gmail.handle_callback(db, gmail._state_for(u.id), "auth-code")
     send = gmail.gmail_sender(db, u.id)
-    assert list(inspect.signature(send).parameters) == ["to", "subject", "body"]
+    params = inspect.signature(send).parameters
+    assert list(params)[:3] == ["to", "subject", "body"]
+    # apply-by-email added `attachments`; it must stay optional for every 3-arg caller.
+    assert all(p.default is not inspect.Parameter.empty for p in list(params.values())[3:])
 
 
 # ---------- the secret never escapes ----------

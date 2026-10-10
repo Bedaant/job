@@ -137,7 +137,7 @@ def test_plan_job_without_a_report_is_a_failed_row(_run, db_session):
 
 
 @patch("formplans.subprocess.run")
-def test_plan_job_writes_one_ok_row_and_replan_replaces_it(mock_run, db_session):
+def test_plan_job_writes_one_ok_row_and_a_failed_replan_keeps_it(mock_run, db_session):
     job = _job(db_session)
     mock_run.side_effect = _writes(_report(FIELDS, SNAPSHOT))
 
@@ -149,8 +149,9 @@ def test_plan_job_writes_one_ok_row_and_replan_replaces_it(mock_run, db_session)
     mock_run.side_effect = _writes(_report(FIELDS, SNAPSHOT, error="boom"))
     formplans.plan_job(db_session, job)
     rows = db_session.query(models.FormPlan).all()
-    assert len(rows) == 1 and rows[0].status == "failed" and rows[0].error == "boom"
-    assert formplans.current_plan(db_session, job.id) is None
+    # Versioned plans: a failed re-plan records its error but never destroys the last good plan.
+    assert len(rows) == 1 and rows[0].status == "ok" and rows[0].error == "boom"
+    assert formplans.current_plan(db_session, job.id) == EXPECTED
 
 
 @patch("formplans.subprocess.run", side_effect=subprocess.TimeoutExpired("node", 300))

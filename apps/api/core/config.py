@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     # Off by default: measured live, thinking made the same answer 6x slower
     # (4.4s vs 0.7s) and pushed tailoring's JSON past its token cap.
     nvidia_enable_thinking: bool = False
+    # Per-request cap on every LLM call (the SDK default is 600 s).
+    llm_timeout_seconds: float = 120.0
+    # Retried once on this model (same provider, same validated path) when the primary fails.
+    llm_fallback_model: str | None = None
+    llm_cache_ttl_seconds: int = 7 * 24 * 3600
 
     def nvidia_extra_body(self) -> dict:
         """Request extras for NIM. Only the real "nvidia" provider — the smoke
@@ -58,6 +63,8 @@ class Settings(BaseSettings):
     smtp_user: str | None = None
     smtp_password: str | None = None
     smtp_from: str | None = None  # defaults to smtp_user
+    # The owner: receives ops alerts and is the only user allowed GET /ops/health. Unset = both off.
+    alert_email: str | None = None
 
     # REACH-A. Encrypts the Gmail refresh token at rest (ADR-003: "the highest-value
     # secret in the system"). Optional ONLY so the rest of the app boots without it —
@@ -85,6 +92,10 @@ class Settings(BaseSettings):
     # token raises it to 5,000. Declared here for the same reason as `apify_token` —
     # `extra="ignore"` silently drops an undeclared key from `.env`.
     github_token: str | None = None
+    # Daily USD ceilings enforced by providers/guard.py before each paid call (None = no cap).
+    daily_usd_cap_apify: float | None = 2.0
+    daily_usd_cap_voyage: float | None = 1.0
+    daily_usd_cap_llm: float | None = 5.0
 
     cors_origins: list[str] = ["http://localhost:3000"]
     # Where emailed links (password reset) point.

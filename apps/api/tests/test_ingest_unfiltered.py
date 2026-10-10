@@ -99,7 +99,7 @@ def test_feeds_are_asked_for_everything():
     for p in patches:
         p.start()
     try:
-        wj.discover_jobs_task()
+        wj.discover_inline()
     finally:
         for p in patches:
             p.stop()

@@ -4,6 +4,8 @@ Docs: https://developers.greenhouse.io/job-board.html
 """
 import httpx
 
+from providers import guard
+
 from connectors.config import TOKEN_COMPANY_NAMES
 from connectors.normalize import coerce_posted_at
 
@@ -12,7 +14,7 @@ BASE_URL = "https://boards-api.greenhouse.io/v1/boards/{token}/jobs"
 
 def fetch_greenhouse_jobs(board_token: str):
     url = BASE_URL.format(token=board_token)
-    resp = httpx.get(url, params={"content": "true"}, timeout=20)
+    resp = guard.call("greenhouse", lambda: httpx.get(url, params={"content": "true"}, timeout=20))
     if resp.status_code != 200:
         return []
     data = resp.json()

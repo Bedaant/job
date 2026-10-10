@@ -331,7 +331,7 @@ def test_discover_jobs_task_sweeps_delisted_jobs_end_to_end(mock_session_scope, 
     for p in patches:
         p.start()
     try:
-        worker_jobs.discover_jobs_task()
+        worker_jobs.discover_inline()
     finally:
         for p in patches:
             p.stop()
@@ -388,7 +388,7 @@ def test_one_empty_board_no_longer_blocks_the_other_boards_sweep(
     for p_ in patches:
         p_.start()
     try:
-        worker_jobs.discover_jobs_task()
+        worker_jobs.discover_inline()
     finally:
         for p_ in patches:
             p_.stop()

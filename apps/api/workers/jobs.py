@@ -3,6 +3,7 @@
 runs in a worker process instead.
 """
 import logging
+import re
 import time
 from datetime import datetime, timedelta
 from functools import lru_cache
@@ -10,6 +11,7 @@ from functools import lru_cache
 from redis import Redis
 from rq import Queue
 from rq.exceptions import DuplicateJobError
+from rq.timeouts import JobTimeoutException
 
 from connectors import config as conn_config
 from connectors.ashby import fetch_ashby_jobs
@@ -22,6 +24,7 @@ from connectors.reed import fetch_reed_jobs
 from connectors.remotive import fetch_remotive_jobs
 from connectors.jobspy_connector import fetch_jobspy_jobs
 from connectors.linkedin_jobs import fetch_linkedin_jobs
+from connectors.linkedin_posts import fetch_linkedin_posts
 from connectors.workday import fetch_workday_jobs
 from core.config import get_settings
 from database import session_scope
@@ -229,6 +232,10 @@ def _isolate(source: str, fetch) -> tuple[list[dict], bool, dict]:
     try:
         jobs, batches = fetch()
         error = None
+    except JobTimeoutException:
+        # The run's own deadline, not this source's failure. Swallowing it silently cut off
+        # the source in flight and let the run continue past its limit (tests/test_queues.py).
+        raise
     except Exception as exc:  # network, auth, JSON/XML shape drift
         jobs, batches = [], []
         error = f"{type(exc).__name__}: {exc}"
@@ -330,6 +337,12 @@ def _fetch_linkedin_source(keywords: list[str], locations: list[str]) -> tuple[l
     return jobs, []
 
 
+def _fetch_linkedin_posts_source(queries: list[str]) -> tuple[list[dict], list]:
+    """Hiring posts: all queries in one Apify run. No sweep batch, same reason as
+    `_fetch_linkedin_source` — a search slice is not a complete listing."""
+    return fetch_linkedin_posts(queries, rows=conn_config.LINKEDIN_POST_ROWS), []
+
+
 def _fetch_ats_source(
     fetcher, tokens: list[str]
 ) -> tuple[list[dict], list[tuple[str, list[dict]]]]:
@@ -384,103 +397,163 @@ def get_redis_connection() -> Redis:
     return Redis.from_url(get_settings().redis_url)
 
 
+# Slow batch work (discovery, form planning, the embedding backlog). Kept off `default` so a
+# user's click never waits behind a discovery pass (tests/test_queues.py).
+BACKGROUND_QUEUE = "background"
+# RQ's default is 180 s; one LinkedIn Apify call alone may take 240 s, and every source
+# runs in sequence before a single upsert. Measured in the user-zero run.
+DISCOVERY_TIMEOUT_SECONDS = 30 * 60
+
+
 def get_queue(name: str = "default") -> Queue:
     return Queue(name, connection=get_redis_connection())
 
 
-def discover_jobs_task(job_id: str | None = None) -> dict:
-    """Fetch from every configured connector, normalize, dedupe, upsert.
-    Runs in an RQ worker process — no longer blocks an HTTP request.
+_ATS_FETCHERS = ("greenhouse", "lever", "ashby", "workday")
 
-    job_id (SPEC.md §3.6 idempotency, layer 2 — execution claim): when set
-    (the manual /discover/run path, which derives a per-minute job_id and
-    passes unique=True at enqueue for layer 1), a Redis SETNX claim guards
-    against a retried/duplicate execution double-running the same window's
-    fetch. The scheduler's own periodic call passes no job_id — it already
-    prevents duplicate registration itself (run_scheduler.py's cancel loop),
-    so no claim is needed there.
+
+def _discovery_units() -> list[tuple[str, str | None]]:
+    """One (source, board) per unit of work: a board per token for the ATS sources, one
+    unit for each search-slice source, and one for the keyless feeds (which already
+    isolate per feed inside fetch_enabled_feeds)."""
+    return [
+        ("remotive", None), ("reed", None),
+        *(("greenhouse", t) for t in conn_config.GREENHOUSE_BOARD_TOKENS),
+        *(("lever", t) for t in conn_config.LEVER_COMPANY_TOKENS),
+        *(("ashby", t) for t in conn_config.ASHBY_ORG_TOKENS),
+        # Workday is skipped on runs where it is not due (_workday_tokens).
+        *(("workday", t) for t in _workday_tokens()),
+        ("jobspy", None), ("linkedin", None), ("linkedin_posts", None), ("feeds", None),
+    ]
+
+
+def _unit_fetch(source: str, token: str | None):
+    """The fetch for one unit, returning (jobs, [(token, jobs)] sweep batches).
+    Looked up at call time so tests can patch the module-level connector functions."""
+    if source in _ATS_FETCHERS:
+        fetcher = {"greenhouse": fetch_greenhouse_jobs, "lever": fetch_lever_jobs,
+                   "ashby": fetch_ashby_jobs, "workday": fetch_workday_jobs}[source]
+        return lambda: _fetch_ats_source(fetcher, [token])
+    return {
+        "remotive": lambda: _fetch_keyword_source(fetch_remotive_jobs, conn_config.REMOTIVE_KEYWORDS),
+        "reed": lambda: _fetch_keyword_source(fetch_reed_jobs, conn_config.REED_KEYWORDS),
+        "jobspy": lambda: _fetch_jobspy_source(conn_config.JOBSPY_KEYWORDS, conn_config.JOBSPY_LOCATIONS),
+        "linkedin": lambda: _fetch_linkedin_source(
+            conn_config.LINKEDIN_JOB_KEYWORDS, conn_config.LINKEDIN_JOB_LOCATIONS),
+        "linkedin_posts": lambda: _fetch_linkedin_posts_source(conn_config.LINKEDIN_POST_QUERIES),
+    }[source]
+
+
+def _fetch_unit(source: str, token: str | None):
+    """(jobs, [(source, token, jobs)] sweep batches, connector_runs rows, feed report)."""
+    if source == "feeds":
+        started = time.monotonic()
+        jobs, report = fetch_enabled_feeds(conn_config.ENABLED_FEEDS, [])
+        runs = _feed_report_rows(report)
+        fetch_ms = int((time.monotonic() - started) * 1000)
+        for run in runs:
+            run["fetch_ms"] = fetch_ms
+        batches = [(name, None, [j for j in jobs if j["source"] == name]) for name in conn_config.ENABLED_FEEDS]
+        return jobs, batches, runs, report
+    jobs, batches, run = _isolate(source, _unit_fetch(source, token))
+    run.update(token=token, fetch_ms=run["duration_ms"])
+    return jobs, [(source, t, b) for t, b in batches], [run], None
+
+
+def discover_unit_task(source: str, token: str | None = None, pace: bool = False) -> dict:
+    """Fetch, save, sweep and log ONE board or source in its own transaction, so a failure
+    or timeout here costs this unit alone. Saving never embeds: embed_backlog_task does."""
+    if pace:
+        # ponytail: spacing assumes one background worker; a shared per-host limiter if that grows.
+        time.sleep(HOST_PACING_SECONDS)
+    jobs, batches, runs, report = _fetch_unit(source, token)
+    for j in jobs:
+        j["canonical_hash"] = canonical_hash(j["company"], j["title"], j.get("location"))
+
+    started = time.monotonic()
+    inserted = updated = skipped = 0
+    try:
+        with session_scope() as db:
+            if jobs:
+                inserted, updated, skipped = upsert_jobs(db, jobs)
+            for batch_source, batch_token, batch_jobs in batches:
+                _sweep_delisted(db, batch_source, batch_token, batch_jobs)
+            save_ms = int((time.monotonic() - started) * 1000)
+            for run in runs:
+                run["save_ms"] = save_ms
+            if len(runs) == 1:
+                runs[0]["inserted"] = inserted
+            db.add_all(models.ConnectorRun(**run) for run in runs)
+    except JobTimeoutException:
+        raise
+    except Exception as exc:
+        # Logged as a failed run, then re-raised so RQ records the failure too.
+        logger.exception("discovery save failed for %s/%s", source, token)
+        with session_scope() as db:
+            db.add(models.ConnectorRun(source=source, token=token, fetched=len(jobs), failed=1,
+                                       error=f"save: {type(exc).__name__}",
+                                       fetch_ms=runs[0].get("fetch_ms") if runs else None))
+        raise
+    return {"source": source, "token": token, "fetched": len(jobs), "inserted": inserted,
+            "updated": updated, "skipped_duplicates": skipped, "feeds": report}
+
+
+def _rq_id(text: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]", "_", text)  # rq 2.x job ids: [A-Za-z0-9_-] only
+
+
+def discover_jobs_task(job_id: str | None = None) -> dict:
+    """Coordinator: enqueue one discover_unit_task per board/source on the background queue.
+
+    job_id (SPEC.md §3.6 idempotency, layer 2 — execution claim): when set (the manual
+    /discover/run path, which also enqueues with unique=True), a Redis SETNX claim stops a
+    retried or duplicate execution from enqueueing the same window twice. The scheduler's
+    call passes no job_id; it prevents duplicate registration itself (run_scheduler.py).
     """
     if job_id is not None:
-        redis_conn = get_redis_connection()
-        claimed = redis_conn.set(f"idempotency:discover:{job_id}", "1", nx=True, ex=600)
+        claimed = get_redis_connection().set(f"idempotency:discover:{job_id}", "1", nx=True, ex=600)
         if not claimed:
             return {"skipped": True, "reason": "already claimed"}
 
-    all_jobs = []
-    # (source, board_token, jobs) per BOARD this run got a qualifying, complete
-    # listing for — swept for delistings after upsert_jobs, below. COLLECT-D
-    # made this per board rather than per source; `board_token` is None for
-    # sources with no per-board concept (the keyless feeds). remotive/reed never
-    # go in here (see SWEEPABLE_SOURCES).
-    sweep_batches: list[tuple[str, str | None, list[dict]]] = []
-    # Phase 2 item 2: one connector_runs row per source per run, written in the
-    # same transaction as the upsert below. Ingestion wrote none before, so
-    # /sources had to infer health from job counts — which cannot tell "fetched
-    # nothing this run" from "has never run".
-    runs: list[dict] = []
-
-    for source_name, fetch in (
-        ("remotive", lambda: _fetch_keyword_source(fetch_remotive_jobs, conn_config.REMOTIVE_KEYWORDS)),
-        ("reed", lambda: _fetch_keyword_source(fetch_reed_jobs, conn_config.REED_KEYWORDS)),
-        ("greenhouse", lambda: _fetch_ats_source(fetch_greenhouse_jobs, conn_config.GREENHOUSE_BOARD_TOKENS)),
-        ("lever", lambda: _fetch_ats_source(fetch_lever_jobs, conn_config.LEVER_COMPANY_TOKENS)),
-        ("ashby", lambda: _fetch_ats_source(fetch_ashby_jobs, conn_config.ASHBY_ORG_TOKENS)),
-        # COLLECT-C: one tenant per employer, same per-token shape as the three
-        # ATS boards. fetch_workday_jobs filters on FEED_KEYWORDS inside itself
-        # (it must — one detail request per posting, so a whole board is ~526
-        # extra calls for Adobe). That is why workday is NOT in
-        # SWEEPABLE_SOURCES: its payload is not a complete listing.
-        ("workday", lambda: _fetch_ats_source(fetch_workday_jobs, _workday_tokens())),
-        # GAPS 3.2, closed 2026-10-09. Built long ago and never wired; see
-        # _fetch_jobspy_source for why it is per-city and why it is not sweepable.
-        ("jobspy", lambda: _fetch_jobspy_source(
-            conn_config.JOBSPY_KEYWORDS, conn_config.JOBSPY_LOCATIONS)),
-        # GAPS 3.1: the only source that reaches the India market the ATS boards miss.
-        # Paid per row, so the keyword/location lists are deliberately short.
-        ("linkedin", lambda: _fetch_linkedin_source(
-            conn_config.LINKEDIN_JOB_KEYWORDS, conn_config.LINKEDIN_JOB_LOCATIONS)),
-    ):
-        source_jobs, batches, run = _isolate(source_name, fetch)
-        all_jobs.extend(source_jobs)
-        runs.append(run)
-        sweep_batches.extend((source_name, token, jobs) for token, jobs in batches)
-
-    # ADR-015 multi-source: the keyless public feeds. Reported per source rather
-    # than merged into one count — with six boards, "0 inserted" has to be
-    # traceable to which board went quiet.
-    # Empty keyword list = "keep everything" (filter_by_keywords' own contract).
-    # Same reasoning as _fetch_ats_source: the feeds return their whole board and
-    # we store it, so a user's description filters at MATCH time instead of
-    # deciding what was ever collected (ADR-021).
-    feed_jobs, feed_report = fetch_enabled_feeds(conn_config.ENABLED_FEEDS, [])
-    all_jobs.extend(feed_jobs)
-    runs.extend(_feed_report_rows(feed_report))
-    # Each keyless feed returns its whole board in one fetch and has no
-    # per-board split, so its batch carries board_token=None and the sweep
-    # scopes to that source's NULL-token rows. Group this run's results by
-    # source rather than re-fetching.
-    for name in conn_config.ENABLED_FEEDS:
-        sweep_batches.append((name, None, [j for j in feed_jobs if j["source"] == name]))
-
-    for j in all_jobs:
-        j["canonical_hash"] = canonical_hash(j["company"], j["title"], j.get("location"))
-
     with session_scope() as db:
-        inserted, updated, skipped = upsert_jobs(db, all_jobs)
-        for source, token, jobs in sweep_batches:
-            _sweep_delisted(db, source, token, jobs)
-        for run in runs:
-            db.add(models.ConnectorRun(**run))
         _prune_connector_runs(db)
-        backfill_job_embeddings(db)
 
-    return {
-        "fetched": len(all_jobs),
-        "inserted": inserted,
-        "updated": updated,
-        "skipped_duplicates": skipped,
-        "feeds": feed_report,
-    }
+    stamp = job_id or datetime.utcnow().strftime("%Y%m%d%H%M")
+    queue = get_queue(BACKGROUND_QUEUE)
+    units = _discovery_units()
+    previous = None
+    for source, token in units:
+        try:
+            queue.enqueue(
+                discover_unit_task, job_id=_rq_id(f"discover-{source}-{token or 'all'}-{stamp}"),
+                unique=True, job_timeout=DISCOVERY_TIMEOUT_SECONDS,
+                kwargs={"source": source, "token": token, "pace": source == previous},
+            )
+        except DuplicateJobError:
+            pass  # this window's unit is already queued
+        previous = source
+    return {"enqueued": len(units)}
+
+
+def discover_inline() -> dict:
+    """Every unit in this process, in order, for scripts and tests. A failing unit is
+    logged and skipped, exactly as its own RQ job would fail alone."""
+    totals = {"fetched": 0, "inserted": 0, "updated": 0, "skipped_duplicates": 0, "feeds": {}}
+    previous = None
+    for source, token in _discovery_units():
+        try:
+            result = discover_unit_task(source, token, pace=source == previous)
+        except Exception:
+            logger.exception("discovery unit %s/%s failed", source, token)
+            continue
+        finally:
+            previous = source
+        for key in ("fetched", "inserted", "updated", "skipped_duplicates"):
+            totals[key] += result[key]
+        totals["feeds"].update(result["feeds"] or {})
+    with session_scope() as db:
+        _prune_connector_runs(db)
+    return totals
 
 
 def prepare_applications_task(application_ids: list[str]) -> dict:
@@ -643,7 +716,7 @@ def sweep_form_plans_task() -> dict:
 
     for job_id in job_ids:
         try:
-            get_queue().enqueue(
+            get_queue(BACKGROUND_QUEUE).enqueue(
                 plan_form_task, job_id=f"plan-{job_id}", unique=True, job_timeout=600,
                 kwargs={"job_id": job_id},
             )

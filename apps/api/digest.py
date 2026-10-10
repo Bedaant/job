@@ -114,12 +114,15 @@ def log_only_sender(to: str, subject: str, body: str) -> bool:
     return False
 
 
-def smtp_sender(to: str, subject: str, body: str) -> bool:
-    """Port 465 is implicit TLS; any other port upgrades with STARTTLS."""
+def smtp_sender(to: str, subject: str, body: str, attachments=None) -> bool:
+    """Port 465 is implicit TLS; any other port upgrades with STARTTLS.
+    `attachments`: optional `[(filename, bytes, mime_type)]`."""
     s = get_settings()
     msg = EmailMessage()
     msg["From"], msg["To"], msg["Subject"] = s.smtp_from or s.smtp_user, to, subject
     msg.set_content(body)
+    for name, data, mime in attachments or ():
+        msg.add_attachment(data, *mime.split("/", 1), filename=name)
     try:
         if s.smtp_port == 465:
             conn = smtplib.SMTP_SSL(s.smtp_host, s.smtp_port, timeout=30)

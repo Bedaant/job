@@ -12,8 +12,11 @@ from redis.exceptions import ConnectionError as RedisConnectionError, TimeoutErr
 from rq_scheduler import Scheduler
 
 from digest import daily_digest_task
+from observability import canary_task, check_and_alert_task
 from workers.jobs import (
+    BACKGROUND_QUEUE,
     CAMPAIGN_SWEEP_INTERVAL_SECONDS,
+    DISCOVERY_TIMEOUT_SECONDS,
     EMBED_BACKLOG_INTERVAL_SECONDS,
     discover_jobs_task,
     embed_backlog_task,
@@ -38,6 +41,9 @@ def start_scheduler() -> Scheduler:
         sweep_form_plans_task: 60 * 60,
         # Voyage free tier: the discovery pass alone never clears the embedding backlog.
         embed_backlog_task: EMBED_BACKLOG_INTERVAL_SECONDS,
+        # Failed discovery, queue backlog, slow stage -> one email to the owner per kind per hour.
+        check_and_alert_task: 15 * 60,
+        canary_task: DIGEST_INTERVAL_SECONDS,
     }
     now = datetime.utcnow()
     digest_at = now.replace(hour=0, minute=5, second=0, microsecond=0)
@@ -49,12 +55,15 @@ def start_scheduler() -> Scheduler:
         if job.func_name in names:
             scheduler.cancel(job)
 
+    background = {discover_jobs_task, embed_backlog_task, sweep_form_plans_task, check_and_alert_task, canary_task}
     for func, interval in recurring.items():
         scheduler.schedule(
             scheduled_time=first_run.get(func, now),
             func=func,
             interval=interval,
             repeat=None,  # repeat forever
+            queue_name=BACKGROUND_QUEUE if func in background else "default",
+            timeout=DISCOVERY_TIMEOUT_SECONDS if func is discover_jobs_task else None,
         )
     return scheduler
 

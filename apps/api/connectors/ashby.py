@@ -4,6 +4,8 @@ Docs: https://developers.ashbyhq.com/reference/jobpostingapi
 """
 import httpx
 
+from providers import guard
+
 from connectors.config import TOKEN_COMPANY_NAMES
 from connectors.normalize import coerce_posted_at
 
@@ -12,7 +14,7 @@ BASE_URL = "https://api.ashbyhq.com/posting-api/job-board/{token}"
 
 def fetch_ashby_jobs(org_token: str):
     url = BASE_URL.format(token=org_token)
-    resp = httpx.get(url, timeout=20)
+    resp = guard.call("ashby", lambda: httpx.get(url, timeout=20))
     if resp.status_code != 200:
         return []
     data = resp.json()

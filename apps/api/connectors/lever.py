@@ -4,6 +4,8 @@ Docs: https://github.com/lever/postings-api
 """
 import httpx
 
+from providers import guard
+
 from connectors.config import TOKEN_COMPANY_NAMES
 from connectors.feeds import _epoch
 
@@ -12,7 +14,7 @@ BASE_URL = "https://api.lever.co/v0/postings/{token}"
 
 def fetch_lever_jobs(company_token: str):
     url = BASE_URL.format(token=company_token)
-    resp = httpx.get(url, params={"mode": "json"}, timeout=20)
+    resp = guard.call("lever", lambda: httpx.get(url, params={"mode": "json"}, timeout=20))
     if resp.status_code != 200:
         return []
     data = resp.json()

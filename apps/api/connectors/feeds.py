@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 
 import httpx
 
+from providers import guard
+
 USER_AGENT = "ApplyScout/0.1 (+https://applyscout.in)"
 TIMEOUT = 25
 
@@ -32,10 +34,13 @@ MAX_PAGES = 30
 
 
 def _get(url: str, params: dict | None = None) -> httpx.Response:
-    resp = httpx.get(url, params=params, timeout=TIMEOUT,
-                     headers={"User-Agent": USER_AGENT}, follow_redirects=True)
-    resp.raise_for_status()
-    return resp
+    def once():
+        resp = httpx.get(url, params=params, timeout=TIMEOUT,
+                         headers={"User-Agent": USER_AGENT}, follow_redirects=True)
+        resp.raise_for_status()
+        return resp
+    # Breaker per feed host: one dead feed must not open the circuit for the others.
+    return guard.call(f"feed:{httpx.URL(url).host}", once)
 
 
 def _epoch(value) -> datetime | None:

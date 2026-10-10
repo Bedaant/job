@@ -51,3 +51,9 @@ test("the submission claim goes through the worker too — UUID ids only", () =>
   assert.equal(allowedRoute("GET", `/applications/${PROFILE}/claim-submission`), null);
   assert.equal(allowedRoute("POST", `/applications/${PROFILE}/claim-submission/x`), null);
 });
+
+test("the fill snapshot route is POST-only and exact", () => {
+  assert.equal(allowedRoute("POST", "/extension/fill-snapshots")?.response, "json");
+  assert.equal(allowedRoute("GET", "/extension/fill-snapshots"), null);
+  assert.equal(allowedRoute("POST", "/extension/fill-snapshots/x"), null);
+});

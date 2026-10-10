@@ -44,3 +44,19 @@ def test_extract_skills_finds_pm_terms():
 def test_extract_skills_finds_marketing_terms():
     text = "Own SEO and SEM strategy, run Google Analytics reporting and email marketing campaigns via HubSpot."
     assert set(extract_skills(text)) == {"SEO", "SEM", "Google Analytics", "Email Marketing", "HubSpot"}
+
+
+def test_extract_skills_is_fast_on_a_large_description_with_no_skills():
+    # A real discovery run (11k jobs) spent 290 s here, idle inside a Neon transaction
+    # that Neon kills at 5 minutes. 189 KB took 1.25 s before the substring prefilter.
+    import time
+
+    text = "plain words about nothing in particular, benefits and culture. " * 3000
+    start = time.perf_counter()
+    assert extract_skills(text) == []
+    assert time.perf_counter() - start < 0.3
+
+
+def test_extract_skills_prefilter_keeps_case_rules_and_overlaps():
+    text = "go-live plan, we go fast. Salesforce Marketing Cloud, REST and rest, PYTHON, Go."
+    assert set(extract_skills(text)) == {"Salesforce", "Salesforce Marketing Cloud", "REST", "Python", "Go"}

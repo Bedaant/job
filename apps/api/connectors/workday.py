@@ -34,6 +34,8 @@ import time
 
 import httpx
 
+from providers import guard
+
 from connectors.config import FEED_KEYWORDS as KEYWORDS
 from connectors.config import TOKEN_COMPANY_NAMES, WORKDAY_BOARDS
 from connectors.normalize import coerce_posted_at
@@ -63,21 +65,25 @@ PAGE_PACING_SECONDS = 0.5
 
 
 def _post(base: str, offset: int) -> dict:
-    resp = httpx.post(
-        f"{base}/jobs",
-        json={"appliedFacets": {}, "limit": PAGE, "offset": offset, "searchText": ""},
-        headers={"User-Agent": USER_AGENT, "Content-Type": "application/json"},
-        timeout=TIMEOUT,
-    )
-    resp.raise_for_status()
-    return resp.json()
+    def once():
+        resp = httpx.post(
+            f"{base}/jobs",
+            json={"appliedFacets": {}, "limit": PAGE, "offset": offset, "searchText": ""},
+            headers={"User-Agent": USER_AGENT, "Content-Type": "application/json"},
+            timeout=TIMEOUT,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    return guard.call(f"workday:{httpx.URL(base).host}", once)
 
 
 def _get(base: str, external_path: str) -> dict:
-    resp = httpx.get(f"{base}{external_path}", headers={"User-Agent": USER_AGENT},
-                     timeout=TIMEOUT)
-    resp.raise_for_status()
-    return resp.json()
+    def once():
+        resp = httpx.get(f"{base}{external_path}", headers={"User-Agent": USER_AGENT},
+                         timeout=TIMEOUT)
+        resp.raise_for_status()
+        return resp.json()
+    return guard.call(f"workday:{httpx.URL(base).host}", once)
 
 
 def _matches(title: str | None) -> bool:

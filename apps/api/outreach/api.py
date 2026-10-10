@@ -33,10 +33,11 @@ current_user = get_current_user
 
 
 def _enqueue_send(outreach_id: str) -> None:
+    from outreach.send import EFFECTS_QUEUE
     from workers.jobs import get_queue
     from workers.outreach_tasks import send_outreach_task
 
-    get_queue().enqueue(send_outreach_task, outreach_id)
+    get_queue(EFFECTS_QUEUE).enqueue(send_outreach_task, outreach_id)
 
 
 def _recheck(subject: str, body: str, facts: list[dict]) -> list[str]:

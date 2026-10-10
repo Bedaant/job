@@ -105,6 +105,11 @@ def select_candidates(db: Session, campaign: models.Campaign, limit: int) -> lis
     already_applied = select(models.Application.job_id).where(
         models.Application.profile_id == campaign.profile_id
     )
+    # Same role through another source (GAPS 4.3). IS NOT NULL: one NULL makes NOT IN match nothing.
+    applied_roles = select(models.Application.role_key).where(
+        models.Application.profile_id == campaign.profile_id,
+        models.Application.role_key.is_not(None),
+    )
     # Match.score is 0..100; campaign.min_match_score is a 0..1 fraction.
     threshold = float(campaign.min_match_score) * 100
     query = _in_bounds(
@@ -115,6 +120,7 @@ def select_candidates(db: Session, campaign: models.Campaign, limit: int) -> lis
             models.Match.score >= threshold,
             models.Match.state != "dismissed",
             models.Match.job_id.notin_(already_applied),
+            models.Job.canonical_hash.notin_(applied_roles),
         ),
         campaign,
     )
@@ -125,12 +131,14 @@ def select_candidates(db: Session, campaign: models.Campaign, limit: int) -> lis
     # applies to was NONDETERMINISTIC — in production, not just in tests. Two
     # matches at score 90 and daily_cap=1 could pick either. Found while chasing
     # the GAPS 6.6 flake.
-    matches = [
-        m for m in query.order_by(
-            models.Match.score.desc(), models.Match.created_at.asc(), models.Match.id.asc()
-        ).all()
-        if remote_open_to(m.job, country)
-    ]
+    matches, roles = [], set()
+    for m in query.order_by(
+        models.Match.score.desc(), models.Match.created_at.asc(), models.Match.id.asc()
+    ).all():
+        # Two live copies of one role in one run would trip uq_application_profile_role at commit.
+        if remote_open_to(m.job, country) and m.job.canonical_hash not in roles:
+            roles.add(m.job.canonical_hash)
+            matches.append(m)
     return matches[:limit]
 
 
@@ -204,6 +212,15 @@ def _record_skips(db: Session, campaign: models.Campaign, chosen: set[str], cap_
         _skip(db, campaign, "daily_cap", cap_reason)
 
 
+def send_if_mailto(db: Session, application: models.Application) -> None:
+    """A `mailto:` job has no form, and the extension work queue excludes it, so
+    approval is where it gets sent: queued on `effects`, never sent inside the campaign run."""
+    if (application.job.apply_url or "").startswith("mailto:"):
+        import apply_email  # lazy: apply_email imports this module
+
+        apply_email.enqueue_send(db, application)
+
+
 def run_campaign(db: Session, campaign: models.Campaign) -> dict:
     """One campaign run: pick candidates inside the approved bounds, create at
     most `remaining_quota` applications, then prepare each one (tailor +
@@ -256,9 +273,11 @@ def run_campaign(db: Session, campaign: models.Campaign) -> dict:
             prepare_application_for_review(db, application)
             if campaign.auto_submit:
                 # ADR-015: campaign-level approval already happened, so there is
-                # no per-item review step. Submission itself is out of scope here.
+                # no per-item review step. Web submission is the extension's job;
+                # a mailto: job is queued for email here (send_if_mailto).
                 application.status = models.ApplicationStatus.approved
                 db.commit()
+                send_if_mailto(db, application)
             prepared += 1
         except Exception:
             db.rollback()

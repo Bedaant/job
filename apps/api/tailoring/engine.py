@@ -11,8 +11,10 @@ Two-pass tailoring:
           against the facts KB and flags any claim it can't trace back to a
           fact. Flagged claims are surfaced to you, not silently kept.
 """
+import hashlib
 import os
 import json
+import logging
 import re
 from types import SimpleNamespace
 
@@ -23,6 +25,7 @@ from instructor.v2.core.errors import InstructorRetryException
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from core.config import get_settings
 from core.grounding import validate_ids_against_known_set
+from providers import guard
 from matching.keyword_gap import _TOKEN_RE, _match_in_fact, compute_keyword_gap
 from matching.skills import skill_occurrences
 from langfuse import observe, get_client
@@ -49,7 +52,8 @@ if _settings.langfuse_secret_key:
 else:
     _langfuse = None
 
-_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, timeout=_settings.llm_timeout_seconds)
+logger = logging.getLogger(__name__)
 
 # Dev-only smoke-test client. Lazy — only constructed if llm_provider is
 # ever actually set to "nvidia_smoke", so a missing nvidia_api_key never
@@ -67,6 +71,7 @@ def _get_nvidia_client() -> openai.OpenAI:
         _nvidia_client = openai.OpenAI(
             api_key=_settings.nvidia_api_key,
             base_url=_settings.nvidia_base_url,
+            timeout=_settings.llm_timeout_seconds,
         )
     return _nvidia_client
 
@@ -161,23 +166,78 @@ STRICT_CHECK_SYSTEM = (
 )
 
 
+def _llm_request(primary_model: str, attempt):
+    """The single place every provider request passes: `attempt(model)` on the primary, then
+    once on `llm_fallback_model` if set. Returns (result, model_used); re-raises the last error."""
+    fallback = _settings.llm_fallback_model
+    models = [primary_model]
+    if isinstance(fallback, str) and fallback and fallback != primary_model:
+        models.append(fallback)
+    for i, model in enumerate(models):
+        try:
+            # retries=0: the provider SDKs already retry. ponytail: 0.03 USD/call is a guess for
+            # paid providers, so the daily LLM cap is approximate; NIM is free.
+            cost = 0.0 if _settings.llm_provider == "nvidia" else 0.03
+            return guard.call("llm", lambda: attempt(model), retries=0, cost_usd=cost), model
+        except Exception as exc:
+            if isinstance(exc, guard.ProviderRefused) or i == len(models) - 1:
+                raise
+            # TYPE only: provider errors can echo the prompt.
+            logger.warning("LLM %s failed (%s); retrying on %s", model, type(exc).__name__, models[i + 1])
+
+
+def _cache_client():
+    from workers.jobs import get_redis_connection
+    return get_redis_connection()
+
+
+def _jsonable(value):
+    return sorted(value) if isinstance(value, (set, frozenset)) else str(value)
+
+
+def _cache_key(system, user, response_model, context, extra_body, max_tokens) -> str:
+    provider = _settings.llm_provider
+    model = _settings.nvidia_model if provider == "nvidia" else MODEL
+    material = json.dumps(
+        [provider, model, system, user, response_model.model_json_schema(), context, extra_body, max_tokens],
+        sort_keys=True, default=_jsonable,
+    )
+    return "llmcache:" + hashlib.sha256(material.encode()).hexdigest()
+
+
+def _cache_get(key, response_model, context):
+    # Fail open, and re-validate: a stale hit (e.g. a fact id since deleted) is a miss.
+    try:
+        raw = _cache_client().get(key)
+        return None if raw is None else response_model.model_validate_json(raw, context=context)
+    except Exception as exc:
+        logger.info("LLM cache read skipped: %s", type(exc).__name__)
+        return None
+
+
+def _cache_set(key, result) -> None:
+    try:
+        _cache_client().set(key, result.model_dump_json(), ex=int(_settings.llm_cache_ttl_seconds))
+    except Exception as exc:
+        logger.info("LLM cache write skipped: %s", type(exc).__name__)
+
+
 @observe(as_type="generation", name="claude-call")
 def call_llm(system: str, user: str) -> str:
     provider = _settings.llm_provider
 
     if provider in ("nvidia", "nvidia_smoke"):
         nvidia_model = _settings.nvidia_model if provider == "nvidia" else _settings.nvidia_smoke_model
-        response = _get_nvidia_client().chat.completions.create(
-            model=nvidia_model,
+        response, model_used = _llm_request(nvidia_model, lambda model: _get_nvidia_client().chat.completions.create(
+            model=model,
             extra_body=_settings.nvidia_extra_body(),
             max_tokens=1500,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-        )
+        ))
         text = response.choices[0].message.content or ""
-        model_used = nvidia_model
         usage_details = (
             {
                 "input": response.usage.prompt_tokens,
@@ -187,14 +247,13 @@ def call_llm(system: str, user: str) -> str:
             else None
         )
     else:
-        message = _client.messages.create(
-            model=MODEL,
+        message, model_used = _llm_request(MODEL, lambda model: _client.messages.create(
+            model=model,
             max_tokens=1500,
             system=system,
             messages=[{"role": "user", "content": user}],
-        )
+        ))
         text = "".join(block.text for block in message.content if block.type == "text")
-        model_used = MODEL
         usage_details = {
             "input": message.usage.input_tokens,
             "output": message.usage.output_tokens,
@@ -223,11 +282,14 @@ def _call_claude_structured(
     tailor_application) — the free smoke model isn't asked to honor this
     contract, so it must never be credited with having validated against it.
     """
+    key = _cache_key(system, user, response_model, context, extra_body, max_tokens)
+    cached = _cache_get(key, response_model, context)
+    if cached is not None:
+        return cached
     if _settings.llm_provider == "nvidia":
         # OpenAI shape: the system prompt is a message, there is no `system=` kwarg.
-        model_used = _settings.nvidia_model
-        result = _get_nvidia_instructor_client().chat.completions.create(
-            model=model_used,
+        result, model_used = _llm_request(_settings.nvidia_model, lambda model: _get_nvidia_instructor_client().chat.completions.create(
+            model=model,
             # Open models spend tokens before the JSON; 1500 truncated the draft live.
             max_tokens=max_tokens,
             extra_body=_settings.nvidia_extra_body() if extra_body is None else extra_body,
@@ -235,20 +297,20 @@ def _call_claude_structured(
             response_model=response_model,
             max_retries=2,
             context=context,
-        )
+        ))
     else:
-        model_used = MODEL
-        result = _get_instructor_client().messages.create(
-            model=MODEL,
+        result, model_used = _llm_request(MODEL, lambda model: _get_instructor_client().messages.create(
+            model=model,
             max_tokens=1500,
             system=system,
             messages=[{"role": "user", "content": user}],
             response_model=response_model,
             max_retries=2,
             context=context,
-        )
+        ))
     if _langfuse is not None:
         get_client().update_current_generation(input=user, output=result.model_dump_json(), model=model_used)
+    _cache_set(key, result)
     return result
 
 

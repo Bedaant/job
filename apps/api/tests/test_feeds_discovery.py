@@ -72,7 +72,7 @@ def test_discover_jobs_task_ingests_feed_jobs_and_reports_per_source(
     for p in patches:
         p.start()
     try:
-        result = worker_jobs.discover_jobs_task()
+        result = worker_jobs.discover_inline()
     finally:
         for p in patches:
             p.stop()

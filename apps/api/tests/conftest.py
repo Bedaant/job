@@ -9,7 +9,7 @@ os.environ["LLM_PROVIDER"] = "anthropic"
 from pathlib import Path
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -153,6 +153,31 @@ def no_real_network():
 
     with patch.object(httpx.HTTPTransport, "handle_request", blocked), \
          patch.object(httpx.AsyncHTTPTransport, "handle_async_request", blocked):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def no_real_redis():
+    """`REDIS_URL` in `.env` is the PRODUCTION Redis Cloud instance. Before this, every test
+    that approved or submitted an application enqueued a real job there — 39 leaked
+    `draft_outreach_task`s were found sitting in the live queue ahead of a real user's
+    tailoring job (tests/test_no_real_redis.py).
+
+    Sockets are blocked at the connection class, exactly as `no_real_network` blocks httpx,
+    and `Queue.enqueue` records instead of sending, so enqueue-then-commit code paths still
+    see a job back. A test about enqueueing patches `get_queue` itself; its patch wins.
+    """
+    import redis.connection
+    from rq import Queue
+
+    def blocked(self, *args, **kwargs):
+        raise RuntimeError(
+            "the test suite tried to open a real Redis connection — REDIS_URL is production. "
+            "Patch get_queue / get_redis_connection in the test instead."
+        )
+
+    with patch.object(redis.connection.AbstractConnection, "connect", blocked), \
+         patch.object(Queue, "enqueue", lambda self, *a, **k: MagicMock(id="test-job")):
         yield
 
 

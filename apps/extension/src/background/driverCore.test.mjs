@@ -16,6 +16,7 @@ import {
   MAX_PAGES,
   pickEntryButton,
   pickNextButton,
+  pausedMessage,
 } from "./driverCore.mjs";
 
 // Found live (auto-apply, embedded Greenhouse): page load (~8 s) + reading 12
@@ -241,4 +242,20 @@ test("pickEntryButton: never a form-posting button, never a third-party shortcut
 
 test("pickEntryButton: overlays count (Workday's start dialog is one)", () => {
   assert.equal(pickEntryButton([btn("Apply Manually", { inOverlay: true })], new Set()), 0);
+});
+
+// --- kill switch (architecture plan section 10) -------------------------------
+// The server answers /map-fields with 423 when the owner paused an ATS. That must
+// reach the user's review queue as needs_human, never `failed` (retried forever).
+
+test("a 423 from map-fields becomes a 'Filling paused' message naming the ATS", () => {
+  assert.match(pausedMessage(423, "workday"), /^Filling paused for workday\b/);
+  assert.match(pausedMessage(423, null), /^Filling paused for this job site\b/);
+  assert.equal(pausedMessage(500, "workday"), null);
+  assert.equal(pausedMessage(undefined, "workday"), null);
+});
+
+test("a paused fill is needs_human, not a retry", () => {
+  const { outcome } = classifyFailure(new Error(pausedMessage(423, "lever")));
+  assert.equal(outcome, "needs_human");
 });

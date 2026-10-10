@@ -45,10 +45,42 @@ services:
     # per-job process isolation — but changing it is explicitly NOT part of this deploy
     # (PLAN-DEPLOY DEPLOY-B), so a worker-model change never gets tangled with a first
     # boot. It runs correctly as-is; revisit separately with the suite green.
-    command: ["python", "workers/run_worker.py"]
-    # ONE worker. Redis Cloud's free tier caps at 30 clients (GAPS 5.3) and a socket leak
-    # has already happened once; `get_redis_connection` is lru_cached as the fix. Scale
-    # this only after checking the client count.
+    # `-m`, not a path: `python workers/run_worker.py` cannot import `workers` — verified in
+    # the built image (tests/test_deploy_commands.py).
+    # `default` only: everything a user is waiting on (prepare, approve, email-apply,
+    # outreach, campaign runs). Discovery lives on `background` below, so a click never
+    # queues behind a discovery pass — found in the user-zero run (tests/test_queues.py).
+    command: ["python", "-m", "workers.run_worker", "default"]
+    # One per queue. Redis Cloud's free tier caps at 30 clients (GAPS 5.3) and a socket leak
+    # has already happened once; `get_redis_connection` is lru_cached as the fix. Two
+    # workers is two clients. Scale further only after checking the client count.
+    deploy:
+      replicas: 1
+
+  worker-background:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: [apps/api/.env]
+    volumes:
+      - ./apps/api/.env:/app/apps/api/.env:ro
+      - logs:/app/logs
+    command: ["python", "-m", "workers.run_worker", "background"]
+    deploy:
+      replicas: 1
+
+  # Irreversible sends (apply-by-email, outreach) never wait behind tailoring or discovery.
+  worker-effects:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: [apps/api/.env]
+    volumes:
+      - ./apps/api/.env:/app/apps/api/.env:ro
+      - logs:/app/logs
+    command: ["python", "-m", "workers.run_worker", "effects"]
     deploy:
       replicas: 1
 
@@ -61,7 +93,7 @@ services:
     volumes:
       - ./apps/api/.env:/app/apps/api/.env:ro
       - logs:/app/logs
-    command: ["python", "workers/run_scheduler.py"]
+    command: ["python", "-m", "workers.run_scheduler"]
     # Exactly one. Two schedulers would register every periodic job twice — hourly
     # discovery, the 2-minute embed backlog, the campaign sweep and the daily digest would
     # all double. run_scheduler.py cancels existing registrations on start, which makes a

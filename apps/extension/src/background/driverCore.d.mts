@@ -12,6 +12,9 @@ export interface WorkQueueItem {
 
 export const MAX_ATTEMPTS_PER_ITEM: number;
 
+export const PAUSED_STATUS: number;
+export function pausedMessage(status: number | undefined, atsType?: string | null): string | null;
+
 export function classifyFailure(error: unknown): {
   outcome: "failed" | "needs_human";
   reason: string;

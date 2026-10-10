@@ -12,12 +12,14 @@ import openai
 
 from core.config import get_settings
 from schemas import ApplicantBasics
+# The one LLM choke point (guard, timeout, fallback). Not its cache: resume text is personal data.
+from tailoring.engine import _llm_request
 
 MODEL = "claude-sonnet-5"  # config-driven would be MODEL_STRONG per SPEC.md §6;
                             # single call site for now, revisit when tailoring/engine.py
                             # is fixed in Phase 4 and the two share config
 
-_client = anthropic.Anthropic(api_key=get_settings().anthropic_api_key)
+_client = anthropic.Anthropic(api_key=get_settings().anthropic_api_key, timeout=get_settings().llm_timeout_seconds)
 
 # Dev-only smoke-test client (same nvidia_smoke provider as tailoring/engine.py
 # - this module never had that branch until now, a real gap: with no real
@@ -31,7 +33,9 @@ def _get_nvidia_client() -> openai.OpenAI:
     global _nvidia_client
     if _nvidia_client is None:
         settings = get_settings()
-        _nvidia_client = openai.OpenAI(api_key=settings.nvidia_api_key, base_url=settings.nvidia_base_url)
+        _nvidia_client = openai.OpenAI(
+            api_key=settings.nvidia_api_key, base_url=settings.nvidia_base_url, timeout=settings.llm_timeout_seconds
+        )
     return _nvidia_client
 
 
@@ -55,23 +59,26 @@ def extract_facts_from_text(resume_text: str) -> list[dict]:
 
     settings = get_settings()
     if settings.llm_provider in ("nvidia", "nvidia_smoke"):
-        response = _get_nvidia_client().chat.completions.create(
-            model=settings.nvidia_model if settings.llm_provider == "nvidia" else settings.nvidia_smoke_model,
-            extra_body=settings.nvidia_extra_body(),
-            max_tokens=4096,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": resume_text[:20_000]},
-            ],
+        response, _ = _llm_request(
+            settings.nvidia_model if settings.llm_provider == "nvidia" else settings.nvidia_smoke_model,
+            lambda model: _get_nvidia_client().chat.completions.create(
+                model=model,
+                extra_body=settings.nvidia_extra_body(),
+                max_tokens=4096,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": resume_text[:20_000]},
+                ],
+            ),
         )
         raw = response.choices[0].message.content or ""
     else:
-        response = _client.messages.create(
-            model=MODEL,
+        response, _ = _llm_request(MODEL, lambda model: _client.messages.create(
+            model=model,
             max_tokens=4096,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": resume_text[:20_000]}],
-        )
+        ))
         raw = "".join(block.text for block in response.content if getattr(block, "type", None) == "text")
 
     # Open models often wrap the JSON in a sentence or code fence: take the
@@ -152,7 +159,26 @@ BASICS_SYSTEM_PROMPT = (
 )
 
 
+def tidy_basics(basics: ApplicantBasics) -> ApplicantBasics:
+    """Deterministic cleanup of EXTRACTED basics (tests/test_basics_tidy.py). An all-caps
+    name carries no casing information, so recasing it loses nothing; any other name is left
+    exactly as written. A network profile with no URL is not a link anyone can use."""
+    def recase(name: str | None) -> str | None:
+        return name.title() if name and name.isupper() else name
+
+    return basics.model_copy(update={
+        "full_name": recase(basics.full_name),
+        "given_name": recase(basics.given_name),
+        "family_name": recase(basics.family_name),
+        "network_profiles": [p for p in basics.network_profiles if p.url],
+    })
+
+
 def extract_basics(resume_text: str) -> ApplicantBasics:
+    return tidy_basics(_extract_basics(resume_text))
+
+
+def _extract_basics(resume_text: str) -> ApplicantBasics:
     """Resume text -> validated applicant identity.
 
     Uses instructor so schemas.ApplicantBasics' validators (placeholder names,
@@ -177,23 +203,28 @@ def extract_basics(resume_text: str) -> ApplicantBasics:
         # native shape below. Found live: Anthropic's `system=` kwarg passed
         # straight through raised "Completions.create() got an unexpected
         # keyword argument 'system'" against the real NVIDIA endpoint.
-        return _get_nvidia_instructor_client().messages.create(
-            model=settings.nvidia_model if settings.llm_provider == "nvidia" else settings.nvidia_smoke_model,
-            extra_body=settings.nvidia_extra_body(),
-            max_tokens=1024,
-            messages=[
-                {"role": "system", "content": BASICS_SYSTEM_PROMPT},
-                {"role": "user", "content": user_content},
-            ],
-            response_model=ApplicantBasics,
-            max_retries=2,
+        basics, _ = _llm_request(
+            settings.nvidia_model if settings.llm_provider == "nvidia" else settings.nvidia_smoke_model,
+            lambda model: _get_nvidia_instructor_client().messages.create(
+                model=model,
+                extra_body=settings.nvidia_extra_body(),
+                max_tokens=1024,
+                messages=[
+                    {"role": "system", "content": BASICS_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_content},
+                ],
+                response_model=ApplicantBasics,
+                max_retries=2,
+            ),
         )
+        return basics
 
-    return _get_instructor_client().messages.create(
-        model=MODEL,
+    basics, _ = _llm_request(MODEL, lambda model: _get_instructor_client().messages.create(
+        model=model,
         max_tokens=1024,
         system=BASICS_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_content}],
         response_model=ApplicantBasics,
         max_retries=2,
-    )
+    ))
+    return basics
