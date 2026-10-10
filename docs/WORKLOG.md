@@ -111,6 +111,94 @@ docs/              this documentation set
 
 ## Entries
 
+### 2026-10-06 (latest+83) — GAPS 2.6: pgvector computes the similarity; embeddings stop crossing the wire
+
+**What changed.** `build_matches` no longer pulls every live embedded job into Python to score it.
+pgvector computes the cosine similarity, the `embedding` column never leaves the server, and
+`description` is deferred unless the visa filter needs it (`matching/service.py::_candidates`).
+The composite scoring loop is otherwise untouched. 884 -> 890 tests.
+
+**Why.** GAPS 2.6 — the function's own docstring said to make this switch "when job count makes an
+in-process scan too slow", and ADR-021 (whole-board ingest) deliberately brought that condition
+about. I had explicitly declined it in the previous PR as deserving its own change with its own
+tests; this is that change.
+
+**The old path could not merely be slow — it could fail.** A reference fetch of 1,949 live embedded
+jobs as full rows took **555s and then Neon closed the SSL connection**. The new path is **17-32s
+per profile end to end**, of which ~20s is the candidate query and **7.7ms is Postgres server time**.
+The cost was always the transfer, not the arithmetic: more CPU or a faster cosine would have done
+nothing.
+
+**I got my own first measurement wrong, and the error mattered.** I reported "63.5s -> 376ms, a 170x
+win" and committed it. That 376ms was `select id` — but the code fetches full ORM `Job` rows,
+including the 512-float embedding *and* the description. I was measuring a query the code never
+runs. Caught it only because the recall check below forced me to look at what was actually being
+transferred. The honest figure is 17-32s per profile, and the fix for the real problem (defer the
+two large columns, let Postgres do the distance) is different from and better than what I first
+shipped.
+
+**The first design also silently lost real matches.** With a nearest-500 prefilter, the top-20 lost
+**1-3 jobs per profile** against a full scan (overlap 17-19/20). The misses were not marginal: they
+scored 58-69 and sat at vector ranks 513-1025 — jobs that won on recency and coverage despite
+mediocre similarity. That is exactly the failure mode the design was supposed to avoid, and only a
+measurement against real data surfaced it. `CANDIDATE_POOL` is now **5000**, a worst-case ceiling
+rather than a target, and sits above the live pool (1,967) so nothing is dropped today.
+
+**Equivalence verified, not assumed.**
+- `1 - (embedding <=> centroid)` matches `cosine_similarity()` to **1.4e-07** over 300 real job
+  vectors — float32 round-trip noise, which cannot move a score rounded to 2 decimals.
+- The candidate query returns the **entire live pool** (1,973 rows), so the new code scores the same
+  candidate set the old full scan did.
+- **Gap stated plainly:** I did not get a direct old-top-20 vs new-top-20 list comparison, because
+  the reference fetch it needs is the 555s one that Neon dropped. The equivalence argument rests on
+  the two measurements above plus the scoring code being untouched.
+
+**What this deliberately is NOT.** Vector order is not score order. `scoring.py` weights semantic at
+0.55, so coverage (0.30) and recency (0.15) can move a job 45 points. The SQL ordering bounds the
+candidate set; the ranking stays in Python.
+
+**The ivfflat index from migration 0004 is still unused.** The planner picks a seq scan + top-N
+heapsort at this size. I had assumed this change would finally light it up. It doesn't — so
+`ivfflat.probes` (default 1 over `lists=100`, which would have returned ~19 rows) is not yet in
+play. The code says to revisit when EXPLAIN shows an index scan, not before.
+
+**Files changed.** `apps/api/matching/service.py`, `apps/api/tests/test_matching_pgvector.py` (new),
+`docs/GAPS.md`, `docs/WORKLOG.md`.
+
+**Dependencies added.** None.
+
+**Tests.** 7 new in `tests/test_matching_pgvector.py`. Red-before-green confirmed — `_candidates`
+and `CANDIDATE_POOL` did not exist, so the file failed to import. The load-bearing ones:
+`test_coverage_still_beats_distance` (the worse vector with full coverage must still come first,
+which fails if the SQL order ever becomes the answer), `test_postgres_computes_the_similarity_and_
+leaves_the_vector_behind` (asserts `embedding`/`description` are absent from the compiled SQL — if
+they come back, the dominant cost is still being paid), and
+`test_the_visa_filter_still_gets_the_description` (deferring it unconditionally would make
+`_passes_visa` lazy-load per row, an N+1 worse than the problem). Query construction was split from
+execution (`_pgvector_query`) so the SQL can be compiled in a test without Postgres — my first
+attempt monkeypatched `Query.all` globally, which was worse than the thing it tested.
+
+**Problems hit.**
+- **The Bash shell was using `D:\Python311`, not the project venv at `apps/api/.venv`.** Four pinned
+  packages (voyageai, redis, rq, presidio) looked "missing" and the *existing* matching tests failed
+  to collect. A dry run showed "restoring" them would pull 38 packages including all of spacy — an
+  unapproved install to fix a non-problem. **Use `apps/api/.venv/Scripts/python.exe` explicitly.**
+- `pytest -q | tail` reports the *pipe's* exit code, so a red run reads as green. Hit this again;
+  used `${PIPESTATUS[0]}`.
+- Three of my six first-draft tests were wrong (`Query._limit` is not public in SQLAlchemy 2.0,
+  `ResumeFact.category` is NOT NULL, and `LIMIT`/the vector are bound parameters so `literal_binds`
+  is needed to read them) — all test bugs, not code bugs.
+- Two verification scripts hung for 5-10 minutes at 0% CPU before I recognised they were blocked on
+  a Neon transfer, not computing. Selecting `description` for ~1,900 rows is the trap.
+- Used `db.get_bind().dialect.name` rather than `db.bind`, which can be None.
+- The verification wrote real `matches` rows and `match.new` outbox events for the 4 profiles with a
+  centroid. That is ordinary production behaviour (the worker does it hourly) and SMTP is still
+  unconfigured, so nothing was sent — but worth naming.
+
+**Next.** `CANDIDATE_POOL` and `ivfflat.probes` become live questions only when the pool approaches
+5000 or EXPLAIN shows an index scan on `ix_jobs_embedding`. Voyage payment remains the binding
+constraint on the pool (1,967 of 5,265 jobs embedded).
+
 ### 2026-10-06 (latest+82) — ADR-021: discovery stores whole boards. Measured, then reviewed, and the review found four real defects
 
 **What changed.** `FEED_KEYWORDS` stops gating ingest; discovery stores whole boards and a user's
