@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 BREAKER_FAILURES = 5
 BREAKER_OPEN_SECONDS = 300
 MAX_RATE_WAIT_SECONDS = 60
+# Redis is a network hop (~270 ms from a dev machine), so a healthy call must not pay for it:
+# breaker state is re-read at most this often per process.
+BREAKER_CACHE_SECONDS = 5.0
 # Requests per minute, shared by every process. None = unlimited (ATS boards are paced
 # per host in workers/jobs.py already).
 RPM: dict[str, int | None] = {"voyage": 250, "apify": 30, "llm": 60}
@@ -87,18 +90,35 @@ def _retryable(exc: Exception) -> bool:
         return False
 
 
+_breaker_seen: dict[str, tuple[float, bool]] = {}  # provider -> (monotonic checked_at, open)
+_failed_here: set[str] = set()  # providers this process recorded a failure for since a success
+
+
+def _reset_local_state() -> None:
+    _breaker_seen.clear()
+    _failed_here.clear()
+
+
 def _check_breaker(provider: str) -> None:
-    if _safe(lambda r: r.exists(f"guard:{provider}:open"), 0):
+    now = time.monotonic()
+    seen = _breaker_seen.get(provider)
+    if seen is None or now - seen[0] > BREAKER_CACHE_SECONDS:
+        seen = (now, bool(_safe(lambda r: r.exists(f"guard:{provider}:open"), 0)))
+        _breaker_seen[provider] = seen
+    if seen[1]:
         raise CircuitOpen(f"{provider} circuit open")
 
 
 def _record_failure(provider: str) -> None:
+    _failed_here.add(provider)
+
     def op(r):
         fails = r.incr(f"guard:{provider}:fails")
         r.expire(f"guard:{provider}:fails", BREAKER_OPEN_SECONDS)
         if fails >= BREAKER_FAILURES:
             r.set(f"guard:{provider}:open", 1, ex=BREAKER_OPEN_SECONDS)
             r.delete(f"guard:{provider}:fails")
+            _breaker_seen[provider] = (time.monotonic(), True)
             logger.error("guard: %s circuit OPEN for %ss after %s failures",
                          provider, BREAKER_OPEN_SECONDS, fails)
     _safe(op)
@@ -167,6 +187,8 @@ def call(provider: str, fn, *, cost_usd: float = 0.0, retries: int = 2):
             time.sleep(min(30.0, 2 ** attempt) * random.uniform(0.5, 1.5))
             _check_breaker(provider)
             continue
-        _safe(lambda r: r.delete(f"guard:{provider}:fails"))
+        if provider in _failed_here:
+            _failed_here.discard(provider)
+            _safe(lambda r: r.delete(f"guard:{provider}:fails"))
         _record_spend(provider, cost_usd)
         return result

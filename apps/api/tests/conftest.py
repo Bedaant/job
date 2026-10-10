@@ -217,3 +217,11 @@ def no_real_subprocess_scrapes():
 
     with patch("workers.jobs.fetch_jobspy_jobs", blocked):
         yield
+
+
+@pytest.fixture(autouse=True)
+def fresh_guard_state():
+    # The guard caches breaker state per process; one test's open breaker must not leak.
+    from providers import guard
+    guard._reset_local_state()
+    yield

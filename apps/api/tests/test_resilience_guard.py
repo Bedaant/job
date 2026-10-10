@@ -41,6 +41,7 @@ class FakeRedis:
 def fake(monkeypatch):
     r = FakeRedis()
     monkeypatch.setattr(guard, "_redis", lambda: r)
+    getattr(guard, "_reset_local_state", lambda: None)()
     monkeypatch.setattr(guard.time, "sleep", lambda s: None)
     return r
 
@@ -162,3 +163,23 @@ def test_llm_sdk_errors_are_classified_by_status_code(fake):
     with pytest.raises(SDKError):
         guard.call("llm", fn)
     assert fn.call_count == 1
+
+
+def test_a_healthy_free_provider_costs_almost_no_redis_round_trips(fake, monkeypatch):
+    """Redis is remote (~270 ms a round trip from a dev machine) and Workday makes one request
+    per posting. Two round trips per successful call stretched a discovery run by minutes."""
+    ops = []
+    monkeypatch.setattr(guard, "_redis", lambda: ops.append(1) or fake)
+    for _ in range(50):
+        assert guard.call("workday:acme.wd1", lambda: "ok") == "ok"
+    assert len(ops) <= 1
+
+
+def test_a_breaker_opened_by_another_process_is_seen_within_the_cache_window(fake, monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(guard.time, "monotonic", lambda: clock[0])
+    assert guard.call("lever", lambda: "ok") == "ok"
+    fake.set("guard:lever:open", 1)
+    clock[0] += guard.BREAKER_CACHE_SECONDS + 0.1
+    with pytest.raises(guard.CircuitOpen):
+        guard.call("lever", lambda: "ok")
