@@ -374,6 +374,19 @@ class Notification(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class TitleVerdict(Base):
+    """The LLM's answer to "is this job title the role a campaign asked for?", once per pair.
+    Keys are lower(trim()) of the role and the title, matching campaigns._role_filter's SQL."""
+    __tablename__ = "title_verdicts"
+    __table_args__ = (UniqueConstraint("role_key", "title_key", name="uq_title_verdict_pair"),)
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    role_key = Column(String, nullable=False)
+    title_key = Column(String, nullable=False)
+    match = Column(Boolean, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class ConnectorRun(Base):
     """SPEC.md §1. Generic run-log for anything that fetches from the outside
     world on a schedule. F5's unknown-ATS classification (connectors/discovery.py

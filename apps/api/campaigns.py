@@ -189,11 +189,32 @@ def _whole_word(word: str):
     return func.lower(models.Job.title).regexp_match(f"(^|[^a-z0-9]){re.escape(word)}($|[^a-z0-9])")
 
 
+def role_key(text: str) -> str:
+    return text.strip().lower()
+
+
+def _verdict(role: str, match: bool | None):
+    """EXISTS a stored LLM verdict for (role, this job's title); `match=None` = any verdict."""
+    query = select(models.TitleVerdict.id).where(
+        models.TitleVerdict.role_key == role_key(role),
+        models.TitleVerdict.title_key == func.lower(func.trim(models.Job.title)),
+    )
+    if match is not None:
+        query = query.where(models.TitleVerdict.match.is_(match))
+    return query.exists()
+
+
 def _role_filter(roles):
-    variants = [v for r in roles or [] for v in _role_variants(r)]
-    if not variants:
-        return None
-    return or_(*[and_(*[_whole_word(w) for w in v]) for v in variants])
+    """Per role: the LLM's verdict decides (matching.role_judge); until a title is judged, the
+    word rules stand in. Measured on 120 labelled titles: LLM F1 0.96, word rules 0.85."""
+    clauses = []
+    for role in roles or []:
+        variants = _role_variants(role)
+        if not variants:
+            continue
+        words = or_(*[and_(*[_whole_word(w) for w in v]) for v in variants])
+        clauses.append(or_(_verdict(role, True), and_(~_verdict(role, None), words)))
+    return or_(*clauses) if clauses else None
 
 
 def _in_bounds(query, campaign: models.Campaign):

@@ -225,3 +225,9 @@ def fresh_guard_state():
     from providers import guard
     guard._reset_local_state()
     yield
+
+
+@pytest.fixture(autouse=True)
+def no_real_role_judging(monkeypatch):
+    # The LLM role judge must never call a model from the suite; tests that need answers set their own.
+    monkeypatch.setattr("matching.role_judge._ask", lambda role, titles: {})

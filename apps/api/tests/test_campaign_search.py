@@ -32,6 +32,7 @@ def _offline(db, **overrides):
         "backfill_job_embeddings": MagicMock(return_value=0),
         "build_matches": MagicMock(return_value=[]),
         "get_queue": MagicMock(),
+        "judge_campaign_titles": MagicMock(return_value={"judged": 0}),
         **overrides,
     }
     scope = MagicMock()
@@ -229,3 +230,25 @@ def test_the_older_postings_switch_is_editable_and_off_by_default():
     assert client.get(f"/campaigns/{cid}", headers=headers).json()["include_older_postings"] is False
     r = client.patch(f"/campaigns/{cid}", headers=headers, json={"include_older_postings": True})
     assert r.status_code == 200 and r.json()["include_older_postings"] is True
+
+
+def test_the_llm_judges_titles_before_embedding_so_accepted_jobs_get_embedded(db_session):
+    c = _campaign(db_session, _profile(db_session), roles=["Brand Head"], locations=["Mumbai"],
+                  remote_only=False)
+    order = []
+    judge = MagicMock(side_effect=lambda cid, **kw: order.append("judge") or {"judged": 1})
+    embed = MagicMock(side_effect=lambda *a, **k: order.append("embed") or 0)
+    with _offline(db_session, judge_campaign_titles=judge, backfill_job_embeddings=embed,
+                  fetch_linkedin_jobs=MagicMock(return_value=[_li_job(9)])):
+        wj.campaign_search_task(c.id)
+    assert judge.call_args.args == (c.id,)
+    assert order[0] == "judge"
+
+
+def test_the_daily_refresh_judges_every_active_campaign(db_session):
+    p = _profile(db_session)
+    a = _campaign(db_session, p, roles=["Designer"], locations=["Pune"], remote_only=False)
+    _campaign(db_session, p, name="paused", roles=["CMO"], status=models.CampaignStatus.paused)
+    with _offline(db_session) as s:
+        wj.refresh_campaign_searches_task()
+    assert [c.args[0] for c in s["judge_campaign_titles"].call_args_list] == [a.id]
