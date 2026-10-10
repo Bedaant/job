@@ -384,6 +384,8 @@ class TitleVerdict(Base):
     role_key = Column(String, nullable=False)
     title_key = Column(String, nullable=False)
     match = Column(Boolean, nullable=False)
+    # Not the role, but close enough to show in "Similar roles" (never applied to automatically).
+    similar = Column(Boolean, nullable=False, default=False, server_default=sqlalchemy.false())
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

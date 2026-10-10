@@ -7,6 +7,8 @@ Measured 2026-10-10 on 120 labelled real titles: LLM yes/no F1 0.96 (precision 1
 import logging
 from types import SimpleNamespace
 
+from typing import Literal
+
 from pydantic import BaseModel
 from sqlalchemy import func, or_
 
@@ -26,26 +28,29 @@ SYSTEM = (
     "\"Product Manager\", Technical Product Manager, Senior/Lead/Principal Product Manager and "
     "Product Owner are true. False when the function differs (designer vs brand head, analyst vs "
     "scientist, program or project manager vs product manager) or the level is clearly different. "
+    "Answer with a verdict per title: \"match\" = the same role as above; \"similar\" = not the "
+    "role, but an adjacent one the person might also consider (a neighbouring function or level, e.g. "
+    "Head of Marketing or Brand Manager for Brand Head); \"no\" = unrelated. "
     "Answer every index exactly once."
 )
 
 
 class _Verdict(BaseModel):
     index: int
-    match: bool
+    verdict: Literal["match", "similar", "no"]
 
 
 class _Verdicts(BaseModel):
     verdicts: list[_Verdict]
 
 
-def _ask(role: str, titles: list[str]) -> dict[str, bool]:
+def _ask(role: str, titles: list[str]) -> dict[str, str]:
     """One LLM call for one batch. Titles the model skipped are simply absent."""
     from tailoring.engine import _call_claude_structured
 
     numbered = "\n".join(f"{i}. {t}" for i, t in enumerate(titles))
     result = _call_claude_structured(SYSTEM, f"Target role: {role}\n\nTitles:\n{numbered}", _Verdicts)
-    return {titles[v.index]: v.match for v in result.verdicts if 0 <= v.index < len(titles)}
+    return {titles[v.index]: v.verdict for v in result.verdicts if 0 <= v.index < len(titles)}
 
 
 def _any_role_word(role: str):
@@ -90,7 +95,7 @@ def judge_campaign_titles(campaign_id: str, limit: int = CANDIDATES_PER_ROLE, sc
             if fresh:
                 todo[role] = fresh
 
-    answers: list[tuple[str, str, bool]] = []
+    answers: list[tuple[str, str, str]] = []
     for role, titles in todo.items():
         for start in range(0, len(titles), BATCH_SIZE):
             batch = titles[start:start + BATCH_SIZE]
@@ -99,7 +104,8 @@ def judge_campaign_titles(campaign_id: str, limit: int = CANDIDATES_PER_ROLE, sc
             except Exception as exc:
                 logger.warning("role judge failed for %r (%s); word rules stand in", role, type(exc).__name__)
                 break
-            answers += [(role, title, match) for title, match in verdicts.items()]
+            answers += [(role, title, verdict) for title, verdict in verdicts.items()
+                        if verdict in ("match", "similar", "no")]
 
     if answers:
         with scope() as db:
@@ -107,12 +113,12 @@ def judge_campaign_titles(campaign_id: str, limit: int = CANDIDATES_PER_ROLE, sc
     return {"judged": len(answers)}
 
 
-def _save(db, answers: list[tuple[str, str, bool]]) -> None:
+def _save(db, answers: list[tuple[str, str, str]]) -> None:
     """One read and one bulk insert, not a round trip per row (266 ms each to Neon from here).
     A pair another worker stored meanwhile is skipped, not overwritten."""
     pairs = {(role_key(r), role_key(t)): m for r, t, m in answers}
     existing = set(db.query(models.TitleVerdict.role_key, models.TitleVerdict.title_key).filter(
         models.TitleVerdict.role_key.in_({r for r, _ in pairs}),
         models.TitleVerdict.title_key.in_({t for _, t in pairs})).all())
-    db.add_all(models.TitleVerdict(role_key=r, title_key=t, match=m)
-               for (r, t), m in pairs.items() if (r, t) not in existing)
+    db.add_all(models.TitleVerdict(role_key=r, title_key=t, match=v == "match", similar=v == "similar")
+               for (r, t), v in pairs.items() if (r, t) not in existing)

@@ -1644,6 +1644,13 @@ def get_application_detail(
     )
 
 
+@app.get("/similar-jobs", response_model=list[schemas.SimilarJobOut])
+def list_similar_jobs(profile: models.Profile = Depends(get_owned_profile), db: Session = Depends(get_db)):
+    """Near misses the role judge kept instead of dropping: more options, never auto-applied."""
+    return [schemas.SimilarJobOut(job=job, role=role)
+            for job, role in campaigns_service.similar_jobs(db, profile)]
+
+
 @app.get("/matches", response_model=list[schemas.MatchListOut])
 def list_matches(profile: models.Profile = Depends(get_owned_profile), db: Session = Depends(get_db)):
     apps = {

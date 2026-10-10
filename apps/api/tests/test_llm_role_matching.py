@@ -19,8 +19,9 @@ def _titles(db, campaign):
     return sorted(j.title for j in _in_bounds(db.query(models.Job), campaign))
 
 
-def _verdict(db, role, title, match):
-    db.add(models.TitleVerdict(role_key=role.strip().lower(), title_key=title.strip().lower(), match=match))
+def _verdict(db, role, title, match, similar=False):
+    db.add(models.TitleVerdict(role_key=role.strip().lower(), title_key=title.strip().lower(),
+                               match=match, similar=similar))
     db.commit()
 
 
@@ -87,7 +88,7 @@ def test_judging_asks_only_about_unjudged_titles_and_stores_the_answers(brand, m
 
     def fake_ask(role, titles):
         asked.append((role, sorted(titles)))
-        return {t: t != "Brand Ambassador" for t in titles}
+        return {t: ("no" if t == "Brand Ambassador" else "match") for t in titles}
 
     monkeypatch.setattr(role_judge, "_ask", fake_ask)
     with _offline(db):
@@ -101,7 +102,7 @@ def test_judging_asks_only_about_unjudged_titles_and_stores_the_answers(brand, m
 
 def test_titles_the_model_skipped_stay_unjudged(brand, monkeypatch):
     db, c = brand
-    monkeypatch.setattr(role_judge, "_ask", lambda role, titles: {"Director of Brand": True})
+    monkeypatch.setattr(role_judge, "_ask", lambda role, titles: {"Director of Brand": "match"})
     with _offline(db):
         assert role_judge.judge_campaign_titles(c.id)["judged"] == 1
     assert db.query(models.TitleVerdict).count() == 1
@@ -122,3 +123,53 @@ def test_a_failed_llm_call_keeps_the_word_rules_in_charge(brand, monkeypatch):
 def test_the_prompt_counts_specialisations_as_the_same_role():
     assert "Technical Product Manager" in role_judge.SYSTEM
     assert "Product Owner" in role_judge.SYSTEM
+    assert "similar" in role_judge.SYSTEM
+
+
+# --- similar roles: not dropped, shown separately ----------------------------------------
+
+def test_a_similar_verdict_is_stored_and_kept_out_of_the_campaign(brand, monkeypatch):
+    db, c = brand
+    monkeypatch.setattr(role_judge, "_ask", lambda role, titles: {
+        t: {"Director of Brand": "match", "Brand Designer": "similar"}.get(t, "no") for t in titles})
+    with _offline(db):
+        role_judge.judge_campaign_titles(c.id)
+    row = db.query(models.TitleVerdict).filter_by(title_key="brand designer").one()
+    assert (row.match, row.similar) == (False, True)
+    assert "Brand Designer" not in _titles(db, c)
+
+
+def test_similar_jobs_lists_near_misses_inside_the_other_bounds(db_session):
+    from campaigns import similar_jobs
+    p = _profile(db_session)
+    _campaign(db_session, p, roles=["Brand Head"], locations=["Mumbai"], remote_only=False)
+    near = _job(db_session, 1, title="Head of Marketing", location="Mumbai")
+    _job(db_session, 2, title="Head of Marketing", location="Berlin")       # outside location
+    _job(db_session, 3, title="Head of Brand Marketing", location="Mumbai")  # a match, not similar
+    _job(db_session, 4, title="Brand Ambassador", location="Mumbai")         # a no
+    _verdict(db_session, "Brand Head", "Head of Marketing", False, similar=True)
+    _verdict(db_session, "Brand Head", "Head of Brand Marketing", True)
+    _verdict(db_session, "Brand Head", "Brand Ambassador", False)
+    rows = similar_jobs(db_session, p)
+    assert [(j.id, role) for j, role in rows] == [(near.id, "Brand Head")]
+
+
+def test_the_similar_jobs_endpoint_is_owner_only():
+    from tests.test_campaigns import _auth, _client
+    client, _ = _client()
+    owner = _auth(client, "owner-sim@example.com")
+    other = _auth(client, "other-sim@example.com")
+    profile = client.post("/profiles", headers=owner, json={"persona": "developer"}).json()
+    assert client.get(f"/similar-jobs?profile_id={profile['id']}", headers=owner).status_code == 200
+    assert client.get(f"/similar-jobs?profile_id={profile['id']}", headers=other).status_code == 404
+
+
+# --- country-only postings for a city campaign -------------------------------------------
+
+def test_a_city_campaign_also_takes_postings_that_name_only_its_country(db_session):
+    for n, loc in enumerate(["India", "Mumbai, Maharashtra", "Bengaluru", "Berlin", " india "]):
+        _job(db_session, n, title="Head of Brand", location=loc)
+    c = _campaign(db_session, _profile(db_session), roles=["Brand Head"], locations=["Mumbai"],
+                  remote_only=False)
+    assert sorted(j.location for j in _in_bounds(db_session.query(models.Job), c)) == [
+        " india ", "India", "Mumbai, Maharashtra"]

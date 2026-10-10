@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookmarkIcon } from "lucide-react";
-import { api, type Match } from "@/lib/api";
+import { ApiError, api, type Match, type SimilarJob } from "@/lib/api";
 import { statusLabel } from "@/lib/applications";
 import { AppShell, useRequireAuth } from "@/components/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -130,6 +130,53 @@ function MatchCard({ match, profileId, say }: { match: Match; profileId: string;
   );
 }
 
+function SimilarCard({ item, profileId, say }: { item: SimilarJob; profileId: string; say: Say }) {
+  const { job, role } = item;
+  const what = `${job.title} at ${job.company}`;
+  const [saved, setSaved] = useState(false);
+  const save = useMutation({
+    mutationFn: () => api.saveJob(profileId, job.id),
+    onSuccess: () => {
+      setSaved(true);
+      say(`Saved ${what} to Applications.`);
+    },
+    onError: (e: unknown) => {
+      if (e instanceof ApiError && e.status === 409) {
+        setSaved(true);
+        say(`${what} is already in Applications.`);
+      } else say(`Couldn't save ${what}. Try again.`, true);
+    },
+  });
+  return (
+    <Card className="rounded-2xl">
+      <CardHeader className="space-y-1">
+        <CardTitle className="text-base">{job.title}</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          {job.company}
+          {job.location ? ` · ${job.location}` : ""}
+          {job.remote ? " · Remote" : ""}
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          Close to your role <span className="font-medium text-foreground">{role}</span> · Posted {formatPostedAt(job.posted_at)}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" className="h-11" disabled={saved || save.isPending} onClick={() => save.mutate()}>
+            {saved ? "Saved" : save.isPending ? "Saving…" : "Save"}
+            <span className="sr-only"> {what}</span>
+          </Button>
+          <Button asChild variant="ghost" className="h-11">
+            <a href={job.apply_url} target="_blank" rel="noreferrer">
+              View listing<span className="sr-only"> for {what} (opens in a new tab)</span>
+            </a>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function MatchesPage() {
   const ready = useRequireAuth();
   const { profile } = useProfile(ready);
@@ -138,6 +185,12 @@ export default function MatchesPage() {
   const matchesQuery = useQuery({
     queryKey: ["matches", profile?.id],
     queryFn: () => api.listMatches(profile!.id),
+    enabled: !!profile,
+  });
+
+  const similarQuery = useQuery({
+    queryKey: ["similar-jobs", profile?.id],
+    queryFn: () => api.listSimilarJobs(profile!.id),
     enabled: !!profile,
   });
 
@@ -190,6 +243,20 @@ export default function MatchesPage() {
             <MatchCard key={m.id} match={m} profileId={profile.id} say={(text, failed) => setAnnounce({ text, failed })} />
           ))}
       </div>
+
+      {profile && similarQuery.isSuccess && similarQuery.data.length > 0 && (
+        <section aria-labelledby="similar-heading" className="mt-10 space-y-4">
+          <div>
+            <h2 id="similar-heading" className="text-lg font-semibold">Similar roles</h2>
+            <p className="text-sm text-muted-foreground">
+              Close to what you asked for, but not the same role. Maggie won&apos;t apply to these on her own — save the ones you like.
+            </p>
+          </div>
+          {similarQuery.data.map((item) => (
+            <SimilarCard key={item.job.id} item={item} profileId={profile.id} say={(text, failed) => setAnnounce({ text, failed })} />
+          ))}
+        </section>
+      )}
     </AppShell>
   );
 }
