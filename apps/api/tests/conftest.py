@@ -90,7 +90,9 @@ def db_session(_pg_engine):
 
     connection = _pg_engine.connect()
     transaction = connection.begin()
-    session = sessionmaker(bind=connection)()
+    # Savepoints, so a test's own commit()/rollback() behave as on a real database; the
+    # default would make rollback() discard everything the test had committed.
+    session = sessionmaker(bind=connection, join_transaction_mode="create_savepoint")()
     try:
         yield session
     finally:
