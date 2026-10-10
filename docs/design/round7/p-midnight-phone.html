@@ -1,0 +1,655 @@
+<!doctype html><html lang="en" class="dark"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ApplyScout</title><style>@font-face{font-family:'Inter';src:url(fonts/inter-var-opsz.woff2) format('woff2');font-weight:100 900;font-display:block}
+@font-face{font-family:'Geist Mono';src:url(fonts/geist-mono-latin-400-normal.woff2) format('woff2');font-weight:400;font-display:block}
+@font-face{font-family:'Geist Mono';src:url(fonts/geist-mono-latin-500-normal.woff2) format('woff2');font-weight:500;font-display:block}
+@font-face{font-family:'Noto Sans Devanagari';src:url(fonts/noto-sans-devanagari-devanagari-400-normal.woff2) format('woff2');font-weight:400;font-display:block}
+@font-face{font-family:'Noto Sans Devanagari';src:url(fonts/noto-sans-devanagari-devanagari-500-normal.woff2) format('woff2');font-weight:500;font-display:block}
+@font-face{font-family:'Noto Sans Devanagari';src:url(fonts/noto-sans-devanagari-devanagari-600-normal.woff2) format('woff2');font-weight:600;font-display:block}
+:root{--stage:#1A1C21;--bg:#0A0B0D;--surf:#121316;--sunk:#0E0F11;--ink:#ECEDEF;--ink2:#B3B6BC;--ink3:#8B8F97;--line:#22242A;--line2:#2D3037;--pri:#ECEDEF;--onpri:#0A0B0D;--prih:#FFFFFF;--mark:#ECEDEF;--dot:#F2A51A;--acc:#F2A51A;--soft:#1A2131;--softtx:#A9C0FF;--link:#8FB0FF;--band:#121316;--bandink:#ECEDEF;--bandmut:#8B8F97;--bandline:#22242A;--ok:#4CC38A;--oksoft:#10271C;--warn:#F0B34A;--warnsoft:#2A2010;--err:#FF7A70;--errsoft:#2E1513}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.55 Inter,'Noto Sans Devanagari',system-ui,sans-serif;font-optical-sizing:auto;-webkit-font-smoothing:antialiased;font-feature-settings:"cv11","ss01"}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit}
+.i{flex:none;vertical-align:-3px}
+.num,.tab{font-variant-numeric:tabular-nums}
+.mono{font-family:'Geist Mono',ui-monospace,monospace;font-size:12px;letter-spacing:0}
+.wrap{max-width:1200px;margin:0 auto;padding:0 32px}
+.skip{position:absolute;left:-999px}.skip:focus{left:16px;top:12px;z-index:9;background:var(--surf);padding:8px 12px;border-radius:6px}
+:focus-visible{outline:2px solid var(--link);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:8px;border:1px solid transparent;font-weight:500;font-size:14.5px;letter-spacing:-.005em;cursor:pointer;white-space:nowrap;transition:background-color .12s,border-color .12s}
+.btn.lg{height:48px;padding:0 20px;font-size:15.5px;border-radius:10px}
+.btn.sm{height:34px;padding:0 12px;font-size:13.5px;border-radius:7px}
+.btn.pri{background:var(--pri);color:var(--onpri)}.btn.pri:hover{background:var(--prih)}
+.btn.sec{background:var(--surf);border-color:var(--line2);color:var(--ink)}.btn.sec:hover{background:var(--sunk)}
+.btn.gh{background:transparent;color:var(--ink2)}.btn.gh:hover{background:var(--sunk);color:var(--ink)}
+.kbd{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 4px;border:1px solid var(--line2);border-bottom-width:2px;border-radius:4px;font:500 11px/1 Inter;color:var(--ink3);background:var(--surf)}
+.btn.pri .kbd{background:transparent;border-color:color-mix(in srgb,var(--onpri) 35%,transparent);color:color-mix(in srgb,var(--onpri) 75%,transparent)}
+
+/* nav */
+.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:saturate(1.4) blur(12px);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;height:64px;gap:40px}
+.logo{height:30px;width:auto;display:block}
+.top nav{display:flex;gap:4px;flex:1}
+.top nav a{padding:6px 10px;border-radius:6px;color:var(--ink2);font-size:14.5px;font-weight:450}
+.top nav a:hover{color:var(--ink);background:var(--sunk)}
+.top .r{display:flex;gap:8px;align-items:center}
+
+/* hero */
+.hero{padding:88px 0 0;text-align:center}
+.pill{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 12px 0 6px;border:1px solid var(--line2);border-radius:99px;font-size:13px;color:var(--ink2);background:var(--surf)}
+.pill b{font-weight:600;font-size:11.5px;padding:2px 7px;border-radius:99px;background:var(--soft);color:var(--softtx)}
+h1.d{font-size:clamp(40px,6.4vw,76px);line-height:1.0;letter-spacing:-.045em;font-weight:620;margin:24px auto 22px;max-width:15ch;text-wrap:balance}
+h1.d em{font-style:normal;color:var(--ink3)}
+.lede{font-size:clamp(17px,1.5vw,19px);line-height:1.5;color:var(--ink2);max-width:40em;margin:0 auto 32px;text-wrap:pretty;letter-spacing:-.01em}
+.ctas{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.fine{margin-top:16px;font-size:13px;color:var(--ink3);display:flex;gap:18px;justify-content:center;flex-wrap:wrap}
+.fine span{display:inline-flex;gap:6px;align-items:center}
+
+/* product frame */
+.stage{margin:64px auto 0;max-width:1264px;padding:56px 56px 0;position:relative;background:var(--stage);border-radius:20px;overflow:hidden;height:600px}
+.stage .frame{box-shadow:0 30px 80px -20px rgba(0,0,0,.45)}
+.frame{border:1px solid var(--line2);border-radius:14px;background:var(--surf);overflow:hidden;box-shadow:0 1px 0 var(--line),0 24px 60px -24px rgba(16,18,24,.22),0 8px 20px -12px rgba(16,18,24,.12);text-align:left}
+.dark .frame{box-shadow:0 0 0 1px #000,0 30px 80px -20px rgba(0,0,0,.7)}
+
+/* app shell */
+.app{display:grid;grid-template-columns:232px 1fr 400px;height:640px;font-size:13.5px}
+.app.full{height:760px}
+.side{background:var(--sunk);border-right:1px solid var(--line);padding:14px 10px;display:flex;flex-direction:column;gap:2px}
+.ws{display:flex;align-items:center;gap:8px;padding:6px 8px 14px;font-weight:600;font-size:14px}
+.ws .sym{width:20px;height:20px}
+.ws .av{margin-left:auto;width:22px;height:22px;border-radius:99px;background:var(--soft);color:var(--softtx);font-size:10.5px;font-weight:600;display:grid;place-items:center}
+.search{white-space:nowrap;display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border:1px solid var(--line);background:var(--surf);border-radius:7px;color:var(--ink3);margin-bottom:12px}
+.search .kbd{margin-left:auto}
+.ni{display:flex;align-items:center;gap:10px;height:32px;padding:0 8px;border-radius:7px;color:var(--ink2);font-weight:450}
+.ni .c{margin-left:auto;font-size:12px;color:var(--ink3)}
+.ni.on{background:var(--surf);color:var(--ink);font-weight:550;box-shadow:0 0 0 1px var(--line)}
+.ni.on .c{color:var(--ink2)}
+.sh{font-size:11.5px;font-weight:550;color:var(--ink3);padding:16px 8px 6px;letter-spacing:.01em}
+.camp{display:flex;align-items:center;gap:10px;height:30px;padding:0 8px;color:var(--ink2);border-radius:7px}
+.dotc{width:8px;height:8px;border-radius:99px;flex:none}
+.side .foot{margin-top:auto;border-top:1px solid var(--line);padding:12px 8px 2px;font-size:12px;color:var(--ink3)}
+.meter{height:4px;border-radius:9px;background:var(--line);margin:8px 0 6px;overflow:hidden}.meter i{display:block;height:100%;width:62%;background:var(--pri)}
+
+.main{display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--line)}
+.mh{display:flex;align-items:center;gap:12px;height:52px;padding:0 20px;border-bottom:1px solid var(--line)}
+.mh h2{font-size:15px;font-weight:600;margin:0;letter-spacing:-.01em}
+.mh .sub{color:var(--ink3)}
+.mh .r{margin-left:auto;display:flex;gap:6px}
+.tabs{display:flex;gap:2px;padding:10px 16px;border-bottom:1px solid var(--line)}
+.tb{display:inline-flex;gap:6px;align-items:center;height:28px;padding:0 10px;border-radius:6px;color:var(--ink2);font-weight:500;font-size:13px}
+.tb .c{font-size:12px;color:var(--ink3)}
+.tb.on{background:var(--sunk);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
+.grp{display:flex;align-items:center;gap:8px;padding:14px 20px 6px;font-size:12px;font-weight:550;color:var(--ink3)}
+.row{display:grid;grid-template-columns:28px 1fr auto auto;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid var(--line)}
+.row.sel{background:var(--soft);box-shadow:inset 2px 0 0 var(--pri)}
+.dark .row.sel{box-shadow:inset 2px 0 0 var(--link)}
+.co{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;font-weight:650;font-size:12px;color:#fff}
+.rt{font-weight:550;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rm{color:var(--ink3);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fit{font-size:12px;font-weight:600;color:var(--ink2);display:inline-flex;align-items:center;gap:6px}
+.fitbar{width:36px;height:4px;border-radius:9px;background:var(--line);overflow:hidden}.fitbar i{display:block;height:100%;background:var(--ink2)}
+.st{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:6px;font-size:12px;font-weight:550;white-space:nowrap}
+.st.need{background:var(--warnsoft);color:var(--warn)}
+.st.ready{background:var(--oksoft);color:var(--ok)}
+.st.prep{background:var(--sunk);color:var(--ink2);box-shadow:inset 0 0 0 1px var(--line)}
+.st.sent{background:transparent;color:var(--ink3);box-shadow:inset 0 0 0 1px var(--line)}
+.st.blk{background:var(--errsoft);color:var(--err)}
+
+.det{display:flex;flex-direction:column;min-width:0;background:var(--surf)}
+.dh{padding:16px 20px 14px;border-bottom:1px solid var(--line)}
+.dh .crumb{font-size:12px;color:var(--ink3);display:flex;gap:6px;align-items:center}
+.dh h3{margin:6px 0 2px;font-size:17px;letter-spacing:-.015em;font-weight:600}
+.dh .m{color:var(--ink3);font-size:12.5px}
+.why{padding:14px 20px;border-bottom:1px solid var(--line)}
+.lbl{font-size:11.5px;font-weight:550;color:var(--ink3);margin-bottom:8px;display:flex;align-items:center;gap:6px;letter-spacing:.01em}
+.reasons{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;border-radius:6px;font-size:12px;background:var(--sunk);color:var(--ink2);box-shadow:inset 0 0 0 1px var(--line)}
+.chip.miss{background:transparent;color:var(--ink3);box-shadow:inset 0 0 0 1px var(--line2);border:0}
+.lines{padding:14px 20px;flex:1;overflow:hidden}
+.ln{display:grid;grid-template-columns:18px 1fr;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line)}
+.ln:last-child{border-bottom:0}
+.ln .t{color:var(--ink);line-height:1.45}
+.ln .ev{display:flex;gap:6px;margin-top:5px;align-items:center;font-size:11.5px;color:var(--ink3)}
+.fact{font-family:'Geist Mono',monospace;font-size:11px;padding:1px 5px;border-radius:4px;background:var(--soft);color:var(--softtx)}
+.ln .ok{color:var(--ok)}.ln .bad{color:var(--err)}
+.ln.flag .t{color:var(--ink2);text-decoration:line-through;text-decoration-color:var(--err)}
+.ln .fx{display:flex;gap:6px;margin-top:6px}
+.q{margin-top:14px;border:1px solid color-mix(in srgb,var(--dot) 55%,var(--line));background:color-mix(in srgb,var(--soft) 60%,var(--surf));border-radius:10px;padding:12px 14px}
+.df{border-top:1px solid var(--line);padding:12px 20px;display:flex;align-items:center;gap:8px;background:var(--surf)}
+.df .note{font-size:12px;color:var(--ink3);margin-right:auto;display:flex;gap:6px;align-items:center}
+
+/* sections */
+.strip{padding:72px 0 8px;text-align:center}
+.strip p{font-size:13px;color:var(--ink3);margin:0 0 18px}
+.srcs{display:flex;justify-content:center;gap:44px;flex-wrap:wrap;color:var(--ink2);font-weight:600;font-size:17px;letter-spacing:-.02em;opacity:.8}
+.sect{padding:120px 0 0}
+.eyebrow{font-size:13px;font-weight:550;color:var(--link);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.dark .eyebrow{color:var(--link)}
+h2.h{font-size:clamp(30px,3.6vw,46px);line-height:1.05;letter-spacing:-.035em;font-weight:620;margin:0 0 16px;max-width:18ch;text-wrap:balance}
+h2.h em{font-style:normal;color:var(--ink3)}
+.sect .lede{margin:0;text-align:left;max-width:34em}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:56px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surf)}
+.cell{padding:28px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.cell:last-child{border-right:0}
+.cell .n{font-size:12px;color:var(--ink3);font-weight:550;display:flex;gap:8px;align-items:center}
+.cell h4{margin:8px 0 2px;font-size:18px;letter-spacing:-.02em;font-weight:600}
+.cell p{margin:0;color:var(--ink2);font-size:14.5px}
+.mini{margin-top:22px;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:12px;font-size:12.5px;display:flex;flex-direction:column;gap:8px}
+.mini .r{display:flex;align-items:center;gap:8px}
+.mini .r .t{flex:1;font-weight:500}
+
+.band{background:var(--band);color:var(--bandink);margin-top:120px;padding:110px 0}
+.band .eyebrow{color:var(--dot)}
+.band h2.h em{color:var(--bandmut)}
+.band .lede{color:var(--bandmut)}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:72px;align-items:center}
+.ticks{list-style:none;padding:0;margin:28px 0 0;display:grid;gap:14px}
+.ticks li{display:grid;grid-template-columns:22px 1fr;gap:10px;color:var(--bandink);font-size:15px}
+.ticks li span{color:var(--bandmut);display:block;font-size:14px}
+.receipt{background:var(--surf);color:var(--ink);border-radius:14px;border:1px solid var(--bandline);padding:22px;box-shadow:0 30px 80px -30px rgba(0,0,0,.5)}
+.receipt .hd{display:flex;align-items:center;gap:10px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.receipt .kv{display:grid;grid-template-columns:120px 1fr;gap:8px 12px;padding:14px 0;font-size:13.5px;border-bottom:1px solid var(--line)}
+.receipt .kv dt{color:var(--ink3)}.receipt .kv dd{margin:0}
+.receipt .ft{display:flex;gap:8px;padding-top:14px;align-items:center}
+
+.price{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:56px}
+.plan{border:1px solid var(--line);border-radius:14px;padding:26px;background:var(--surf);display:flex;flex-direction:column;gap:6px}
+.plan.hi{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.plan .pn{font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px}
+.plan .pp{font-size:40px;font-weight:620;letter-spacing:-.04em;margin:10px 0 0}
+.plan .pp small{font-size:14px;color:var(--ink3);font-weight:450;letter-spacing:0}
+.plan ul{list-style:none;padding:0;margin:16px 0 22px;display:grid;gap:9px;font-size:14px;color:var(--ink2)}
+.plan li{display:flex;gap:8px;align-items:center}
+.plan .btn{margin-top:auto;justify-content:center}
+.tag{font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--soft);color:var(--softtx)}
+footer{margin-top:120px;border-top:1px solid var(--line);padding:40px 0 56px;color:var(--ink3);font-size:13.5px}
+footer .wrap{display:flex;gap:40px;align-items:flex-start}
+footer .cols{display:flex;gap:64px;margin-left:auto}
+footer .cols div{display:grid;gap:8px;align-content:start}
+footer b{color:var(--ink);font-weight:550}
+
+/* phone */
+.phone{width:390px;min-height:844px;background:var(--bg);position:relative;overflow:hidden;font-size:15px}
+.pbar{display:flex;align-items:center;justify-content:space-between;height:56px;padding:0 16px;border-bottom:1px solid var(--line);background:var(--bg)}
+.pbar .logo{height:22px}
+.ph{padding:20px 16px 8px}
+.ph .hi{font-size:13px;color:var(--ink3)}
+.ph h2{margin:2px 0 0;font-size:24px;letter-spacing:-.03em;font-weight:620;line-height:1.15}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:12px 16px}
+.kpi{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--surf)}
+.kpi b{display:block;font-size:22px;letter-spacing:-.03em;font-weight:620}
+.kpi span{font-size:12px;color:var(--ink3)}
+.kpi.need{border-color:color-mix(in srgb,var(--warn) 40%,var(--line))}
+.plist{margin:8px 16px;border:1px solid var(--line);border-radius:14px;background:var(--surf);overflow:hidden}
+.pr{display:grid;grid-template-columns:36px 1fr auto;gap:12px;align-items:center;padding:14px;border-bottom:1px solid var(--line);min-height:68px}
+.pr:last-child{border-bottom:0}
+.pr .co{width:36px;height:36px;border-radius:9px;font-size:14px}
+.pr .rt{font-size:15px}.pr .rm{font-size:13px}
+.ptabs{position:absolute;left:0;right:0;bottom:0;height:72px;border-top:1px solid var(--line);background:var(--surf);display:grid;grid-template-columns:repeat(4,1fr);padding-bottom:12px}
+.pt{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:11.5px;color:var(--ink3);font-weight:500;position:relative}
+.pt.on{color:var(--ink)}
+.pt .bd{position:absolute;top:8px;left:calc(50% + 6px);min-width:16px;height:16px;border-radius:99px;background:var(--pri);color:var(--onpri);font-size:10px;font-weight:600;display:grid;place-items:center;padding:0 4px}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surf);border-radius:18px 18px 0 0;border-top:1px solid var(--line2);box-shadow:0 -20px 60px -20px rgba(0,0,0,.25);padding:8px 16px 20px}
+.grab{width:36px;height:4px;border-radius:9px;background:var(--line2);margin:0 auto 12px}
+.scrim{position:absolute;inset:0;background:rgba(10,10,12,.38)}
+.pland{padding:28px 16px 0}
+.pland h1.d{font-size:44px;text-align:left;margin:18px 0 16px;letter-spacing:-.045em}
+.pland .lede{text-align:left;font-size:17px;margin:0 0 24px}
+.pland .btn.lg{width:100%;justify-content:center;height:52px}
+</style><body><div style="display:flex;gap:32px;padding:40px;background:var(--sunk);width:max-content"><div class="phone"><div class="pbar"><svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="36 0 881 256" role="img" aria-label="ApplyScout logo"><path fill="var(--mark)" d="M71.59 197.71L143.59 73A18 18 0 0 0 112.41 55L40.41 179.71A18 18 0 0 0 71.59 197.71ZM112.41 73L184.41 197.71A18 18 0 0 0 215.59 179.71L143.59 55A18 18 0 0 0 112.41 73Z"/><circle cx="128" cy="158" r="17" fill="var(--dot)"/><path fill="var(--ink)" d="M264.88 170.89H281.71L288.73 149.63H320.83L328.14 170.89H345.03L314.37 85.04H294.84ZM292.83 137.24 296.46 126.3C298.82 118.63 301.41 109.01 304.46 97.03C307.63 108.9 310.34 118.4 312.88 126.3L316.62 137.24Z M354.03 194.98H369.01V160.69H369.65C371.95 165.36 376.96 172.05 388.02 172.05C403.29 172.05 414.64 159.95 414.64 138.8C414.64 117.37 402.95 105.67 388.08 105.67C376.62 105.67 371.89 112.58 369.65 117.14H368.67V106.48H354.03ZM383.99 159.72C374.2 159.72 368.72 151.3 368.72 138.74C368.72 126.18 374.08 118 383.99 118C394.13 118 399.26 126.76 399.26 138.74C399.26 150.84 394.02 159.72 383.99 159.72Z M425.9 194.98H440.88V160.69H441.51C443.81 165.36 448.83 172.05 459.89 172.05C475.16 172.05 486.51 159.95 486.51 138.8C486.51 117.37 474.81 105.67 459.95 105.67C448.48 105.67 443.76 112.58 441.51 117.14H440.53V106.48H425.9ZM455.86 159.72C446.06 159.72 440.59 151.3 440.59 138.74C440.59 126.18 445.95 118 455.86 118C466 118 471.13 126.76 471.13 138.74C471.13 150.84 465.88 159.72 455.86 159.72Z M512.74 85.04H497.76V170.89H512.74Z M527.22 193.88C529.24 194.69 532.98 195.44 537.24 195.44C548.88 195.44 555.51 189.5 559.43 179.19L587.08 106.48H571.24L559.08 141.51C557.18 147.04 555.74 152.63 554.3 158.27C553.03 152.63 551.76 147.1 549.92 141.51L538.17 106.48H522.15L546.46 171.12L545.54 175.21C543.99 182.59 539.26 184.43 532.52 182.65L530.73 182.19Z"/><path fill="var(--mark)" d="M628.11 172.22C648.62 172.22 660.6 161.9 660.6 146.81C660.6 131.83 648.1 125.2 635.37 122.15L627.36 120.07C620.39 118.35 612.72 115.47 612.72 108.26C612.72 101.75 618.6 96.97 628.28 96.97C637.56 96.97 643.78 101.23 644.53 108.55H659.45C659.05 94.2 646.83 83.89 628.51 83.89C610.53 83.89 597.17 94.03 597.17 109.18C597.17 121.28 605.64 128.54 619.98 132.23L629.72 134.77C639 137.19 645.22 140.01 645.22 146.69C645.22 154.07 638.13 159.08 627.99 159.08C618.31 159.08 610.65 154.7 609.96 145.66H594.8C595.5 162.6 608.11 172.22 628.11 172.22Z M700.2 172.22C714.66 172.22 725.38 164.38 728.15 151.53L714.15 148.6C712.59 155.57 707.69 160.06 700.32 160.06C689.89 160.06 684.7 150.9 684.7 138.97C684.7 126.93 689.89 117.83 700.32 117.83C707.58 117.83 712.36 122.15 713.97 128.83L727.97 125.89C725.21 113.33 714.55 105.67 700.2 105.67C681.42 105.67 669.43 118.98 669.43 139.03C669.43 158.85 681.42 172.22 700.2 172.22Z M767.17 172.22C785.95 172.22 797.99 158.85 797.99 139.03C797.99 118.98 785.95 105.67 767.17 105.67C748.39 105.67 736.4 118.98 736.4 139.03C736.4 158.85 748.39 172.22 767.17 172.22ZM767.17 160.06C756.74 160.06 751.67 150.73 751.67 138.97C751.67 127.1 756.74 117.83 767.17 117.83C777.66 117.83 782.78 127.1 782.78 138.97C782.78 150.73 777.66 160.06 767.17 160.06Z M831.37 171.7C840.7 171.7 847.45 167.21 851.31 157.99L851.42 170.89H865.65V106.48H850.61V144.22C850.61 153.55 844.85 158.97 836.9 158.97C829.07 158.97 824.28 153.78 824.28 145.14V106.48H809.3V147.44C809.3 162.94 818.12 171.7 831.37 171.7Z M909.57 106.48H897.13V91.15H882.15V106.48H872.99V118.23H882.15V154.01C882.15 165.42 889 171.76 901.33 171.76C904.5 171.76 908.08 171.35 911.36 170.37L909 158.79C907.56 159.14 904.91 159.54 903.52 159.54C898.97 159.54 897.13 157.41 897.13 152.74V118.23H909.57Z"/></svg>
+<button class="btn gh sm" aria-label="Menu"><svg class="i" width="20" height="20" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <line x1="4" x2="20" y1="12" y2="12" />
+  <line x1="4" x2="20" y1="6" y2="6" />
+  <line x1="4" x2="20" y1="18" y2="18" />
+</svg></button></div>
+<div class="pland"><span class="pill"><b>New</b>Truth check on every line</span><h1 class="d">Apply to the right jobs. <em>Every line true.</em></h1>
+<p class="lede">Maggie finds roles that fit, tailors your resume from facts you've confirmed, and shows you every application before it goes out.</p>
+<a class="btn pri lg" href="#">Start free <svg class="i" width="16" height="16" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M5 12h14" />
+  <path d="m12 5 7 7-7 7" />
+</svg></a><div class="fine" style="justify-content:flex-start;gap:14px"><span><svg class="i" width="14" height="14" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 6 9 17l-5-5" />
+</svg>10 free</span><span><svg class="i" width="14" height="14" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 6 9 17l-5-5" />
+</svg>No card</span><span><svg class="i" width="14" height="14" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 6 9 17l-5-5" />
+</svg>UPI</span></div></div>
+<div style="margin:28px 16px 0;border:1px solid var(--line2);border-radius:16px;overflow:hidden;background:var(--surf)"><div class="plist" style="margin:0;border:0;border-radius:0">
+<div class="pr"><span class="co" style="background:#2D6CDF" aria-hidden="true">R</span><div style="min-width:0"><div class="rt">Product Analyst</div><div class="rm">Razorpay · 92 fit</div></div><span class="st need"><svg class="i" width="13" height="13" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <line x1="12" x2="12" y1="8" y2="12" />
+  <line x1="12" x2="12.01" y1="16" y2="16" />
+</svg>1 question</span></div><div class="pr"><span class="co" style="background:#E8590C" aria-hidden="true">S</span><div style="min-width:0"><div class="rt">Associate Product Manager</div><div class="rm">Swiggy · 88 fit</div></div><span class="st ready"><svg class="i" width="13" height="13" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m9 12 2 2 4-4" />
+</svg>Ready</span></div><div class="pr"><span class="co" style="background:#7048E8" aria-hidden="true">Z</span><div style="min-width:0"><div class="rt">Business Analyst</div><div class="rm">Zerodha · 84 fit</div></div><span class="st ready"><svg class="i" width="13" height="13" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m9 12 2 2 4-4" />
+</svg>Ready</span></div></div></div></div><div class="phone"><div class="pbar"><svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="36 0 881 256" role="img" aria-label="ApplyScout logo"><path fill="var(--mark)" d="M71.59 197.71L143.59 73A18 18 0 0 0 112.41 55L40.41 179.71A18 18 0 0 0 71.59 197.71ZM112.41 73L184.41 197.71A18 18 0 0 0 215.59 179.71L143.59 55A18 18 0 0 0 112.41 73Z"/><circle cx="128" cy="158" r="17" fill="var(--dot)"/><path fill="var(--ink)" d="M264.88 170.89H281.71L288.73 149.63H320.83L328.14 170.89H345.03L314.37 85.04H294.84ZM292.83 137.24 296.46 126.3C298.82 118.63 301.41 109.01 304.46 97.03C307.63 108.9 310.34 118.4 312.88 126.3L316.62 137.24Z M354.03 194.98H369.01V160.69H369.65C371.95 165.36 376.96 172.05 388.02 172.05C403.29 172.05 414.64 159.95 414.64 138.8C414.64 117.37 402.95 105.67 388.08 105.67C376.62 105.67 371.89 112.58 369.65 117.14H368.67V106.48H354.03ZM383.99 159.72C374.2 159.72 368.72 151.3 368.72 138.74C368.72 126.18 374.08 118 383.99 118C394.13 118 399.26 126.76 399.26 138.74C399.26 150.84 394.02 159.72 383.99 159.72Z M425.9 194.98H440.88V160.69H441.51C443.81 165.36 448.83 172.05 459.89 172.05C475.16 172.05 486.51 159.95 486.51 138.8C486.51 117.37 474.81 105.67 459.95 105.67C448.48 105.67 443.76 112.58 441.51 117.14H440.53V106.48H425.9ZM455.86 159.72C446.06 159.72 440.59 151.3 440.59 138.74C440.59 126.18 445.95 118 455.86 118C466 118 471.13 126.76 471.13 138.74C471.13 150.84 465.88 159.72 455.86 159.72Z M512.74 85.04H497.76V170.89H512.74Z M527.22 193.88C529.24 194.69 532.98 195.44 537.24 195.44C548.88 195.44 555.51 189.5 559.43 179.19L587.08 106.48H571.24L559.08 141.51C557.18 147.04 555.74 152.63 554.3 158.27C553.03 152.63 551.76 147.1 549.92 141.51L538.17 106.48H522.15L546.46 171.12L545.54 175.21C543.99 182.59 539.26 184.43 532.52 182.65L530.73 182.19Z"/><path fill="var(--mark)" d="M628.11 172.22C648.62 172.22 660.6 161.9 660.6 146.81C660.6 131.83 648.1 125.2 635.37 122.15L627.36 120.07C620.39 118.35 612.72 115.47 612.72 108.26C612.72 101.75 618.6 96.97 628.28 96.97C637.56 96.97 643.78 101.23 644.53 108.55H659.45C659.05 94.2 646.83 83.89 628.51 83.89C610.53 83.89 597.17 94.03 597.17 109.18C597.17 121.28 605.64 128.54 619.98 132.23L629.72 134.77C639 137.19 645.22 140.01 645.22 146.69C645.22 154.07 638.13 159.08 627.99 159.08C618.31 159.08 610.65 154.7 609.96 145.66H594.8C595.5 162.6 608.11 172.22 628.11 172.22Z M700.2 172.22C714.66 172.22 725.38 164.38 728.15 151.53L714.15 148.6C712.59 155.57 707.69 160.06 700.32 160.06C689.89 160.06 684.7 150.9 684.7 138.97C684.7 126.93 689.89 117.83 700.32 117.83C707.58 117.83 712.36 122.15 713.97 128.83L727.97 125.89C725.21 113.33 714.55 105.67 700.2 105.67C681.42 105.67 669.43 118.98 669.43 139.03C669.43 158.85 681.42 172.22 700.2 172.22Z M767.17 172.22C785.95 172.22 797.99 158.85 797.99 139.03C797.99 118.98 785.95 105.67 767.17 105.67C748.39 105.67 736.4 118.98 736.4 139.03C736.4 158.85 748.39 172.22 767.17 172.22ZM767.17 160.06C756.74 160.06 751.67 150.73 751.67 138.97C751.67 127.1 756.74 117.83 767.17 117.83C777.66 117.83 782.78 127.1 782.78 138.97C782.78 150.73 777.66 160.06 767.17 160.06Z M831.37 171.7C840.7 171.7 847.45 167.21 851.31 157.99L851.42 170.89H865.65V106.48H850.61V144.22C850.61 153.55 844.85 158.97 836.9 158.97C829.07 158.97 824.28 153.78 824.28 145.14V106.48H809.3V147.44C809.3 162.94 818.12 171.7 831.37 171.7Z M909.57 106.48H897.13V91.15H882.15V106.48H872.99V118.23H882.15V154.01C882.15 165.42 889 171.76 901.33 171.76C904.5 171.76 908.08 171.35 911.36 170.37L909 158.79C907.56 159.14 904.91 159.54 903.52 159.54C898.97 159.54 897.13 157.41 897.13 152.74V118.23H909.57Z"/></svg>
+<button class="btn gh sm" aria-label="Search"><svg class="i" width="18" height="18" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="11" cy="11" r="8" />
+  <path d="m21 21-4.3-4.3" />
+</svg></button></div>
+<div class="ph"><div class="hi">Good morning, Priya</div><h2>3 applications are waiting on you</h2></div>
+<div class="kpis"><div class="kpi need"><b class="num">1</b><span>Needs you</span></div><div class="kpi"><b class="num">2</b><span>Ready</span></div><div class="kpi"><b class="num">24</b><span>Sent this week</span></div></div>
+<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px 0"><b style="font-size:14px;font-weight:600">Up next</b><a href="#" style="font-size:13px;color:var(--link);font-weight:500">See all</a></div>
+<div class="plist"><div class="pr"><span class="co" style="background:#2D6CDF" aria-hidden="true">R</span><div style="min-width:0"><div class="rt">Product Analyst</div><div class="rm">Razorpay · 92 fit</div></div><span class="st need"><svg class="i" width="13" height="13" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <line x1="12" x2="12" y1="8" y2="12" />
+  <line x1="12" x2="12.01" y1="16" y2="16" />
+</svg>1 question</span></div><div class="pr"><span class="co" style="background:#E8590C" aria-hidden="true">S</span><div style="min-width:0"><div class="rt">Associate Product Manager</div><div class="rm">Swiggy · 88 fit</div></div><span class="st ready"><svg class="i" width="13" height="13" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m9 12 2 2 4-4" />
+</svg>Ready</span></div><div class="pr"><span class="co" style="background:#7048E8" aria-hidden="true">Z</span><div style="min-width:0"><div class="rt">Business Analyst</div><div class="rm">Zerodha · 84 fit</div></div><span class="st ready"><svg class="i" width="13" height="13" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m9 12 2 2 4-4" />
+</svg>Ready</span></div><div class="pr"><span class="co" style="background:#0B7285" aria-hidden="true">M</span><div style="min-width:0"><div class="rt">Data Analyst</div><div class="rm">Meesho · 81 fit</div></div><span class="st prep"><svg class="i" width="13" height="13" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 2v4" />
+  <path d="m16.2 7.8 2.9-2.9" />
+  <path d="M18 12h4" />
+  <path d="m16.2 16.2 2.9 2.9" />
+  <path d="M12 18v4" />
+  <path d="m4.9 19.1 2.9-2.9" />
+  <path d="M2 12h4" />
+  <path d="m4.9 4.9 2.9 2.9" />
+</svg>Tailoring…</span></div><div class="pr"><span class="co" style="background:#5F3DC4" aria-hidden="true">P</span><div style="min-width:0"><div class="rt">Product Analyst II</div><div class="rm">PhonePe · 79 fit</div></div><span class="st blk"><svg class="i" width="13" height="13" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m15 9-6 6" />
+  <path d="M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z" />
+  <path d="m9 9 6 6" />
+</svg>Blocked</span></div></div>
+<nav class="ptabs" aria-label="App"><a class="pt on" href="#"><svg class="i" width="22" height="22" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="4" />
+  <path d="M12 2v2" />
+  <path d="M12 20v2" />
+  <path d="m4.93 4.93 1.41 1.41" />
+  <path d="m17.66 17.66 1.41 1.41" />
+  <path d="M2 12h2" />
+  <path d="M20 12h2" />
+  <path d="m6.34 17.66-1.41 1.41" />
+  <path d="m19.07 4.93-1.41 1.41" />
+</svg>Today<span class="bd">3</span></a><a class="pt" href="#"><svg class="i" width="22" height="22" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+  <path d="M20 3v4" />
+  <path d="M22 5h-4" />
+  <path d="M4 17v2" />
+  <path d="M5 18H3" />
+</svg>Matches</a><a class="pt" href="#"><svg class="i" width="22" height="22" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" />
+  <path d="m21.854 2.147-10.94 10.939" />
+</svg>Sent</a><a class="pt" href="#"><svg class="i" width="22" height="22" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="8" r="5" />
+  <path d="M20 21a8 8 0 0 0-16 0" />
+</svg>Me</a></nav></div><div class="phone"><div class="pbar"><button class="btn gh sm" aria-label="Back"><svg class="i" width="18" height="18" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m12 19-7-7 7-7" />
+  <path d="M19 12H5" />
+</svg></button><b style="font-size:15px;font-weight:600">Review</b><span style="width:34px"></span></div>
+<div class="ph" style="padding-bottom:0"><div class="hi">Razorpay · Bengaluru</div><h2>Product Analyst</h2></div>
+<div style="padding:14px 16px 0"><div class="lbl"><svg class="i" width="13" height="13" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <circle cx="12" cy="12" r="6" />
+  <circle cx="12" cy="12" r="2" />
+</svg>Why it fits · 6 of 8 skills</div><div class="reasons"><span class="chip"><svg class="i" width="12" height="12" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 6 9 17l-5-5" />
+</svg>SQL</span><span class="chip"><svg class="i" width="12" height="12" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 6 9 17l-5-5" />
+</svg>A/B testing</span><span class="chip"><svg class="i" width="12" height="12" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 6 9 17l-5-5" />
+</svg>Payments</span><span class="chip miss"><svg class="i" width="12" height="12" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M5 12h14" />
+</svg>Python</span></div></div>
+<div class="lines" style="padding:16px"><div class="lbl"><svg class="i" width="13" height="13" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+  <path d="m9 12 2 2 4-4" />
+</svg>Every line checked</div>
+<div class="ln"><span class="ok"><svg class="i" width="16" height="16" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 6 9 17l-5-5" />
+</svg></span><div><div class="t">Built SQL dashboards tracking checkout drop-off across 3 payment flows.</div><div class="ev">Backed by <span class="fact">F2</span><span class="fact">F7</span></div></div></div>
+<div class="ln"><span class="ok"><svg class="i" width="16" height="16" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 6 9 17l-5-5" />
+</svg></span><div><div class="t">Ran 4 A/B tests on onboarding copy; one lifted activation by 9%.</div><div class="ev">Backed by <span class="fact">F4</span></div></div></div>
+<div class="ln flag"><span class="bad"><svg class="i" width="16" height="16" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M18 6 6 18" />
+  <path d="m6 6 12 12" />
+</svg></span><div><div class="t">Led a team of 6 analysts.</div><div class="ev" style="color:var(--err)">Not in your facts — removed</div></div></div><div class="q" style="margin-top:12px"><div class="lbl" style="color:var(--softtx)"><svg class="i" width="13" height="13" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+  <path d="M12 17h.01" />
+</svg>Maggie needs one answer</div><div style="font-weight:550;margin-bottom:10px">Have you used Python at work?</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><button class="btn sec" style="justify-content:center;height:44px">Yes, add fact</button><button class="btn sec" style="justify-content:center;height:44px">No</button></div></div></div>
+<div class="sheet" style="border-radius:0;box-shadow:none;padding-top:14px"><div style="display:flex;gap:8px;font-size:12.5px;color:var(--ink3);margin-bottom:10px;align-items:center"><svg class="i" width="13" height="13" stroke-width="1.5" aria-hidden="true"
+ 
+  xmlns="http://www.w3.org/2000/svg"
+ 
+ 
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+ 
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+</svg>Sent from your Gmail only after you tap</div>
+<div style="display:grid;grid-template-columns:auto 1fr;gap:8px"><button class="btn sec lg" style="height:52px">Edit</button><button class="btn pri lg" style="height:52px;justify-content:center">Approve &amp; send</button></div></div></div></div></body></html>
