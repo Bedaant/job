@@ -142,6 +142,11 @@ def select_candidates(db: Session, campaign: models.Campaign, limit: int) -> lis
     return matches[:limit]
 
 
+# Older postings are usually filled even while still listed (26% of the pool was 90+ days old,
+# measured 2026-10-10). Unknown dates stay in: missing data never excludes a job.
+MAX_POSTING_AGE_DAYS = 60
+
+
 def _in_bounds(query, campaign: models.Campaign):
     """The campaign's job filters on a Match query already joined to Job."""
     # Task 5: a job that's disappeared from its source is never a candidate,
@@ -149,6 +154,8 @@ def _in_bounds(query, campaign: models.Campaign):
     # query (workers/jobs.py) go through this same helper, so excluding it
     # here covers all of them in one place.
     query = query.filter(models.Job.delisted_at.is_(None))
+    cutoff = datetime.utcnow() - timedelta(days=MAX_POSTING_AGE_DAYS)
+    query = query.filter(or_(models.Job.posted_at.is_(None), models.Job.posted_at >= cutoff))
     if campaign.remote_only:
         query = query.filter(models.Job.remote.is_(True))
     if campaign.sources:
