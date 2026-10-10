@@ -216,6 +216,7 @@ class Campaign(Base):
     min_match_score = Column(Numeric(4, 3), nullable=False, default=0.7)
     daily_cap = Column(sqlalchemy.Integer, nullable=False, default=10)
     auto_submit = Column(Boolean, nullable=False, default=False)
+    include_older_postings = Column(Boolean, nullable=False, default=False, server_default=sqlalchemy.false())
     # The user's own instructions to the tailor. Never a source of facts —
     # ADR-006/ADR-009 stand: only ResumeFacts can ground a claim.
     tailoring_notes = Column(Text, nullable=True)

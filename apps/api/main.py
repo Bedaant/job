@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import time
 from datetime import datetime, timedelta, timezone
@@ -37,7 +38,7 @@ from parsing.extract import extract_text_from_docx, extract_text_from_pdf
 from parsing.llm_extract import extract_basics, extract_facts_from_text
 from workers.jobs import (
     BACKGROUND_QUEUE, DISCOVERY_TIMEOUT_SECONDS, discover_jobs_task, get_queue, get_redis_connection, prepare_applications_task,
-    run_campaign_task,
+    campaign_search_task, run_campaign_task,
 )
 from workers.outreach_tasks import draft_outreach_task
 from observability import router as ops_router
@@ -695,6 +696,8 @@ def update_campaign(
     """
     campaign = campaigns_service.resolve_campaign_ownership(db, current_user, campaign_id)
     fields = payload.model_dump(exclude_unset=True, exclude_none=True)
+    was_active = campaign.status == models.CampaignStatus.active
+    search_changed = bool(fields.keys() & {"roles", "locations", "sources"})
 
     new_status = fields.pop("status", None)
     if new_status is not None:
@@ -740,7 +743,28 @@ def update_campaign(
 
     db.commit()
     db.refresh(campaign)
+    if campaign.status == models.CampaignStatus.active and (not was_active or search_changed):
+        _queue_campaign_search(campaign)
     return campaign
+
+
+def _queue_campaign_search(campaign: models.Campaign) -> None:
+    """Search for this campaign's own titles now, not at the next scheduled pass. The id
+    carries the titles/locations, so editing them right after starting still searches again."""
+    plan = "|".join(sorted(campaign.roles or []) + sorted(campaign.locations or []))
+    key = hashlib.sha1(plan.encode()).hexdigest()[:8]
+    job_id = f"campaign-search-{campaign.id}-{key}-{int(time.time() // 300)}"
+    try:
+        get_queue(BACKGROUND_QUEUE).enqueue(
+            campaign_search_task, job_id=job_id, unique=True,
+            job_timeout=DISCOVERY_TIMEOUT_SECONDS, kwargs={"campaign_id": campaign.id},
+        )
+    except DuplicateJobError:
+        pass
+    except Exception as exc:
+        # The campaign is saved either way; the daily refresh searches it if this missed.
+        logging.getLogger(__name__).warning(
+            "campaign search enqueue failed for %s: %s", campaign.id, type(exc).__name__)
 
 
 @app.delete("/campaigns/{campaign_id}", response_model=schemas.CampaignOut)

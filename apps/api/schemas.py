@@ -482,6 +482,7 @@ class CampaignBase(BaseModel):
     min_match_score: float = Field(default=0.7, ge=0.0, le=1.0)
     daily_cap: int = Field(default=10, ge=1, le=200)
     auto_submit: bool = False   # True = skip the optional human review step
+    include_older_postings: bool = False  # True = also postings past campaigns.MAX_POSTING_AGE_DAYS
     tailoring_notes: Optional[str] = None  # user instructions to the tailor, never a source of facts
 
 
@@ -502,6 +503,7 @@ class CampaignUpdate(BaseModel):
     min_match_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     daily_cap: Optional[int] = Field(default=None, ge=1, le=200)
     auto_submit: Optional[bool] = None
+    include_older_postings: Optional[bool] = None
     tailoring_notes: Optional[str] = None
 
 

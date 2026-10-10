@@ -21,6 +21,7 @@ from workers.jobs import (
     discover_jobs_task,
     embed_backlog_task,
     get_redis_connection,
+    refresh_campaign_searches_task,
     sweep_campaigns_task,
     sweep_form_plans_task,
 )
@@ -44,6 +45,8 @@ def start_scheduler() -> Scheduler:
         # Failed discovery, queue backlog, slow stage -> one email to the owner per kind per hour.
         check_and_alert_task: 15 * 60,
         canary_task: DIGEST_INTERVAL_SECONDS,
+        # Each active campaign's own titles, searched again daily (they start on activation).
+        refresh_campaign_searches_task: DIGEST_INTERVAL_SECONDS,
     }
     now = datetime.utcnow()
     digest_at = now.replace(hour=0, minute=5, second=0, microsecond=0)
@@ -55,7 +58,8 @@ def start_scheduler() -> Scheduler:
         if job.func_name in names:
             scheduler.cancel(job)
 
-    background = {discover_jobs_task, embed_backlog_task, sweep_form_plans_task, check_and_alert_task, canary_task}
+    background = {discover_jobs_task, embed_backlog_task, sweep_form_plans_task, check_and_alert_task, canary_task,
+                  refresh_campaign_searches_task}
     for func, interval in recurring.items():
         scheduler.schedule(
             scheduled_time=first_run.get(func, now),
@@ -63,7 +67,7 @@ def start_scheduler() -> Scheduler:
             interval=interval,
             repeat=None,  # repeat forever
             queue_name=BACKGROUND_QUEUE if func in background else "default",
-            timeout=DISCOVERY_TIMEOUT_SECONDS if func is discover_jobs_task else None,
+            timeout=DISCOVERY_TIMEOUT_SECONDS if func in (discover_jobs_task, refresh_campaign_searches_task) else None,
         )
     return scheduler
 
