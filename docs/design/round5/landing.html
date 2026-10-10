@@ -1,0 +1,163 @@
+<!doctype html><meta charset="utf-8"><style>@font-face{font-family:G;font-weight:400;src:url(../fonts/geist-sans-latin-400-normal.woff2)}@font-face{font-family:G;font-weight:500;src:url(../fonts/geist-sans-latin-500-normal.woff2)}@font-face{font-family:G;font-weight:600;src:url(../fonts/geist-sans-latin-600-normal.woff2)}@font-face{font-family:G;font-weight:700;src:url(../fonts/geist-sans-latin-700-normal.woff2)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:G,system-ui,sans-serif;-webkit-font-smoothing:antialiased;background:#cfcfcb;padding:56px 64px;color:#111}
+.i{flex:none;display:inline-block;vertical-align:middle}
+.bh{font-size:46px;font-weight:600;letter-spacing:-.035em}.bp{font-size:19px;color:#3f3f3b;margin-top:8px;max-width:1100px;line-height:1.5}
+.lab{font-size:15px;font-weight:600;color:#3a3a36;margin:36px 0 14px}.lab span{font-weight:400;color:#6a6a65;margin-left:8px}
+
+body{width:2000px}
+.row{display:flex;gap:44px;align-items:flex-start}
+.site{width:1440px;flex:none;border-radius:14px;overflow:hidden;background:#fbfaf8;box-shadow:0 40px 80px -40px rgb(0 0 0/.5)}
+/* ---------- dark hero ---------- */
+.hero{position:relative;background:#0c0c0b;color:#f2f1ee;overflow:hidden;padding-bottom:0}
+.hero:before{content:"";position:absolute;inset:0;background:radial-gradient(900px 520px at 50% -8%,rgb(255 197 61/.22),transparent 62%),radial-gradient(700px 500px at 88% 72%,rgb(255 197 61/.07),transparent 60%)}
+.hero:after{content:"";position:absolute;inset:0;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='.5'/></svg>");opacity:.07;mix-blend-mode:overlay;pointer-events:none}
+.grid{position:absolute;inset:0;background-image:linear-gradient(rgb(255 255 255/.035) 1px,transparent 1px),linear-gradient(90deg,rgb(255 255 255/.035) 1px,transparent 1px);background-size:72px 72px;mask-image:radial-gradient(800px 500px at 50% 20%,#000,transparent 75%)}
+.nav{position:relative;z-index:2;display:flex;align-items:center;height:72px;padding:0 40px;gap:30px;font-size:15px;color:#b9b7b1}
+.nav .b{display:flex;align-items:center;gap:10px;font-weight:600;font-size:18px;color:#f2f1ee;margin-right:auto;letter-spacing:-.01em}
+.nav .pill{display:flex;gap:4px;background:rgb(255 255 255/.04);border:1px solid rgb(255 255 255/.08);border-radius:999px;padding:4px}
+.nav .pill span{padding:7px 14px;border-radius:999px}
+.btn{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 18px;border-radius:10px;font:600 15px/1 G,sans-serif;white-space:nowrap}
+.btn.gold{background:#ffc53d;color:#16140f;box-shadow:inset 0 1px 0 rgb(255 255 255/.45),0 8px 24px -8px rgb(255 197 61/.55)}
+.btn.glass{background:rgb(255 255 255/.06);color:#f2f1ee;border:1px solid rgb(255 255 255/.12);box-shadow:inset 0 1px 0 rgb(255 255 255/.06)}
+.btn.lg{height:52px;padding:0 24px;font-size:16px;border-radius:12px}
+.btn.ink{background:#141412;color:#fff;box-shadow:inset 0 1px 0 rgb(255 255 255/.12)}
+.tag{display:inline-flex;align-items:center;gap:8px;border:1px solid rgb(255 255 255/.12);background:rgb(255 255 255/.04);border-radius:999px;padding:6px 14px 6px 8px;font-size:14px;color:#cfcdc7}
+.tag b{background:#ffc53d;color:#16140f;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:600}
+.h-in{position:relative;z-index:2;text-align:center;padding:72px 0 0}
+.h-in h1{font-size:96px;line-height:.98;letter-spacing:-.05em;font-weight:600;margin:26px auto 0;max-width:1100px;background:linear-gradient(180deg,#fff 30%,#c9c6bd);-webkit-background-clip:text;color:transparent}
+.h-in p{font-size:21px;line-height:1.5;color:#a9a7a0;max-width:640px;margin:24px auto 0}
+.h-in .cta{display:flex;gap:12px;justify-content:center;margin-top:34px}
+.h-in .fine{font-size:14px;color:#86847d;margin-top:16px}
+/* product window */
+.stage{position:relative;z-index:2;margin:64px auto 0;width:1220px;height:520px}.stage:after{content:'';position:absolute;left:0;right:0;bottom:0;height:140px;background:linear-gradient(transparent,#0c0c0b);z-index:4}
+.win{position:absolute;left:60px;right:60px;top:0;height:560px;border-radius:16px 16px 0 0;background:#141413;border:1px solid rgb(255 255 255/.1);border-bottom:0;box-shadow:inset 0 1px 0 rgb(255 255 255/.08),0 -20px 80px -30px rgb(255 197 61/.28);overflow:hidden;display:grid;grid-template-columns:220px 1fr}
+.wside{border-right:1px solid rgb(255 255 255/.07);padding:16px 12px;font-size:13.5px;color:#a3a19a}
+.wside .ws{display:flex;align-items:center;gap:8px;color:#efede8;font-weight:600;padding:4px 8px 14px}
+.wside .sr{display:flex;align-items:center;gap:8px;border:1px solid rgb(255 255 255/.08);border-radius:8px;padding:7px 9px;margin-bottom:12px;color:#77756f}
+.wside .sr kbd{margin-left:auto;font:500 11px G;border:1px solid rgb(255 255 255/.12);border-radius:4px;padding:1px 5px}
+.wside .n{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:7px}
+.wside .n.on{background:rgb(255 255 255/.06);color:#efede8}
+.wside .n em{margin-left:auto;font-style:normal;font-size:12px}
+.wside .n em.g{background:#ffc53d;color:#16140f;border-radius:999px;padding:0 7px;font-weight:600}
+.wmain{padding:22px 26px;color:#efede8}
+.wmain .hd{display:flex;align-items:center;gap:10px}
+.wmain h3{font-size:20px;font-weight:600;letter-spacing:-.02em}
+.seg{display:flex;gap:2px;margin-left:auto;background:rgb(255 255 255/.04);border:1px solid rgb(255 255 255/.07);border-radius:8px;padding:2px;font-size:12.5px;color:#9a9891}
+.seg span{padding:4px 10px;border-radius:6px}.seg .on{background:rgb(255 255 255/.08);color:#efede8}
+.say{margin-top:16px;font-size:15px;color:#bcbab3;line-height:1.5;display:flex;gap:10px;align-items:flex-start}
+.say b{color:#efede8;font-weight:500}
+.say .av{width:24px;height:24px;border-radius:7px;background:#232321;display:flex;align-items:center;justify-content:center;flex:none}
+.rows{margin-top:18px;border:1px solid rgb(255 255 255/.07);border-radius:10px;overflow:hidden}
+.r{display:flex;align-items:center;gap:12px;padding:12px 14px;border-top:1px solid rgb(255 255 255/.06);font-size:14px}
+.r:first-child{border-top:0}
+.r .t{flex:1;min-width:0}.r .t b{font-weight:500;color:#efede8}.r .t span{color:#8a8881}
+.r time{color:#77756f;font-size:12.5px;font-variant-numeric:tabular-nums}
+.r .st{font-size:12px;border-radius:6px;padding:2px 8px;border:1px solid rgb(255 255 255/.1);color:#bcbab3}
+.r .st.y{background:rgb(255 197 61/.14);border-color:rgb(255 197 61/.35);color:#ffd77a}
+.r .st.ok{color:#7fe0b0;border-color:rgb(61 214 140/.3);background:rgb(61 214 140/.08)}
+.dot{width:8px;height:8px;border-radius:50%;background:#ffc53d;flex:none;box-shadow:0 0 0 3px rgb(255 197 61/.18)}
+.ok{color:#3dd68c}
+/* floating cards */
+.fc{position:absolute;z-index:3;border-radius:14px;background:rgb(26 26 24/.82);backdrop-filter:blur(14px);border:1px solid rgb(255 255 255/.12);box-shadow:inset 0 1px 0 rgb(255 255 255/.08),0 30px 60px -20px rgb(0 0 0/.7);color:#efede8;padding:16px 18px;font-size:14px;line-height:1.45}
+.fc small{display:block;color:#8a8881;font-size:12.5px;margin-bottom:6px}
+.chip{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;background:#ffc53d;color:#16140f;font-size:11.5px;font-weight:700;margin-left:4px}
+.strike{text-decoration:line-through;text-decoration-color:rgb(255 255 255/.35);color:#77756f}
+/* light sections */
+.light{background:#fbfaf8;color:#141412}
+.works{padding:40px 72px;display:flex;align-items:center;gap:40px;justify-content:center;color:#77756f;font-size:15px;border-bottom:1px solid #ecebe7}
+.works b{color:#2d2c28;font-weight:600;font-size:18px;letter-spacing:-.01em}
+section{padding:110px 72px}
+.sh{max-width:760px}
+.sh h2{font-size:56px;line-height:1.02;letter-spacing:-.045em;font-weight:600}
+.sh p{font-size:19px;line-height:1.55;color:#62615b;margin-top:16px}
+.bento{display:grid;grid-template-columns:repeat(6,1fr);grid-auto-rows:300px;gap:16px;margin-top:56px}
+.tile{background:#fff;border:1px solid #ebeae6;border-radius:20px;padding:26px;position:relative;overflow:hidden;box-shadow:0 1px 0 rgb(0 0 0/.02)}
+.tile h4{font-size:19px;font-weight:600;letter-spacing:-.02em}.tile p{font-size:15px;color:#6b6a64;margin-top:6px;line-height:1.5;max-width:420px}
+.s4{grid-column:span 4}.s2{grid-column:span 2}.s3{grid-column:span 3}.r2{grid-row:span 2}
+.mini{position:absolute;left:26px;right:26px;bottom:26px;border:1px solid #ebeae6;border-radius:14px;background:#fbfaf8;padding:16px 18px;font-size:14.5px;line-height:1.5}
+.skill{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;font-size:13.5px;font-weight:500;margin:0 6px 8px 0;border:1px solid #e3e2dd;background:#fff}
+.skill.m{color:#9b9a94;border-style:dashed}
+.meter{height:8px;border-radius:4px;background:#efeee9;overflow:hidden;margin-top:8px}.meter i{display:block;height:100%;background:#141412;width:70%}
+.tog{width:44px;height:26px;border-radius:13px;background:#141412;position:relative;flex:none}.tog:after{content:"";position:absolute;right:3px;top:3px;width:20px;height:20px;border-radius:50%;background:#fff}
+.never{background:#0c0c0b;color:#f2f1ee;position:relative;overflow:hidden}
+.never:before{content:"";position:absolute;inset:0;background:radial-gradient(700px 400px at 15% 0%,rgb(255 197 61/.12),transparent 60%)}
+.never .sh p{color:#9a9891}
+.nv{position:relative;display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:52px}
+.nv div{border:1px solid rgb(255 255 255/.09);border-radius:18px;padding:24px;background:rgb(255 255 255/.025)}
+.nv b{display:block;font-size:18px;font-weight:600;margin-top:16px;letter-spacing:-.01em}.nv span{display:block;color:#9a9891;font-size:15px;margin-top:6px;line-height:1.5}
+.nv .x{width:36px;height:36px;border-radius:10px;background:rgb(255 255 255/.06);display:flex;align-items:center;justify-content:center;color:#ffc53d}
+.final{text-align:center;padding:120px 72px;position:relative;overflow:hidden}
+.final:before{content:"";position:absolute;inset:0;background:radial-gradient(600px 300px at 50% 100%,rgb(255 197 61/.28),transparent 70%)}
+.final h2{position:relative;font-size:72px;letter-spacing:-.05em;line-height:1;font-weight:600}
+.final p{position:relative;font-size:19px;color:#62615b;margin-top:18px}
+.foot{display:flex;gap:28px;padding:28px 72px;border-top:1px solid #ecebe7;font-size:14px;color:#77756f}
+/* phone */
+.phone{width:400px;flex:none;border-radius:50px;border:11px solid #0a0a09;overflow:hidden;background:#0c0c0b;box-shadow:0 40px 80px -40px rgb(0 0 0/.6);position:relative}
+</style><body><div class="bh">Landing page, round 5</div><p class="bp">Built to the standard of the best product sites: the product itself is the hero, with real depth and light; huge tight type; a feature grid where every tile is a working piece of the product. Ink and marigold, Geist (the font your app already uses). Sample data.</p><div class="lab">Desktop 1440 px and phone</div><div class="row"><div class="site"><div class="hero"><div class="grid"></div>
+<div class="nav"><span class="b"><svg width="28" height="28" viewBox="0 0 256 256" aria-hidden="true"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="#f2f1ee" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="19" fill="#ffc53d"/></svg>ApplyScout</span><div class="pill"><span>Product</span><span>How it works</span><span>Safety</span></div><span>Sign in</span><span class="btn gold" style="height:38px;font-size:14px">Get started</span></div>
+<div class="h-in"><span class="tag"><b>New</b>Truth check on every line Maggie writes</span>
+<h1>Every application tailored. Every line true.</h1>
+<p>ApplyScout finds jobs that fit you, rewrites your resume for each one from facts you confirmed, and fills the form in your own browser. You stay in charge of what gets sent.</p>
+<div class="cta"><span class="btn gold lg"><svg class="i" style="" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12" />
+  <path d="m17 8-5-5-5 5" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></svg>Upload your resume</span><span class="btn glass lg">See how it works</span></div>
+<p class="fine">PDF or DOCX. You check every fact before anything is used.</p></div>
+<div class="stage"><div class="win"><div class="wside"><div class="ws"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="#efede8" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="19" fill="#ffc53d"/></svg>Aarav’s search</div><div class="sr"><svg class="i" style="" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34" />
+  <circle cx="11" cy="11" r="8" /></svg>Search<kbd>⌘K</kbd></div>
+<div class="n on"><svg class="i" style="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+  <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>Today</div><div class="n"><svg class="i" style="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+  <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>Review<em class="g">5</em></div><div class="n"><svg class="i" style="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12h.01" />
+  <path d="M16 6V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+  <path d="M22 13a18.15 18.15 0 0 1-20 0" />
+  <rect width="20" height="14" x="2" y="6" rx="2" /></svg>Applications<em>42</em></div><div class="n"><svg class="i" style="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" />
+  <path d="M20 2v4" />
+  <path d="M22 4h-4" />
+  <circle cx="4" cy="20" r="2" /></svg>Matches<em>14</em></div><div class="n"><svg class="i" style="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="19" r="3" />
+  <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15" />
+  <circle cx="18" cy="5" r="3" /></svg>Campaign</div><div class="n"><svg class="i" style="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" />
+  <circle cx="12" cy="10" r="3" />
+  <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662" /></svg>Profile</div></div>
+<div class="wmain"><div class="hd"><h3>Today</h3><div class="seg"><span class="on">All</span><span>Needs you</span><span>Ready</span><span>Sent</span></div></div>
+<div class="say"><span class="av"><svg width="14" height="14" viewBox="0 0 256 256" aria-hidden="true"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="#efede8" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="19" fill="#ffc53d"/></svg></span><span><b>Maggie:</b> 7 sent today and 14 new roles found. 2 need your answer before I can finish them.</span></div>
+<div class="rows"><div class="r"><span class="dot"></span><div class="t"><b>Growth Product Manager</b> <span>Northwind, Singapore</span></div><span class="st y">Needs answer</span><time>9:58</time></div><div class="r"><span class="dot"></span><div class="t"><b>Senior Product Manager</b> <span>Harbor Cloud, Bengaluru</span></div><span class="st y">Sign-in page</span><time>9:41</time></div><div class="r"><svg class="i" style="color:#bcbab3" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" />
+  <path d="m21.854 2.147-10.94 10.939" /></svg><div class="t"><b>Product Manager</b> <span>Lumen Pay, Bengaluru</span></div><span class="st ">Ready to send</span><time>9:30</time></div><div class="r"><svg class="i" style="color:#3dd68c" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" />
+  <path d="m16 9-5.5 5.5L8 12" /></svg><div class="t"><b>Associate PM</b> <span>Brightpath, Remote India</span></div><span class="st ok">Submitted</span><time>9:12</time></div><div class="r"><svg class="i" style="color:#3dd68c" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" />
+  <path d="m16 9-5.5 5.5L8 12" /></svg><div class="t"><b>Product Analyst</b> <span>Kite Labs, Pune</span></div><span class="st ok">Submitted</span><time>8:47</time></div><div class="r"><svg class="i" style="color:#3dd68c" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" />
+  <path d="m16 9-5.5 5.5L8 12" /></svg><div class="t"><b>APM, Payments</b> <span>Orbit Finance, Mumbai</span></div><span class="st ok">Submitted</span><time>8:20</time></div></div></div></div>
+<div class="fc" style="left:-64px;top:300px;width:330px"><small>Tailored for Lumen Pay</small><div class="strike">Responsible for various payment initiatives.</div><div style="margin-top:6px">Led the checkout redesign that cut payment drop-off by 18% across 2 markets.<span class="chip">F1</span><span class="chip">F2</span></div><div style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px" class="ok"><svg class="i" style="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+  <path d="m9 12 2 2 4-4" /></svg>Truth check passed, 6 of 6 lines</div></div>
+<div class="fc" style="right:-40px;top:290px;width:290px"><small>Not added</small><div style="display:flex;gap:10px"><span class="dot" style="margin-top:6px"></span><span><b style="font-weight:600">Kubernetes</b><br><span style="color:#a3a19a">The job asks for it, but it isn’t in your confirmed facts.</span></span></div></div>
+<div class="fc" style="right:-56px;top:-92px;width:270px;padding:12px 14px"><div style="display:flex;align-items:center;gap:10px"><svg class="i" style="color:#ffc53d" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.39 4.39a1 1 0 0 0 1.68-.474 2.5 2.5 0 1 1 3.014 3.015 1 1 0 0 0-.474 1.68l1.683 1.682a2.414 2.414 0 0 1 0 3.414L19.61 15.39a1 1 0 0 1-1.68-.474 2.5 2.5 0 1 0-3.014 3.015 1 1 0 0 1 .474 1.68l-1.683 1.682a2.414 2.414 0 0 1-3.414 0L8.61 19.61a1 1 0 0 0-1.68.474 2.5 2.5 0 1 1-3.014-3.015 1 1 0 0 0 .474-1.68l-1.683-1.682a2.414 2.414 0 0 1 0-3.414L4.39 8.61a1 1 0 0 1 1.68.474 2.5 2.5 0 1 0 3.014-3.015 1 1 0 0 1-.474-1.68l1.683-1.682a2.414 2.414 0 0 1 3.414 0z" /></svg><span><b style="font-weight:600">Form filled</b><br><span style="color:#a3a19a;font-size:13px">Greenhouse, 14 fields. You press Submit.</span></span></div></div>
+</div></div><div class="works light">Fills application forms on <b>Greenhouse</b><b>Lever</b><b>Ashby</b>and applies by <b>email</b></div><section class="light"><div class="sh"><h2>Built to be trusted with your name.</h2><p>Every part of ApplyScout shows its work, so you never have to wonder what was sent for you.</p></div>
+<div class="bento">
+<div class="tile s4"><h4>Tailored from your facts, line by line</h4><p>Each line in your resume points to the confirmed fact behind it. Lines without a source never leave.</p>
+<div class="mini" style="display:grid;grid-template-columns:1fr 1fr;gap:18px"><div><div class="strike" style="color:#9b9a94;text-decoration-color:#c8322a">Responsible for various payment initiatives.</div><div style="margin-top:8px;font-weight:500">Led the checkout redesign that cut payment drop-off by 18% across 2 markets.<span class="chip">F1</span><span class="chip">F2</span></div></div>
+<div style="border-left:1px solid #ebeae6;padding-left:18px;font-size:13.5px;color:#55544e"><div><span class="chip" style="margin:0 6px 0 0">F1</span>Payments team, Q2 2025. Redesigned checkout.</div><div style="margin-top:8px"><span class="chip" style="margin:0 6px 0 0">F2</span>Drop-off fell from 31% to 25%.</div></div></div></div>
+<div class="tile s2"><h4>Matches you can read</h4><p>Not a score. A reason.</p><div class="mini"><div style="display:flex;justify-content:space-between;font-weight:600"><span>7 of 9 required skills</span><span>82%</span></div><div class="meter"><i style="width:78%"></i></div><div style="margin-top:14px"><span class="skill">SQL</span><span class="skill">A/B testing</span><span class="skill">Payments</span><span class="skill m">Kubernetes</span></div></div></div>
+<div class="tile s2"><h4>Your browser, your login</h4><p>Forms fill where you’re already signed in. At a sign-in page, Maggie stops.</p><div class="mini" style="padding:0;overflow:hidden"><div style="height:30px;background:#f1f0ec;display:flex;align-items:center;gap:6px;padding:0 12px"><i style="width:9px;height:9px;border-radius:50%;background:#e2e1dc"></i><i style="width:9px;height:9px;border-radius:50%;background:#e2e1dc"></i><span style="margin-left:10px;font-size:12px;color:#8a8984">boards.greenhouse.io</span></div><div style="padding:14px 16px;font-size:13.5px"><div style="display:flex;justify-content:space-between"><span>First name</span><b style="font-weight:500">Aarav</b></div><div style="display:flex;justify-content:space-between;margin-top:6px"><span>Resume</span><b style="font-weight:500">Tailored, attached</b></div><div style="display:flex;justify-content:space-between;margin-top:6px"><span>Gender identity</span><span style="color:#9b9a94">Left for you</span></div></div></div></div>
+<div class="tile s2"><h4>One question at a time</h4><p>When only you can answer, Maggie asks once and remembers.</p><div class="mini"><div style="display:flex;gap:10px"><span class="dot" style="margin-top:7px"></span><span>Are you allowed to work in Singapore without sponsorship?</span></div><div style="display:flex;gap:8px;margin-top:12px"><span class="skill" style="margin:0">Yes</span><span class="skill" style="margin:0;background:#141412;color:#fff;border-color:#141412">No</span><span class="skill" style="margin:0">Type an answer</span></div></div></div>
+<div class="tile s2"><h4>Limits you set</h4><p>A daily cap, and a pause that works at once.</p><div class="mini"><div style="display:flex;justify-content:space-between;align-items:center"><span>Applications per day</span><b style="font-size:20px">10</b></div><div class="meter"><i style="width:50%"></i></div><div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px"><span>Maggie is applying</span><span class="tog"></span></div></div></div>
+</div></section><section class="never"><div class="sh" style="position:relative"><h2>What Maggie will never do.</h2><p>The rules are in the product, not in the small print.</p></div>
+<div class="nv"><div><span class="x"><svg class="i" style="" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18" />
+  <path d="m6 6 12 12" /></svg></span><b>Invent experience</b><span>Every line traces to a fact you confirmed.</span></div>
+<div><span class="x"><svg class="i" style="" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+  <path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg></span><b>Type your password</b><span>At a sign-in page she stops and hands the form to you.</span></div>
+<div><span class="x"><svg class="i" style="" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" />
+  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+  <path d="M12 17h.01" /></svg></span><b>Guess about you</b><span>Work rights, demographics and essays come from you.</span></div>
+<div><span class="x"><svg class="i" style="" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 14 4-4" />
+  <path d="M3.34 19a10 10 0 1 1 17.32 0" /></svg></span><b>Exceed your limit</b><span>Your daily cap is a hard stop, every day.</span></div></div></section><div class="final light"><h2>Start with your resume.</h2><p>See your facts before anything is sent.</p><div style="position:relative;margin-top:30px;display:flex;gap:12px;justify-content:center"><span class="btn ink lg"><svg class="i" style="" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12" />
+  <path d="m17 8-5-5-5 5" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></svg>Upload your resume</span><span class="btn lg" style="border:1px solid #dcdbd6;background:#fff">How it works</span></div></div>
+<div class="foot light"><span style="display:flex;align-items:center;gap:8px;color:#141412;font-weight:600"><svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="#141412" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="19" fill="#ffc53d"/></svg>ApplyScout</span><span style="margin-left:auto">Privacy</span><span>Terms</span><span>Contact</span></div></div><div class="phone"><div class="hero" style="padding-bottom:30px"><div class="grid"></div><div style="height:34px"></div>
+<div class="nav" style="padding:0 20px;height:56px"><span class="b" style="font-size:17px"><svg width="26" height="26" viewBox="0 0 256 256" aria-hidden="true"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="#f2f1ee" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="19" fill="#ffc53d"/></svg>ApplyScout</span><svg class="i" style="color:#efede8" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.636" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16" />
+  <path d="M4 12h16" />
+  <path d="M4 19h16" /></svg></div>
+<div class="h-in" style="padding:34px 20px 0"><span class="tag" style="font-size:12.5px"><b>New</b>Truth check on every line</span><h1 style="font-size:50px;margin-top:20px">Every application tailored. Every line true.</h1><p style="font-size:17px">Jobs that fit you, a resume rewritten for each from facts you confirmed, and forms filled in your browser.</p>
+<div class="cta" style="flex-direction:column;padding:0 4px"><span class="btn gold lg" style="justify-content:center"><svg class="i" style="" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12" />
+  <path d="m17 8-5-5-5 5" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></svg>Upload your resume</span><span class="btn glass lg" style="justify-content:center">See how it works</span></div></div>
+<div style="position:relative;z-index:2;margin:34px 16px 0"><div class="fc" style="position:relative"><small>Tailored for Lumen Pay</small><div class="strike">Responsible for various payment initiatives.</div><div style="margin-top:6px">Led the checkout redesign that cut payment drop-off by 18% across 2 markets.<span class="chip">F1</span><span class="chip">F2</span></div><div style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px" class="ok"><svg class="i" style="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+  <path d="m9 12 2 2 4-4" /></svg>Truth check passed</div></div>
+<div class="fc" style="position:relative;margin-top:12px"><div style="display:flex;gap:10px"><span class="dot" style="margin-top:6px"></span><span><b style="font-weight:600">Not added: Kubernetes</b><br><span style="color:#a3a19a">It isn’t in your confirmed facts.</span></span></div></div></div></div></div></div></body>
