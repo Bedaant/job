@@ -80,3 +80,19 @@ Runner-up: Forest + lime, which is calm and money-like. Its weakness is that the
 | `p-*.html` | Source pages; open in a browser |
 
 Prices on the landing page (₹0 / ₹299 / ₹799) are placeholders, not a pricing decision. Nothing here has been tested with users or on a budget Android phone.
+
+## Landing v2 (after reviewing the three reference mock-ups)
+`landing-v2.html` and `shots/v2-*.png`. It keeps what worked in the references:
+- a left-aligned headline with the product on the right
+- an "Upload your resume" button instead of a generic "Start free"
+- a before/after resume
+- cards for each career stage
+- a closing call-to-action band
+
+It removes what would hurt:
+- logo walls of employers (Google, Microsoft, Amazon) that imply endorsement
+- made-up stats and testimonials
+- rainbow gradients and 3D icons
+- decorative photos that are heavy on budget phones
+
+The before/after section now also shows *proof*: fact tags on each line, and one line removed because it isn't backed by the user's facts.
