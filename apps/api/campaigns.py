@@ -154,8 +154,9 @@ def _in_bounds(query, campaign: models.Campaign):
     # query (workers/jobs.py) go through this same helper, so excluding it
     # here covers all of them in one place.
     query = query.filter(models.Job.delisted_at.is_(None))
-    cutoff = datetime.utcnow() - timedelta(days=MAX_POSTING_AGE_DAYS)
-    query = query.filter(or_(models.Job.posted_at.is_(None), models.Job.posted_at >= cutoff))
+    if not campaign.include_older_postings:
+        cutoff = datetime.utcnow() - timedelta(days=MAX_POSTING_AGE_DAYS)
+        query = query.filter(or_(models.Job.posted_at.is_(None), models.Job.posted_at >= cutoff))
     if campaign.remote_only:
         query = query.filter(models.Job.remote.is_(True))
     if campaign.sources:

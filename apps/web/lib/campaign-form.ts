@@ -11,6 +11,7 @@ export interface CampaignForm {
   min_match_score: number;
   daily_cap: number;
   auto_submit: boolean;
+  include_older_postings: boolean;
   tailoring_notes: string;
 }
 
@@ -22,6 +23,7 @@ export function formFromCampaign(c: Campaign): CampaignForm {
     min_match_score: c.min_match_score,
     daily_cap: c.daily_cap,
     auto_submit: c.auto_submit,
+    include_older_postings: c.include_older_postings ?? false,
     tailoring_notes: c.tailoring_notes ?? "",
   };
 }

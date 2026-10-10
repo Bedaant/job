@@ -67,7 +67,7 @@ def start_scheduler() -> Scheduler:
             interval=interval,
             repeat=None,  # repeat forever
             queue_name=BACKGROUND_QUEUE if func in background else "default",
-            timeout=DISCOVERY_TIMEOUT_SECONDS if func is discover_jobs_task else None,
+            timeout=DISCOVERY_TIMEOUT_SECONDS if func in (discover_jobs_task, refresh_campaign_searches_task) else None,
         )
     return scheduler
 

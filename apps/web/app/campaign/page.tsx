@@ -249,6 +249,12 @@ function SettingsForm({ campaign }: { campaign: Campaign }) {
         onChange={(remote_only) => set({ remote_only })}
         description={form.remote_only ? "On: only remote roles." : "Off: remote and on-site roles in your locations."}
       />
+      <Switch
+        label="Include older postings"
+        checked={form.include_older_postings}
+        onChange={(include_older_postings) => set({ include_older_postings })}
+        description={form.include_older_postings ? "On: postings of any age." : "Off: skips postings older than 60 days — they are usually filled."}
+      />
       <DailyCapStepper value={form.daily_cap} onChange={(daily_cap) => set({ daily_cap })} error={errors.daily_cap} />
       <Field
         label="Minimum match score (%)"

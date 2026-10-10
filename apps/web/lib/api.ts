@@ -195,6 +195,7 @@ export interface CampaignCreate {
   min_match_score: number; // 0..1, default 0.7
   daily_cap: number; // default 10
   auto_submit: boolean; // default false
+  include_older_postings?: boolean; // default false: postings over 60 days old are skipped
   tailoring_notes?: string;
 }
 

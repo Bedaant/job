@@ -14,6 +14,7 @@ const campaign: Campaign = {
   min_match_score: 0.7,
   daily_cap: 10,
   auto_submit: false,
+  include_older_postings: false,
   tailoring_notes: undefined,
   created_at: "2026-09-27T00:00:00Z",
   updated_at: "2026-09-27T00:00:00Z",
@@ -29,8 +30,16 @@ describe("formFromCampaign", () => {
       min_match_score: 0.7,
       daily_cap: 10,
       auto_submit: false,
+      include_older_postings: false,
       tailoring_notes: "",
     });
+  });
+});
+
+describe("older postings switch", () => {
+  it("is sent only when the user flips it", () => {
+    const base = formFromCampaign(campaign);
+    expect(buildCampaignPatch(base, { ...base, include_older_postings: true })).toEqual({ include_older_postings: true });
   });
 });
 

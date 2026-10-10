@@ -159,13 +159,28 @@ def test_a_queue_outage_never_fails_starting_the_campaign():
     assert r.status_code == 200 and r.json()["status"] == "active"
 
 
-def test_every_active_campaign_is_searched_daily(db_session):
-    p = _profile(db_session)
-    active = _campaign(db_session, p, roles=["Designer"])
-    _campaign(db_session, p, name="paused", roles=["CMO"], status=models.CampaignStatus.paused)
+def test_the_daily_refresh_is_one_union_search_deduplicated_across_users(db_session):
+    me, you = _profile(db_session, "me@x.com"), _profile(db_session, "you@x.com")
+    _campaign(db_session, me, roles=["Brand Head"], locations=["Mumbai"], remote_only=False)
+    _campaign(db_session, you, roles=["brand head", "CMO"], locations=["Mumbai"], remote_only=False)
+    _campaign(db_session, you, name="paused", roles=["Designer"], locations=["Pune"],
+              status=models.CampaignStatus.paused)
     with _offline(db_session) as s:
-        assert wj.refresh_campaign_searches_task() == {"enqueued": 1}
-    assert s["get_queue"].return_value.enqueue.call_args.kwargs["kwargs"] == {"campaign_id": active.id}
+        result = wj.refresh_campaign_searches_task()
+    pairs = [c.args for c in s["fetch_linkedin_jobs"].call_args_list]
+    assert pairs == [("Brand Head", "Mumbai"), ("CMO", "Mumbai")]
+    assert sorted(s["fetch_linkedin_posts"].call_args.args[0]) == ["hiring Brand Head Mumbai",
+                                                                  "hiring CMO Mumbai"]
+    assert result["pairs"] == 2
+
+
+def test_one_user_cannot_take_more_than_their_share_of_the_union(db_session):
+    p = _profile(db_session)
+    _campaign(db_session, p, name="a", roles=["A1", "A2", "A3"], locations=["X", "Y"], remote_only=False)
+    _campaign(db_session, p, name="b", roles=["B1", "B2", "B3"], locations=["X", "Y"], remote_only=False)
+    with _offline(db_session) as s:
+        wj.refresh_campaign_searches_task()
+    assert s["fetch_linkedin_jobs"].call_count == wj.CAMPAIGN_SEARCH_PAIRS_PER_USER
 
 
 # --- freshness --------------------------------------------------------------------------
@@ -199,3 +214,18 @@ def test_campaigns_skip_postings_older_than_the_age_limit(db_session):
     ids = {j.id for j in _in_bounds(db_session.query(models.Job), c)}
     assert ids == {fresh.id, unknown.id}
     assert old.id not in ids
+
+
+def test_a_campaign_can_opt_back_in_to_older_postings(db_session):
+    c = _campaign(db_session, _profile(db_session), roles=["Backend"], include_older_postings=True)
+    old = _job(db_session, 1, posted_at=datetime.utcnow() - timedelta(days=MAX_POSTING_AGE_DAYS + 30))
+    assert [j.id for j in _in_bounds(db_session.query(models.Job), c)] == [old.id]
+
+
+def test_the_older_postings_switch_is_editable_and_off_by_default():
+    client, _ = _client()
+    headers = _auth(client, "older@example.com")
+    cid = _start(client, headers)
+    assert client.get(f"/campaigns/{cid}", headers=headers).json()["include_older_postings"] is False
+    r = client.patch(f"/campaigns/{cid}", headers=headers, json={"include_older_postings": True})
+    assert r.status_code == 200 and r.json()["include_older_postings"] is True

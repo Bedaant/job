@@ -309,8 +309,7 @@ def _fetch_jobspy_source(keywords: list[str], locations: list[str]) -> tuple[lis
     return jobs, []
 
 
-def _fetch_linkedin_source(keywords: list[str], locations: list[str],
-                           rows: int | None = None) -> tuple[list[dict], list]:
+def _fetch_linkedin_source(keywords: list[str], locations: list[str]) -> tuple[list[dict], list]:
     """One Apify search per keyword per location (GAPS 3.1).
 
     The only source that reaches the companies GAPS 3.1 lists as having no
@@ -333,7 +332,7 @@ def _fetch_linkedin_source(keywords: list[str], locations: list[str],
             i += 1
             try:
                 jobs.extend(fetch_linkedin_jobs(keyword, location,
-                                                rows=rows or conn_config.LINKEDIN_JOB_ROWS))
+                                                rows=conn_config.LINKEDIN_JOB_ROWS))
             except Exception:
                 logger.warning("linkedin query failed for %r in %r", keyword, location)
     return jobs, []
@@ -617,33 +616,44 @@ def _campaign_allows(campaign, prefix: str) -> bool:
     return not campaign.sources or any(s.startswith(prefix) for s in campaign.sources)
 
 
-def campaign_search_task(campaign_id: str) -> dict:
-    """Search the search sources for ONE campaign's titles and locations, save what they
-    find, embed the new in-bounds jobs, then rebuild matches and run the campaign.
-    No transaction is open while any source is fetched."""
-    from campaigns import _in_bounds
+def _search_plan_parts(campaign) -> dict[str, list]:
+    """One campaign's (role, location) pairs per search source, honouring its source choices."""
+    roles, locations = campaign_search_plan(campaign)
+    pairs = [(r, l) for r in roles for l in locations]
+    return {
+        "linkedin": pairs if _campaign_allows(campaign, "linkedin") else [],
+        "linkedin_posts": ([f"hiring {r} {locations[0]}" for r in roles]
+                           if _campaign_allows(campaign, "linkedin_post") else []),
+        "jobspy": pairs if _campaign_allows(campaign, "jobspy") else [],
+    }
 
-    with session_scope() as db:
-        campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
-        if campaign is None or campaign.status != models.CampaignStatus.active:
-            return {"skipped": True, "reason": "campaign not active"}
-        roles, locations = campaign_search_plan(campaign)
-        allows = {p: _campaign_allows(campaign, p) for p in ("linkedin", "linkedin_post", "jobspy")}
-    if not roles:
-        return {"skipped": True, "reason": "campaign has no roles"}
 
-    token = f"campaign-{campaign_id}"
-    fetches = []
-    if allows["linkedin"]:
-        fetches.append(("linkedin", lambda: _fetch_linkedin_source(roles, locations, CAMPAIGN_SEARCH_ROWS)))
-    if allows["linkedin_post"]:
-        queries = [f"hiring {role} {locations[0]}" for role in roles]
-        fetches.append(("linkedin_posts", lambda: _fetch_linkedin_posts_source(queries)))
-    if allows["jobspy"]:
-        fetches.append(("jobspy", lambda: _fetch_jobspy_source(roles, locations)))
+def _fetch_pairs(fetch_one, pairs) -> tuple[list[dict], list]:
+    jobs: list[dict] = []
+    for i, (role, location) in enumerate(pairs):
+        _pace(i)
+        try:
+            jobs.extend(fetch_one(role, location))
+        except Exception:
+            logger.warning("search failed for %r in %r", role, location)
+    return jobs, []
 
+
+def _search_and_save(parts: dict[str, list], token: str) -> int:
+    """Fetch each search source for these pairs/queries and save it as its own unit.
+    No transaction is open during any fetch."""
+    fetches = {
+        "linkedin": lambda: _fetch_pairs(
+            lambda r, l: fetch_linkedin_jobs(r, l, rows=CAMPAIGN_SEARCH_ROWS), parts["linkedin"]),
+        "linkedin_posts": lambda: _fetch_linkedin_posts_source(parts["linkedin_posts"]),
+        "jobspy": lambda: _fetch_pairs(
+            lambda r, l: fetch_jobspy_jobs(r, sites=conn_config.JOBSPY_SITES, location=l),
+            parts["jobspy"]),
+    }
     inserted = 0
-    for source, fetch in fetches:
+    for source, fetch in fetches.items():
+        if not parts[source]:
+            continue
         jobs, _batches, run = _isolate(source, fetch)
         run.update(token=token, fetch_ms=run["duration_ms"])
         try:
@@ -652,6 +662,23 @@ def campaign_search_task(campaign_id: str) -> dict:
             raise
         except Exception:
             continue  # logged and recorded by _save_unit; the other sources still count
+    return inserted
+
+
+def campaign_search_task(campaign_id: str) -> dict:
+    """On activation: search for ONE campaign's titles and locations, save what is found, embed
+    the new in-bounds jobs, then rebuild matches and run the campaign."""
+    from campaigns import _in_bounds
+
+    with session_scope() as db:
+        campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
+        if campaign is None or campaign.status != models.CampaignStatus.active:
+            return {"skipped": True, "reason": "campaign not active"}
+        parts = _search_plan_parts(campaign)
+    if not any(parts.values()):
+        return {"skipped": True, "reason": "nothing to search"}
+
+    inserted = _search_and_save(parts, f"campaign-{campaign_id}")
 
     with session_scope() as db:
         campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
@@ -671,21 +698,34 @@ def campaign_search_task(campaign_id: str) -> dict:
     return {"campaign_id": campaign_id, "inserted": inserted, "embedded_candidates": len(wanted)}
 
 
+# A user's share of the daily union search, across all their campaigns (Apify bills per row).
+CAMPAIGN_SEARCH_PAIRS_PER_USER = CAMPAIGN_SEARCH_MAX_ROLES * CAMPAIGN_SEARCH_MAX_LOCATIONS
+
+
 def refresh_campaign_searches_task() -> dict:
-    """Scheduled daily: one search per active campaign, so its titles stay fresh."""
+    """Scheduled daily: ONE search over the union of every active campaign's titles and
+    locations, deduplicated across users and capped per user. The hourly campaign sweep and the
+    embedding backlog (campaign jobs first) take it from there."""
+    union: dict[str, dict] = {"linkedin": {}, "linkedin_posts": {}, "jobspy": {}}
     with session_scope() as db:
-        ids = [cid for (cid,) in db.query(models.Campaign.id).filter(
-            models.Campaign.status == models.CampaignStatus.active)]
-    day = datetime.utcnow().strftime("%Y%m%d")
-    queue = get_queue(BACKGROUND_QUEUE)
-    for cid in ids:
-        try:
-            queue.enqueue(campaign_search_task, job_id=_rq_id(f"campaign-search-{cid}-{day}"),
-                          unique=True, job_timeout=DISCOVERY_TIMEOUT_SECONDS,
-                          kwargs={"campaign_id": cid})
-        except DuplicateJobError:
-            pass
-    return {"enqueued": len(ids)}
+        active = (db.query(models.Campaign)
+                  .filter(models.Campaign.status == models.CampaignStatus.active)
+                  .order_by(models.Campaign.created_at).all())
+        per_user: dict[str, dict[str, set]] = {}
+        for campaign in active:
+            share = per_user.setdefault(campaign.profile.user_id, {k: set() for k in union})
+            for source, items in _search_plan_parts(campaign).items():
+                for item in items:
+                    key = item.lower() if isinstance(item, str) else tuple(x.lower() for x in item)
+                    if key in share[source] or len(share[source]) >= CAMPAIGN_SEARCH_PAIRS_PER_USER:
+                        continue
+                    share[source].add(key)
+                    union[source].setdefault(key, item)
+    parts = {source: list(items.values()) for source, items in union.items()}
+    if not any(parts.values()):
+        return {"pairs": 0, "inserted": 0}
+    inserted = _search_and_save(parts, "campaign-union")
+    return {"pairs": len(parts["linkedin"]), "inserted": inserted}
 
 
 def prepare_applications_task(application_ids: list[str]) -> dict:
