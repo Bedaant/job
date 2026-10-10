@@ -1,0 +1,85 @@
+# DEPLOY-B/C — the deployment stack (docs/PLAN-DEPLOY.md).
+#
+# NOT the same file as docker-compose.yml at the repo root. That one runs LOCAL DEV copies
+# of Postgres and Redis and is not a deployment artefact. This one runs the application
+# against Neon and Redis Cloud, which already hold all the state — so nothing here is
+# stateful and the box is disposable.
+#
+#   docker compose -f docker-compose.deploy.yml up -d --build
+#
+# Secrets come from apps/api/.env on the HOST, mounted read-only. Never COPY'd into the
+# image: a layer is readable by anyone who can pull it and survives in the build cache.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: [apps/api/.env]
+    # No `ports:`. Only Caddy reaches the API, over the internal network — publishing 8000
+    # would expose it unencrypted alongside the TLS endpoint.
+    expose: ["8000"]
+    volumes:
+      - ./apps/api/.env:/app/apps/api/.env:ro
+      - logs:/app/logs
+    healthcheck:
+      # /health is a real route and answers without touching Postgres, so this reports the
+      # process rather than the database.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: [apps/api/.env]
+    volumes:
+      - ./apps/api/.env:/app/apps/api/.env:ro
+      - logs:/app/logs
+    # SimpleWorker + TimerDeathPenalty (workers/run_worker.py) exist ONLY because Windows
+    # has no os.fork and no SIGALRM. On Linux the default Worker would give real
+    # per-job process isolation — but changing it is explicitly NOT part of this deploy
+    # (PLAN-DEPLOY DEPLOY-B), so a worker-model change never gets tangled with a first
+    # boot. It runs correctly as-is; revisit separately with the suite green.
+    command: ["python", "workers/run_worker.py"]
+    # ONE worker. Redis Cloud's free tier caps at 30 clients (GAPS 5.3) and a socket leak
+    # has already happened once; `get_redis_connection` is lru_cached as the fix. Scale
+    # this only after checking the client count.
+    deploy:
+      replicas: 1
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: [apps/api/.env]
+    volumes:
+      - ./apps/api/.env:/app/apps/api/.env:ro
+      - logs:/app/logs
+    command: ["python", "workers/run_scheduler.py"]
+    # Exactly one. Two schedulers would register every periodic job twice — hourly
+    # discovery, the 2-minute embed backlog, the campaign sweep and the daily digest would
+    # all double. run_scheduler.py cancels existing registrations on start, which makes a
+    # restart safe but does NOT make a second instance safe.
+    deploy:
+      replicas: 1
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # certificates and ACME account — losing this re-issues
+      - caddy_config:/config
+    depends_on: [api]
+
+volumes:
+  caddy_data:
+  caddy_config:
+  logs:

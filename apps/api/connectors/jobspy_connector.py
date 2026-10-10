@@ -14,6 +14,7 @@ as agent-reach. Same contract as the other connectors (ARCHITECTURE.md §3):
 returns a list of normalized job dicts for connectors.pipeline.upsert_jobs.
 """
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -21,18 +22,42 @@ import sys
 from connectors import config
 from connectors.normalize import coerce_posted_at
 
+logger = logging.getLogger(__name__)
+
 _TOOLS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "tools")
-_JOBSPY_PYTHON = os.path.join(_TOOLS_DIR, ".venv-jobspy", "Scripts", "python.exe")
+def _jobspy_python() -> str | None:
+    """The isolated venv's interpreter, or None if the venv was never built.
+
+    Resolved by what EXISTS rather than by guessing the platform. This was hardcoded to
+    `Scripts/python.exe`, which is Windows-only — on Linux the layout is `bin/python`,
+    so `subprocess.run` raised FileNotFoundError, the caller logged it and returned `[]`,
+    and JobSpy silently contributed nothing. That is the same failure shape that left
+    GAPS 3.2 unexplained for weeks, and it would have reappeared on the first deploy.
+
+    Windows is checked first only because that is where this currently runs; both are
+    equally supported and a test pins each.
+    """
+    base = os.path.join(_TOOLS_DIR, ".venv-jobspy")
+    for candidate in (
+        os.path.join(base, "Scripts", "python.exe"),
+        os.path.join(base, "bin", "python"),
+        os.path.join(base, "bin", "python3"),
+    ):
+        if os.path.isfile(candidate):
+            return candidate
+    return None
 
 _SCRAPE_SCRIPT = """
 import json, sys
 from jobspy import scrape_jobs
 sites = sys.argv[3].split(",")
+location = sys.argv[4] or None
 df = scrape_jobs(
     site_name=sites,
     search_term=sys.argv[1],
     google_search_term=sys.argv[1],
     results_wanted=int(sys.argv[2]),
+    location=location,
 )
 df = df.where(df.notnull(), None)
 print(json.dumps(df.to_dict(orient="records"), default=str))
@@ -40,13 +65,52 @@ print(json.dumps(df.to_dict(orient="records"), default=str))
 
 
 def fetch_jobspy_jobs(search_term: str, results_wanted: int = 20,
-                      sites: list[str] | None = None) -> list[dict]:
+                      sites: list[str] | None = None,
+                      location: str | None = None) -> list[dict]:
+    """One scrape, for one search term in one location.
+
+    `location` is not optional in practice and was the connector's central defect: the
+    script never passed it, so Glassdoor answered without one and EVERY row arrived with
+    `location=None`, while the library populates it on all rows when asked (measured
+    2026-10-09). Location-less rows are worse here than no rows at all —
+    `passes_hard_filters` is deliberately built so missing data never excludes a job
+    (GAPS 2.4), so they would pass the India filter wherever they actually are, and
+    `canonical_hash(company, title, location)` loses a third of its key.
+
+    **Pass a CITY, never a bare country.** `location="India"` returns Indianapolis:
+    Glassdoor prefix-matches the string. `config.JOBSPY_LOCATIONS` is city-qualified for
+    that reason and a test enforces it.
+    """
     sites = sites or config.JOBSPY_SITES
+    python = _jobspy_python()
+    if python is None:
+        # Deploying without building the second venv must SAY so. Returning [] here
+        # would look exactly like a board with nothing matching — the failure mode this
+        # connector has already had once.
+        logger.warning(
+            "jobspy venv not found under %s — run its bootstrap, or JobSpy silently "
+            "contributes nothing", os.path.join(_TOOLS_DIR, ".venv-jobspy"),
+        )
+        return []
     result = subprocess.run(
-        [_JOBSPY_PYTHON, "-c", _SCRAPE_SCRIPT, search_term, str(results_wanted), ",".join(sites)],
+        [python, "-c", _SCRAPE_SCRIPT, search_term, str(results_wanted),
+         ",".join(sites), location or ""],
         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
     )
-    if result.returncode != 0 or not result.stdout.strip():
+    if result.returncode != 0:
+        # Distinguishing a CRASH from an empty board is the whole reason GAPS 3.2 sat
+        # unexplained: both used to return `[]`, so a site answering 403 looked exactly
+        # like a site with nothing matching. ZipRecruiter and Glassdoor were BOTH 403 on
+        # the old pinned version and nothing said so.
+        logger.warning(
+            "jobspy scrape failed for %s in %r (exit %s): %s",
+            ",".join(sites), location, result.returncode,
+            (result.stderr or "").strip()[-300:],
+        )
+        return []
+    if not result.stdout.strip():
+        # A board with nothing matching is normal and stays quiet, or the log becomes
+        # noise nobody reads.
         return []
 
     raw = json.loads(result.stdout)

@@ -4,7 +4,8 @@ from datetime import datetime
 
 import sqlalchemy
 from sqlalchemy import (
-    Column, String, Text, DateTime, Boolean, ForeignKey, Enum, JSON, UniqueConstraint, Numeric, BigInteger
+    Column, String, Text, DateTime, Boolean, ForeignKey, Enum, JSON, UniqueConstraint, Numeric, BigInteger,
+    Integer, Index
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -111,6 +112,13 @@ class Profile(Base):
     network_profiles = Column(JSON, default=list)    # basics.profiles[] -> [{network, username, url}]
     work_auth = Column(JSON, default=list)           # SPEC.md §1 profiles.work_auth
     fact_centroid = Column(Vector(EMBEDDING_DIM), nullable=True)  # mean of fact embeddings, F6 matching
+    # REACH-E. Off by default and deliberately not a plain config toggle: it unlocks only
+    # after the user has approved 10 outreach emails by hand, so they have seen what the
+    # system writes before delegating it (PRD §2 keeps a human in the loop).
+    outreach_auto_send = Column(Boolean, nullable=False, default=False, server_default="false")
+    # How many people to contact per application. 2 is a deliberate ceiling, not a
+    # starting point — ADR-003's 10/day cap is the other half of "not spraying".
+    outreach_contacts_per_application = Column(Integer, nullable=False, default=2, server_default="2")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="profiles")
@@ -119,6 +127,8 @@ class Profile(Base):
     matches = relationship("Match", back_populates="profile", cascade="all, delete-orphan")
     campaigns = relationship("Campaign", back_populates="profile", cascade="all, delete-orphan")
     answers = relationship("AnswerBank", back_populates="profile", cascade="all, delete-orphan")
+    contacts = relationship("Contact", back_populates="profile", cascade="all, delete-orphan")
+    outreach = relationship("Outreach", back_populates="profile", cascade="all, delete-orphan")
 
     __table_args__ = (UniqueConstraint("user_id", "persona", name="uq_profile_user_persona"),)
 
@@ -444,3 +454,174 @@ class FormPlan(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (UniqueConstraint("job_id", name="uq_form_plans_job_id"),)
+
+
+class OutreachStatus(str, enum.Enum):
+    """`sending` exists so the at-most-once lock has a state to claim into — the same
+    shape as the application side's `approved -> submitting` transition. Without a
+    distinct claimed state, two workers can both observe `approved`."""
+    ready_for_review = "ready_for_review"
+    approved = "approved"
+    sending = "sending"
+    sent = "sent"
+    skipped = "skipped"
+    failed = "failed"
+
+
+class Contact(Base):
+    """A person who might be worth asking for a referral (REACH-B).
+
+    PROFILE-SCOPED, AND THAT IS A PRIVACY DECISION, not an oversight. A shared contact
+    table is tempting for dedupe, but it would mean one user's lookup failing because
+    another user already stored that person — which leaks that they had them. At the
+    current user count the dedupe saves nothing and the exposure is real.
+    """
+    __tablename__ = "contacts"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    profile_id = Column(UUID(as_uuid=False), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    company = Column(String, nullable=False)        # matched against Job.company
+    full_name = Column(String, nullable=False)
+    title = Column(String, nullable=True)
+    # Nullable on purpose: an adapter can learn WHO someone is before it learns how to
+    # reach them (Apify's profile search is exactly this), and the engine decides what to
+    # do about that — it verifies, and never auto-sends to an address it could not confirm.
+    email = Column(String, nullable=True)
+    # valid | invalid | accept_all | unknown. `accept_all` is the COMMON case, not an
+    # edge one: most corporate Google Workspace and M365 tenants accept every address,
+    # so mailbox existence is unknowable. Allowed for a human to judge, never auto-sent.
+    email_verification_status = Column(String, nullable=True)
+    email_verified_at = Column(DateTime, nullable=True)
+    source = Column(String, nullable=False, default="manual")  # manual | github | apify
+    source_ref = Column(String, nullable=True)       # the adapter's own id, for re-fetching
+    # Why this person was surfaced, e.g. {"kind": "former_employer", "value": "Flipkart"}.
+    # A signal about the USER must trace to a ResumeFact; a signal about the RECIPIENT
+    # (same role) traces to Job.title plus their title, which the system already holds.
+    warm_signal = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    profile = relationship("Profile", back_populates="contacts")
+    outreach = relationship("Outreach", back_populates="contact")
+
+    __table_args__ = (
+        # Scoped to the profile, so two users independently finding the same person is
+        # fine. NULL emails do not collide under this constraint on either engine, which
+        # is what lets a contact exist before an address is known.
+        UniqueConstraint("profile_id", "email", name="uq_contact_profile_email"),
+        Index("ix_contacts_profile_company", "profile_id", "company"),
+    )
+
+
+class Outreach(Base):
+    """One email, to one contact, about one application (REACH-B)."""
+    __tablename__ = "outreach"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    profile_id = Column(UUID(as_uuid=False), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    application_id = Column(UUID(as_uuid=False), ForeignKey("applications.id", ondelete="CASCADE"), nullable=False)
+    # Nullable: a "nobody found" skip is a real outcome worth recording and has no
+    # contact to point at. A skip must never be a silent no-op.
+    contact_id = Column(UUID(as_uuid=False), ForeignKey("contacts.id", ondelete="SET NULL"), nullable=True)
+    status = Column(Enum(OutreachStatus), nullable=False, default=OutreachStatus.ready_for_review)
+    skip_reason = Column(String, nullable=True)  # no_contact_found | suppressed | email_invalid
+    subject = Column(String, nullable=True)
+    body = Column(Text, nullable=True)
+    # ADR-006's truth-check, same pass as resumes. A referral note claiming an
+    # unsupported achievement is the same failure as a fabricated resume bullet.
+    # Non-empty blocks approval.
+    flagged_unsupported_claims = Column(JSON, default=list)
+    # What the email actually asserted as the connection. Stored because the email makes
+    # the claim out loud, and an unverifiable claim is what the truth-check exists to stop.
+    warm_signal_used = Column(JSON, nullable=True)
+    # "user" or "auto" — makes the auto-send unlock count computable and auditable.
+    approved_by = Column(String, nullable=True)
+    gmail_message_id = Column(String, nullable=True)
+    gmail_thread_id = Column(String, nullable=True)
+    sent_at = Column(DateTime, nullable=True)
+    # Error TYPE only, never the body: a provider reply can echo what was sent, including
+    # the credential. `digest.smtp_sender` sets this precedent.
+    error = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    profile = relationship("Profile", back_populates="outreach")
+    contact = relationship("Contact", back_populates="outreach")
+
+    __table_args__ = (
+        # The duplicate guarantee, in the schema rather than in a code path someone can
+        # refactor around: one ask per person per application.
+        UniqueConstraint("application_id", "contact_id", name="uq_outreach_application_contact"),
+        # The daily cap counts sent rows for today, per profile (ADR-003's 10/day).
+        Index("ix_outreach_profile_sent_at", "profile_id", "sent_at"),
+    )
+
+
+class Suppression(Base):
+    """Never contact this address or domain again (REACH-E).
+
+    `profile_id IS NULL` means GLOBAL — it applies to every user. Someone who asks not
+    to be contacted should not have to ask each user of this product separately, so the
+    public unsubscribe endpoint writes a global row.
+    """
+    __tablename__ = "suppressions"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    profile_id = Column(UUID(as_uuid=False), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=True)
+    email = Column(String, nullable=True)
+    # A company asking to be left alone entirely is one row, not one per employee.
+    domain = Column(String, nullable=True)
+    reason = Column(String, nullable=False)  # opt_out | bounced | manual
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_suppressions_email", "email"),
+        Index("ix_suppressions_domain", "domain"),
+    )
+
+
+# REACH-A. The one scope the product needs: it can send mail and nothing else — it
+# cannot read the mailbox, list drafts, or touch anything already there. Narrower than
+# `gmail.compose`, which grants draft management PLUS sending.
+GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
+
+
+class GmailCredential(Base):
+    """A user's Gmail OAuth grant, for sending referral emails as them (ADR-003).
+
+    DELIBERATELY NO `relationship()` ON `User`. ADR-003 requires this token never be
+    returned by any endpoint, and the realistic regression is someone adding
+    `gmail_credential` to a user response model without having read that. No backref
+    means no accidental serialisation path exists to begin with; callers query this
+    table directly.
+
+    Usability is DERIVED from `scopes` rather than stored in a column, so it cannot
+    drift out of sync with the grant it describes.
+    """
+    __tablename__ = "gmail_credentials"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    # UNIQUE: one Gmail account per user. A second is YAGNI at this user count, and the
+    # uniqueness is what makes "the user's credential" an unambiguous lookup.
+    user_id = Column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False, unique=True,
+    )
+    # Ciphertext only. The plaintext refresh token never touches a column — see crypto.py.
+    refresh_token_encrypted = Column(Text, nullable=False)
+    email_address = Column(String, nullable=True)   # which account, so the UI can show it
+    # What Google ACTUALLY granted, not what was requested. Google permits partial
+    # grants, and storing the request would make a narrowed grant invisible until a send
+    # failed with a confusing 500 after the user had already approved an email.
+    scopes = Column(JSON, default=list)
+    connected_at = Column(DateTime, default=datetime.utcnow)
+    # Soft revoke, so a revocation is auditable rather than a vanished row.
+    revoked_at = Column(DateTime, nullable=True)
+
+    @property
+    def missing_scopes(self) -> list[str]:
+        return [s for s in (GMAIL_SEND_SCOPE,) if s not in (self.scopes or [])]
+
+    @property
+    def is_usable(self) -> bool:
+        """Live and sufficiently scoped. Checked before drafting, not at send time."""
+        return self.revoked_at is None and not self.missing_scopes

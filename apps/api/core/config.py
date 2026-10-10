@@ -59,9 +59,41 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_from: str | None = None  # defaults to smtp_user
 
+    # REACH-A. Encrypts the Gmail refresh token at rest (ADR-003: "the highest-value
+    # secret in the system"). Optional ONLY so the rest of the app boots without it —
+    # `crypto.py` refuses to encrypt or decrypt when it is unset, it never degrades to
+    # plaintext. Generate one with `python -c "from crypto import generate_key;
+    # print(generate_key())"`.
+    encryption_key: str | None = None
+    # Gmail OAuth client (REACH-A). The owner creates these in the Google Cloud console;
+    # they cannot be produced from code. Consent screen stays in Testing mode, which
+    # allows 100 listed test users with no verification review — see
+    # docs/PLAN-GMAIL-CREDENTIALS.md. Past ~80 users that ceiling needs revisiting, and
+    # hitting it looks like "OAuth suddenly broke" rather than "we outgrew Testing mode".
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+
+    # REACH-E. Paid contact sourcing via Apify's linkedin-profile-search actor. Declared
+    # here rather than left to `os.environ` because `extra="ignore"` means an undeclared
+    # key in `.env` is silently DROPPED — the adapter then no-ops and reports "no
+    # candidates", which is indistinguishable from a company having nobody. Found live:
+    # the token was in `.env` and reachable by neither path.
+    apify_token: str | None = None
+    # REACH-B / DEPLOY-A.2. `GitHubContactSource` calls api.github.com directly rather
+    # than shelling out to the `gh` CLI, which would have been a runtime dependency a
+    # container does not have. Optional: anonymous works at GitHub's 60 req/hour, and a
+    # token raises it to 5,000. Declared here for the same reason as `apify_token` —
+    # `extra="ignore"` silently drops an undeclared key from `.env`.
+    github_token: str | None = None
+
     cors_origins: list[str] = ["http://localhost:3000"]
     # Where emailed links (password reset) point.
     web_base_url: str = "http://localhost:3000"
+    # Where the API itself is reachable from outside. Distinct from `web_base_url`
+    # because the outreach unsubscribe route is served by the API, not the web app, and
+    # that link goes to a RECIPIENT who is not a user — if it points at localhost they
+    # cannot opt out at all. Must be set to a public URL before any outreach is sent.
+    api_base_url: str = "http://localhost:8000"
 
 
 @lru_cache

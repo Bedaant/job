@@ -12,6 +12,36 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
 
+  # GAPS 5.4's real-Postgres test lane. Separate service, separate port, NO volume — a
+  # test database should be disposable and must never be confused with `db` above.
+  #
+  #   docker compose up -d db-test
+  #   TEST_DATABASE_URL=postgresql://jobcopilot:jobcopilot@localhost:5433/jobcopilot_test \
+  #       .venv/Scripts/python.exe -m pytest -q
+  #
+  # `pgvector/pgvector:pg16`, NOT `postgres:16-alpine`: migration 0004 declares `Vector`
+  # columns, and the plain image has no `vector` extension — verified, its control file is
+  # simply absent, so `CREATE EXTENSION vector` fails and the migration cannot run. That
+  # is why this lane could not exist by pointing at the `db` service.
+  db-test:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: jobcopilot
+      POSTGRES_PASSWORD: jobcopilot
+      POSTGRES_DB: jobcopilot_test
+    ports:
+      - "5433:5432"
+    # tmpfs, not a named volume: every run migrates from scratch, and persisting a test
+    # database between runs is how a lane starts passing for reasons nobody can explain.
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobcopilot -d jobcopilot_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped

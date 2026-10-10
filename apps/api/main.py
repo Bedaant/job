@@ -21,6 +21,8 @@ import models
 import schemas
 from tailoring.engine import tailor_application
 from auth.router import router as auth_router
+from outreach import api as outreach_api
+from outreach import gmail
 from connectors.apply_target import resolve_apply_target
 from documents.ats_safety import lint_docx
 from documents.generate_docx import generate_resume_docx
@@ -35,6 +37,7 @@ from parsing.llm_extract import extract_basics, extract_facts_from_text
 from workers.jobs import (
     discover_jobs_task, get_queue, get_redis_connection, prepare_applications_task, run_campaign_task,
 )
+from workers.outreach_tasks import draft_outreach_task
 import campaigns as campaigns_service
 from matching.service import refresh_fact_vectors
 from matching.keyword_gap import compute_keyword_gap
@@ -59,6 +62,12 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+
+# Stage 8 (`docs/PLAN-OUTREACH.md`). Their own routers rather than another 200 lines
+# here: `outreach.api` carries the review/approve/skip surface plus the PUBLIC
+# unsubscribe route, and `outreach.gmail` the OAuth grant REACH-D's send path needs.
+app.include_router(outreach_api.router)
+app.include_router(gmail.router)
 
 
 # ---------- Job discovery ----------
@@ -458,6 +467,14 @@ _SUBMISSION_OUTCOMES = {
     "needs_human": (models.ApplicationStatus.ready_for_review, False),
 }
 
+# Outcomes that mean the form reached the employer, and therefore that stage 8 has
+# something to ask about. Mirrors `outreach.orchestrate._SENT_STATES` — kept as its own
+# name here so the trigger is visible at the call site rather than implied.
+_OUTREACH_TRIGGER_STATES = {
+    models.ApplicationStatus.applied,
+    models.ApplicationStatus.submitted_unconfirmed,
+}
+
 
 @app.post("/applications/{application_id}/submission-result", response_model=schemas.SubmissionResultOut)
 def report_submission_result(
@@ -524,6 +541,21 @@ def report_submission_result(
         {"application_id": application.id, "status": new_status.value, "reason": payload.reason},
     )
     db.commit()
+
+    # Stage 8 (REACH-D): the application reached the employer, so now look for someone
+    # there to tell. README: "After you apply, the app finds a suitable person at the
+    # company". Enqueued AFTER the commit and deliberately never fatal — the submission
+    # result is the thing that must not be lost, and outreach is an addition to it.
+    # `draft_outreach_for_application` re-checks the status itself, so an outcome that
+    # did not send simply returns `not_sent`.
+    if new_status in _OUTREACH_TRIGGER_STATES:
+        try:
+            get_queue().enqueue(draft_outreach_task, application.id)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "outreach enqueue failed for application %s", application.id
+            )
+
     return schemas.SubmissionResultOut(application_id=application.id, status=new_status.value)
 
 

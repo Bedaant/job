@@ -100,6 +100,40 @@ def smartrecruiters(slug):
     return None
 
 
+def keka(slug):
+    """Keka is the one Indian-market ATS with a real keyless public feed, so it
+    is the only one of the three probed on 2026-10-08 (Darwinbox's recruitment
+    API is employer-side and token-authenticated, with no public board feed —
+    its careers page is JS-rendered, the same wall F5 hit; Zoho Recruit's API
+    is OAuth and returns only your OWN org's openings, so public access would
+    mean scraping `*.zohorecruit.com` HTML, which is an ADR-020 question, not
+    an API).
+
+    Three-way signal, which is why a miss here is strong evidence:
+        302 -> /careers/Content/TenantNotFound.html  not a Keka customer
+        302 -> /careers/Content/403.html             tenant exists, portal not public
+        200 -> JSON list                             live public board
+
+    Calibrated against jupiter.keka.com before use — an uncalibrated probe that
+    can only ever return "no" is how F5 scored 1/9.
+
+    The title key is read at runtime, not hardcoded: all three live boards found
+    (jupiter, cars24, signzy) returned `[]`, so the populated schema was never
+    observed and is not guessed here.
+    """
+    r = _get(f"https://{slug}.keka.com/careers/api/jobs/{slug}/active")
+    if r.status_code != 200:
+        loc = r.headers.get("location", "")
+        if "403" in loc:
+            return (0, [], "tenant exists, careers portal not public")
+        return None
+    jobs = r.json() or []
+    if not jobs:
+        return (0, [], "live portal, zero active postings")
+    key = next((k for k in jobs[0] if "title" in k.lower() or "name" in k.lower()), None)
+    return (len(jobs), [j.get(key, "") for j in jobs] if key else [], f"title_key={key}")
+
+
 def workable(slug):
     r = _get(f"https://apply.workable.com/api/v1/widget/accounts/{slug}")
     if r.status_code != 200:
@@ -116,6 +150,7 @@ PLATFORMS = [
     ("ashby", ashby),
     ("smartrecruiters", smartrecruiters),
     ("workable", workable),
+    ("keka", keka),
 ]
 
 PM_WORDS = ("product manager", "product owner", "product lead", "head of product")
@@ -148,7 +183,27 @@ def probe(slug):
     return hits
 
 
+def _force_utf8_stdout() -> None:
+    """Print job titles without dying on Windows.
+
+    Found 2026-10-09 mid-sweep: a real posting title contained characters outside
+    cp1252, Windows' default console encoding, and `print` raised UnicodeEncodeError
+    — killing the run at roughly the halfway mark and losing every result after it.
+    A probe whose output depends on the alphabetical position of the first accented
+    job title is not a measurement tool.
+
+    `errors="replace"` rather than strict: a mangled character in a title is a cosmetic
+    problem, and losing the whole sweep is not.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass  # already UTF-8, or a stream that cannot be reconfigured
+
+
 def main():
+    _force_utf8_stdout()
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("slugs", nargs="*")
     ap.add_argument("--file", help="file with one slug per line")

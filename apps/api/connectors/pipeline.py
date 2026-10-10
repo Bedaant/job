@@ -29,6 +29,44 @@ from matching.skills import extract_skills
 # stay unsweepable until their board lists them again and fills it in.
 _UPDATE_FIELDS = ("title", "company", "location", "salary", "description", "apply_url", "posted_at", "canonical_hash", "board_token")
 
+# Source trust order for collapsing duplicate live rows (GAPS 4.3), best first.
+# The only question being answered is "which of these two rows should the user
+# see", and the answer is whichever one they can actually apply through:
+#
+#   0  direct ATS — apply_url IS the employer's form, a form_plan can exist for
+#      it, and these are the SWEEPABLE_SOURCES, so their freshness is measured
+#      rather than assumed.
+#   1  linkedin_external / clipped — apply_url resolves to the employer's own
+#      ATS (measured 2026-10-09: 56% of LinkedIn rows), so the extension fills it.
+#   2  everything else — aggregator and feed links. Openable, not fillable.
+#   3  linkedin_easy_apply — apply_url is linkedin.com. The extension cannot fill
+#      it and this project does not automate LinkedIn, so it is the row to drop
+#      whenever any alternative exists.
+_DIRECT_ATS = {"greenhouse", "lever", "ashby", "workday"}
+
+
+def _source_trust(source: str) -> int:
+    if source in _DIRECT_ATS:
+        return 0
+    if source in ("linkedin_external", "clipped"):
+        return 1
+    if source == "linkedin_easy_apply":
+        return 3
+    return 2
+
+
+def _collapse_key(row):
+    """Trust, then oldest, then id.
+
+    Trust first because an unfillable row is worth less than a fillable one however
+    new it is. Oldest second because that row is the one most likely to already
+    carry an embedding and `Match` history, so keeping it avoids re-embedding and
+    preserves what the user has seen. `id` last so the order is TOTAL — GAPS 6.6
+    was a real nondeterminism bug from ranking without a tiebreaker, and here the
+    tiebreaker decides which copy of a job a user is shown.
+    """
+    return (_source_trust(row.source), row.fetched_at or datetime.min, row.id)
+
 
 def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int, int]:
     """jobs: dicts with all Job columns, including a precomputed canonical_hash
@@ -59,11 +97,6 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int, int]:
         )
         .all()
     )
-    # Delisted rows are excluded on purpose: a tombstone must not suppress the
-    # same role arriving live from another source, nor a board re-posting a
-    # closed req under a new external_id. Both would otherwise be skipped
-    # forever, serving zero live rows for a job that is open.
-    existing_hashes = {row.canonical_hash for row in existing_rows if row.delisted_at is None}
     existing_by_key = {(row.source, row.external_id): row for row in existing_rows}
 
     seen_in_batch: set[str] = set()
@@ -82,14 +115,50 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int, int]:
     skipped = 0
     now = datetime.utcnow()
 
+    # PASS 1 — re-seen rows, matched on (source, external_id).
+    #
+    # Resolved before any insert decision because an update can REWRITE a row's
+    # canonical_hash (that is `canonical_hash` in _UPDATE_FIELDS, and ADR-017 §5's
+    # whole point). The insert guard in pass 2 therefore has to test against the
+    # live hash set as it will be AFTER this run, not as it was before — otherwise
+    # a row rewritten into hash H this run and a new row inserted with hash H in
+    # the same batch both end up live, and the collision survives until the next
+    # discovery run happens to fetch both.
     for job in jobs:
         existing = existing_by_key.get((job["source"], job["external_id"]))
-        if existing is not None:
-            mapping = {"id": existing.id, "last_seen_at": now, "delisted_at": None}
-            for field in _UPDATE_FIELDS:
-                mapping[field] = job.get(field) or getattr(existing, field)
-            to_update.append(mapping)
-            updated += 1
+        if existing is None:
+            continue
+        mapping = {"id": existing.id, "last_seen_at": now, "delisted_at": None}
+        for field in _UPDATE_FIELDS:
+            mapping[field] = job.get(field) or getattr(existing, field)
+        to_update.append(mapping)
+        updated += 1
+
+    # The live hash set as of the end of this run. A row updated above counts at
+    # its NEW hash, and a tombstoned row that an update revived (delisted_at reset
+    # to None) counts as live again.
+    #
+    # Delisted rows are excluded on purpose: a tombstone must not suppress the
+    # same role arriving live from another source, nor a board re-posting a closed
+    # req under a new external_id. Both would otherwise be skipped forever,
+    # serving zero live rows for a job that is open.
+    update_by_id = {m["id"]: m for m in to_update}
+    live_by_hash: dict[str, list] = {}
+    for row in existing_rows:
+        mapping = update_by_id.get(row.id)
+        if mapping is not None:
+            final_hash = mapping["canonical_hash"]
+            live = mapping.get("delisted_at") is None
+        else:
+            final_hash = row.canonical_hash
+            live = row.delisted_at is None
+        if live:
+            live_by_hash.setdefault(final_hash, []).append(row)
+    existing_hashes = set(live_by_hash)
+
+    # PASS 2 — rows this batch has not seen before.
+    for job in jobs:
+        if (job["source"], job["external_id"]) in existing_by_key:
             continue
 
         h = job["canonical_hash"]
@@ -112,6 +181,80 @@ def upsert_jobs(db: Session, jobs: list[dict]) -> tuple[int, int, int]:
             "fetched_at": now,
             "last_seen_at": now,
         })
+
+    # --- collapse live rows that share a canonical_hash (GAPS 4.3) ------------
+    #
+    # ADR-017 §5 keeps the hash non-unique deliberately, so nothing in the schema
+    # stops two live rows describing the same role, and nothing re-collapsed such
+    # a pair. That was tolerable while sources barely overlapped. It is not now:
+    # linkedin_external, linkedin_easy_apply, jobspy_glassdoor and 77 newly probed
+    # ATS boards all return the same req, with different (source, external_id) but
+    # the SAME hash — so a user sees one job several times and could apply twice.
+    #
+    # Pass 2's guard stops insert-vs-anything. This handles the case ADR-017 §5
+    # actually names and the guard cannot: the UPDATE path rewriting a re-seen
+    # row's hash into one another live row already holds, plus any pair that was
+    # already stored colliding before this change existed.
+    #
+    # No extra query and no schema change: these rows are already in memory from
+    # the single SELECT above, and re-adding the UNIQUE constraint is what turned
+    # a legitimate hash rewrite into a run-killing IntegrityError.
+    collapsed = 0
+    # A row the user has ALREADY APPLIED THROUGH must never lose, and this is a
+    # correctness requirement rather than a courtesy. `campaigns.select_candidates`
+    # excludes already-applied jobs by **job_id**, not by `canonical_hash`. So
+    # tombstoning the applied row leaves its higher-trust duplicate live, un-applied and
+    # matchable — and the campaign applies a SECOND time to the same role at the same
+    # employer. `main.py::claim_submission`'s at-most-once lock cannot see it, because
+    # these are two different `Application` rows.
+    #
+    # Keeping the applied row fixes both halves: the history stays attached, and the
+    # survivor is the row `already_applied` already filters out.
+    #
+    # One scoped query, only when a collision actually exists — the common case does no
+    # work at all.
+    collision_ids = [r.id for g in live_by_hash.values() if len(g) > 1 for r in g]
+    applied_ids: set[str] = set()
+    if collision_ids:
+        applied_ids = {
+            row[0]
+            for row in db.query(models.Application.job_id)
+            .filter(models.Application.job_id.in_(collision_ids))
+            .all()
+        }
+
+    def _key(row):
+        # Applied first, then the trust order, then the deterministic tiebreakers.
+        return (row.id not in applied_ids, *_collapse_key(row))
+
+    for dupes in live_by_hash.values():
+        if len(dupes) < 2:
+            continue
+        _winner, *losers = sorted(dupes, key=_key)
+        for loser in losers:
+            mapping = update_by_id.get(loser.id)
+            if mapping is None:
+                mapping = {"id": loser.id}
+                to_update.append(mapping)
+            # Tombstoned, never deleted: an Application may already point at this
+            # row, and `delisted_at` is what every live-pool query filters on
+            # already (matching, embedding backfill, /sources counts), so one flag
+            # removes the duplicate everywhere at once.
+            #
+            # This overloads delisted_at's meaning from "its source stopped listing
+            # it" to also "superseded by a better duplicate". Accepted: it is the
+            # only mechanism that drops a row out of the live pool without losing
+            # data or breaking a foreign key.
+            mapping["delisted_at"] = now
+            collapsed += 1
+    if collapsed:
+        # ponytail: a loser is revived by its own source's update every run and
+        # re-collapsed here, so this logs a steady non-zero count rather than
+        # trending to zero. Idempotent and one write per duplicate per run; worth
+        # a real fix only if the write volume ever shows up.
+        logging.getLogger(__name__).info(
+            "collapsed %d duplicate live job row(s) sharing a canonical_hash", collapsed
+        )
 
     if to_update:
         db.bulk_update_mappings(models.Job, to_update)

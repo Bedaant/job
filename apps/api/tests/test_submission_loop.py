@@ -309,3 +309,69 @@ def test_every_outcome_writes_an_event():
     types = [e.type for e in db.query(models.Event).all()]
     db.close()
     assert "application.submitted" in types
+
+
+# ---------- stage 8 trigger (REACH-D) ----------
+
+def test_a_successful_submission_queues_outreach():
+    """README: "After you apply, the app finds a suitable person at the company."
+    Nothing else in the system starts stage 8, so if this enqueue is lost the whole
+    feature silently never runs."""
+    from unittest.mock import patch
+
+    client, SessionLocal = _client()
+    _bind(client, SessionLocal)
+    headers = _auth(client, "outreachtrigger@example.com")
+    _, (app_id,) = _seed(client, headers, [models.ApplicationStatus.approved])
+    client.post(f"/applications/{app_id}/claim-submission", headers=headers)
+
+    with patch("main.get_queue") as queue:
+        r = client.post(
+            f"/applications/{app_id}/submission-result",
+            headers=headers, json={"outcome": "submitted"},
+        )
+    assert r.status_code == 200
+    enqueued = [c.args[0].__name__ for c in queue.return_value.enqueue.call_args_list]
+    assert "draft_outreach_task" in enqueued
+
+
+def test_an_outcome_that_never_sent_does_not_queue_outreach():
+    """`failed` means nothing reached the employer, so there is nothing to ask about —
+    and an email claiming an application that does not exist is the exact kind of
+    unsupported claim this product exists not to make."""
+    from unittest.mock import patch
+
+    client, SessionLocal = _client()
+    _bind(client, SessionLocal)
+    headers = _auth(client, "outreachnotrigger@example.com")
+    _, (app_id,) = _seed(client, headers, [models.ApplicationStatus.approved])
+
+    with patch("main.get_queue") as queue:
+        r = client.post(
+            f"/applications/{app_id}/submission-result",
+            headers=headers, json={"outcome": "failed", "reason": "no form"},
+        )
+    assert r.status_code == 200
+    enqueued = [c.args[0].__name__ for c in queue.return_value.enqueue.call_args_list]
+    assert "draft_outreach_task" not in enqueued
+
+
+def test_a_broken_queue_does_not_lose_the_submission_result():
+    """The submission result is the thing that must never be lost: it is the only record
+    that an application actually went out. Outreach is an addition to it, so a Redis
+    outage must not turn a successful submit into a 500."""
+    from unittest.mock import patch
+
+    client, SessionLocal = _client()
+    _bind(client, SessionLocal)
+    headers = _auth(client, "outreachbroken@example.com")
+    _, (app_id,) = _seed(client, headers, [models.ApplicationStatus.approved])
+    client.post(f"/applications/{app_id}/claim-submission", headers=headers)
+
+    with patch("main.get_queue", side_effect=RuntimeError("redis down")):
+        r = client.post(
+            f"/applications/{app_id}/submission-result",
+            headers=headers, json={"outcome": "submitted"},
+        )
+    assert r.status_code == 200
+    assert r.json()["status"] == "applied"

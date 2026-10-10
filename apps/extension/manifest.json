@@ -7,7 +7,7 @@
     "default_popup": "index.html"
   },
   "permissions": ["activeTab", "storage", "tabs"],
-  "host_permissions": ["http://localhost:8000/*"],
+  "host_permissions": ["http://localhost:8000/*", "https://api.applyscout.in/*"],
   "background": {
     "service_worker": "src/background/driver.ts",
     "type": "module"
