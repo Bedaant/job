@@ -52,6 +52,7 @@ def _pg_engine():
     cfg = Config(str(api_dir / "alembic.ini"))
     cfg.set_main_option("script_location", str(api_dir / "alembic"))
     cfg.set_main_option("sqlalchemy.url", TEST_DATABASE_URL)
+    cfg.attributes["explicit_url"] = True
     # Downgrade-then-upgrade is deliberately NOT done here: 0025's downgrade drops an
     # enum type, and proving that path belongs in its own test rather than in every run's
     # setup.
