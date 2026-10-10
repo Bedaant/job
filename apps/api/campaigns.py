@@ -11,11 +11,12 @@ UTC), never from a counter column and never from a campaign_runs table. A
 denormalized counter would drift from what actually went out; the rows are the
 only number that can't.
 """
+import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 import models
@@ -147,6 +148,75 @@ def select_candidates(db: Session, campaign: models.Campaign, limit: int) -> lis
 MAX_POSTING_AGE_DAYS = 60
 
 
+# Words a role names that a title need not repeat ("Head of Brand" = "Brand Head").
+_ROLE_FILLER = {"of", "and", "the", "for", "in", "at", "a", "an", "to"}
+# Abbreviation -> expansion, matched both ways. Short on purpose: each entry is a title
+# convention, not a synonym guess. ponytail: add entries when a real campaign misses one.
+_ROLE_ABBREVIATIONS = {
+    "cmo": "chief marketing officer", "cto": "chief technology officer",
+    "ceo": "chief executive officer", "cfo": "chief financial officer",
+    "coo": "chief operating officer", "cpo": "chief product officer",
+    "vp": "vice president", "svp": "senior vice president", "avp": "assistant vice president",
+    "pm": "product manager", "swe": "software engineer", "sde": "software development engineer",
+    "hr": "human resources", "qa": "quality assurance", "ux": "user experience",
+    "bd": "business development",
+}
+
+
+def _role_words(text: str) -> list[str]:
+    return [w for w in re.findall(r"[a-z0-9+#]+", text.lower()) if w not in _ROLE_FILLER]
+
+
+def _role_variants(role: str) -> list[list[str]]:
+    """Word lists any one of which, all present as whole words, makes a title match."""
+    words = _role_words(role)
+    if not words:
+        return []
+    variants = [words]
+    expanded = [part for w in words for part in _ROLE_ABBREVIATIONS.get(w, w).split()]
+    if expanded != words:
+        variants.append(expanded)
+    phrase = f" {' '.join(words)} "
+    for abbr, full in _ROLE_ABBREVIATIONS.items():
+        if f" {full} " in phrase:
+            variants.append(phrase.replace(f" {full} ", f" {abbr} ").split())
+    return variants
+
+
+def _whole_word(word: str):
+    # lower() + a lowercase pattern, no flags: SQLite's compiler drops regexp flags, and \b means
+    # something else to Postgres, so this is the one spelling both engines read the same way.
+    return func.lower(models.Job.title).regexp_match(f"(^|[^a-z0-9]){re.escape(word)}($|[^a-z0-9])")
+
+
+def role_key(text: str) -> str:
+    return text.strip().lower()
+
+
+def _verdict(role: str, match: bool | None):
+    """EXISTS a stored LLM verdict for (role, this job's title); `match=None` = any verdict."""
+    query = select(models.TitleVerdict.id).where(
+        models.TitleVerdict.role_key == role_key(role),
+        models.TitleVerdict.title_key == func.lower(func.trim(models.Job.title)),
+    )
+    if match is not None:
+        query = query.where(models.TitleVerdict.match.is_(match))
+    return query.exists()
+
+
+def _role_filter(roles):
+    """Per role: the LLM's verdict decides (matching.role_judge); until a title is judged, the
+    word rules stand in. Measured on 120 labelled titles: LLM F1 0.96, word rules 0.85."""
+    clauses = []
+    for role in roles or []:
+        variants = _role_variants(role)
+        if not variants:
+            continue
+        words = or_(*[and_(*[_whole_word(w) for w in v]) for v in variants])
+        clauses.append(or_(_verdict(role, True), and_(~_verdict(role, None), words)))
+    return or_(*clauses) if clauses else None
+
+
 def _in_bounds(query, campaign: models.Campaign):
     """The campaign's job filters on a Match query already joined to Job."""
     # Task 5: a job that's disappeared from its source is never a candidate,
@@ -161,8 +231,11 @@ def _in_bounds(query, campaign: models.Campaign):
         query = query.filter(models.Job.remote.is_(True))
     if campaign.sources:
         query = query.filter(models.Job.source.in_(campaign.sources))
-    if campaign.roles:
-        query = query.filter(or_(*[models.Job.title.ilike(f"%{r}%") for r in campaign.roles]))
+    # Words in any order, whole words, abbreviations both ways. Was the literal phrase, which kept
+    # 0 of 51 real "Brand Head" postings; a blank role then also matched every title.
+    role_filter = _role_filter(campaign.roles)
+    if role_filter is not None:
+        query = query.filter(role_filter)
     if campaign.locations:
         terms = [t for l in campaign.locations for t in [l, *LOCATION_ALIASES.get(l.strip().lower(), [])]]
         query = query.filter(or_(*[models.Job.location.ilike(f"%{t}%") for t in terms]))

@@ -35,6 +35,7 @@ from batch_prep import prepare_application_for_review
 from campaigns import run_campaign
 from events.outbox import write_event
 from formplans import ROUTED_ATS, plan_job
+from matching.role_judge import judge_campaign_titles
 from matching.service import build_matches
 
 logger = logging.getLogger(__name__)
@@ -679,6 +680,8 @@ def campaign_search_task(campaign_id: str) -> dict:
         return {"skipped": True, "reason": "nothing to search"}
 
     inserted = _search_and_save(parts, f"campaign-{campaign_id}")
+    # Before embedding: the LLM's verdicts decide which new titles are in bounds to embed.
+    judge_campaign_titles(campaign_id, scope=session_scope)
 
     with session_scope() as db:
         campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
@@ -711,6 +714,7 @@ def refresh_campaign_searches_task() -> dict:
         active = (db.query(models.Campaign)
                   .filter(models.Campaign.status == models.CampaignStatus.active)
                   .order_by(models.Campaign.created_at).all())
+        campaign_ids = [c.id for c in active]
         per_user: dict[str, dict[str, set]] = {}
         for campaign in active:
             share = per_user.setdefault(campaign.profile.user_id, {k: set() for k in union})
@@ -722,9 +726,12 @@ def refresh_campaign_searches_task() -> dict:
                     share[source].add(key)
                     union[source].setdefault(key, item)
     parts = {source: list(items.values()) for source, items in union.items()}
-    if not any(parts.values()):
-        return {"pairs": 0, "inserted": 0}
-    inserted = _search_and_save(parts, "campaign-union")
+    inserted = _search_and_save(parts, "campaign-union") if any(parts.values()) else 0
+    for cid in campaign_ids:
+        try:
+            judge_campaign_titles(cid, scope=session_scope)
+        except Exception:
+            logger.exception("role judging failed for campaign %s", cid)
     return {"pairs": len(parts["linkedin"]), "inserted": inserted}
 
 
@@ -819,6 +826,9 @@ def embed_backlog_task() -> dict:
         return {"embedded": backfill_job_embeddings(db, only_ids=wanted or None)}
 
 
+SWEEP_JUDGE_LIMIT = 100
+
+
 def sweep_campaigns_task() -> dict:
     """Scheduled (workers/run_scheduler.py): for every active campaign, rebuild
     its profile's matches and enqueue a run. Runs on the owner role with no
@@ -837,6 +847,8 @@ def sweep_campaigns_task() -> dict:
     enqueued, failed = [], []
     for campaign_id in campaign_ids:
         try:
+            # Cached verdicts make this cheap after the first pass; bounded so a sweep stays short.
+            judge_campaign_titles(campaign_id, limit=SWEEP_JUDGE_LIMIT, scope=session_scope)
             with session_scope() as db:
                 campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
                 # No facts, or no job embeddings (no VOYAGE_API_KEY) → [] and the

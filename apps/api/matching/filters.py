@@ -36,6 +36,11 @@ _NO_SPONSORSHIP_PATTERN = re.compile(
 LOCATION_ALIASES = {
     "india": ["bengaluru", "bangalore", "pune", "gurugram", "gurgaon", "hyderabad", "mumbai",
               "delhi", "noida", "chennai", "kolkata", "ahmedabad"],
+    # Both spellings are live (2026-10-10: 304 "Bengaluru", 247 "Bangalore").
+    "bengaluru": ["bangalore"], "bangalore": ["bengaluru"],
+    "gurugram": ["gurgaon"], "gurgaon": ["gurugram"],
+    "mumbai": ["bombay"], "bombay": ["mumbai"],
+    "delhi ncr": ["delhi", "noida", "gurugram", "gurgaon"],
 }
 _COUNTRY_NAMES = {"IN": "india"}
 _COUNTRY_REGIONS = {"IN": ["apac", "asia"]}
