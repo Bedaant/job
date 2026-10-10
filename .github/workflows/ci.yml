@@ -50,8 +50,6 @@ jobs:
   api-postgres:
     name: api (pytest on real Postgres)
     runs-on: ubuntu-latest
-    # The lane has never had a green run (Docker was broken locally); flip to blocking once it is.
-    continue-on-error: true
     services:
       postgres:
         # pgvector image: migration 0004 runs CREATE EXTENSION vector.
