@@ -1,0 +1,125 @@
+<!doctype html><meta charset="utf-8"><style>
+@font-face{font-family:P;font-weight:400;src:url(../fonts/ibm-plex-sans-latin-400-normal.woff2)}
+@font-face{font-family:P;font-weight:500;src:url(../fonts/ibm-plex-sans-latin-500-normal.woff2)}
+@font-face{font-family:P;font-weight:600;src:url(../fonts/ibm-plex-sans-latin-600-normal.woff2)}
+@font-face{font-family:P;font-weight:700;src:url(../fonts/ibm-plex-sans-latin-700-normal.woff2)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:P,system-ui,sans-serif;background:#dedddb;color:#21201c;padding:64px 72px;font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;font-feature-settings:"tnum" 0}
+.L{--n1:#fdfdfc;--n2:#f9f9f8;--n3:#f1f0ef;--n4:#e9e8e6;--n5:#e2e1de;--n6:#dad9d6;--n7:#cfceca;--n8:#bcbbb5;--n9:#8d8d86;--n11:#63635e;--n12:#21201c;--a3:#fff7c2;--a4:#ffee9c;--a6:#f3d673;--a9:#ffc53d;--a11:#ab6400;--a12:#4f3422;--pr:#21201c;--onpr:#fdfdfc;--ok:#218358;--ok3:#e6f6eb;--ok12:#193b2d;--bad:#ce2c31;--bad3:#feebec;--bad12:#641723;--ov:0 16px 40px -16px rgb(0 0 0/.25),0 0 0 1px var(--n6)}.D{--n1:#191918;--n2:#111110;--n3:#222221;--n4:#2a2a28;--n5:#31312e;--n6:#3b3a37;--n7:#494844;--n8:#62605b;--n9:#6f6d66;--n11:#b5b3ad;--n12:#eeeeec;--a3:#302008;--a4:#3f2700;--a6:#5c3d05;--a9:#ffc53d;--a11:#ffca16;--a12:#ffe7b3;--pr:#eeeeec;--onpr:#111110;--ok:#3dd68c;--ok3:#132d21;--ok12:#b1f1cb;--bad:#ff9592;--bad3:#3b1219;--bad12:#ffd1d9;--ov:0 16px 40px -16px rgb(0 0 0/.6),0 0 0 1px var(--n6)}
+.L,.D{color:var(--n12)}
+.i{flex:none;vertical-align:middle}
+.bt{font-size:56px;font-weight:600;letter-spacing:-.025em;line-height:1.05}
+.bl{font-size:21px;color:#45443f;margin-top:14px;max-width:980px;line-height:1.5}
+.lab{font-size:17px;font-weight:600;color:#3a3935;margin:60px 0 16px}.lab span{font-weight:400;color:#6b6a65;margin-left:10px}
+.frame{border-radius:14px;overflow:hidden;box-shadow:0 1px 0 rgb(0 0 0/.04),0 30px 60px -30px rgb(0 0 0/.35);background:var(--n2)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 18px;border-radius:6px;font:600 16px/1 P,sans-serif;border:1px solid transparent;white-space:nowrap}
+.btn.lg{height:52px;padding:0 24px;font-size:17px}
+.btn.p{background:var(--pr);color:var(--onpr)}.btn.s{background:var(--n1);border-color:var(--n8);color:var(--n12)}.btn.gh{background:transparent;color:var(--n11);padding:0 10px}
+.dot{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--a9);flex:none}
+.dot.s{width:9px;height:9px}
+
+body{width:2010px}
+.row{display:flex;gap:40px;align-items:flex-start}
+.app{width:1400px;flex:none}
+.nav{height:64px;background:var(--n1);border-bottom:1px solid var(--n5);display:flex;align-items:center;gap:4px;padding:0 32px}
+.nav .b{display:flex;align-items:center;gap:10px;font-weight:600;font-size:18px;margin-right:26px}
+.nav a{padding:8px 14px;font-weight:500;color:var(--n11);position:relative;font-size:16px}
+.nav a.on{color:var(--n12);font-weight:600}.nav a.on:after{content:"";position:absolute;left:14px;right:14px;bottom:-12px;height:2px;background:var(--n12)}
+.cnt{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;border-radius:11px;background:var(--a9);color:#21201c;font-size:13px;font-weight:700;padding:0 7px;margin-left:7px}
+.ext{display:flex;align-items:center;gap:8px;font-size:15px;color:var(--n11)}.ext .i{color:var(--ok)}
+.body{display:grid;grid-template-columns:1fr 340px;gap:48px;padding:44px 48px 52px}
+.date{font-size:15px;color:var(--n11)}
+h1{font-size:38px;line-height:1.15;letter-spacing:-.025em;font-weight:600;margin-top:6px;display:flex;align-items:center;gap:16px}
+h1 .dot{width:16px;height:16px}
+.sum{font-size:18px;color:var(--n11);margin-top:10px;max-width:720px}
+.list{background:var(--n1);border:1px solid var(--n5);border-radius:10px;margin-top:24px;overflow:hidden}
+.it{display:flex;align-items:center;gap:20px;padding:18px 22px;border-top:1px solid var(--n4)}.it:first-child{border-top:0}
+.it .t{flex:1}.it b{display:block;font-size:17px;font-weight:600}.it .t span{display:block;color:var(--n11);font-size:15.5px;margin-top:2px;line-height:1.5}
+.it.you{box-shadow:inset 3px 0 0 var(--a9)}
+.it.more{padding:12px 22px}.it.more a,.nums a{color:var(--n12);text-underline-offset:4px;font-weight:500}
+h2{font-size:20px;font-weight:600;margin-top:40px;display:flex;gap:10px;align-items:baseline}h2 span{font-size:16px;color:var(--n11);font-weight:500}
+h2+.list{margin-top:12px}
+aside{background:var(--n1);border:1px solid var(--n5);border-radius:10px;padding:24px;align-self:start;margin-top:34px}
+aside .st{display:flex;align-items:center;gap:10px;font-weight:600;font-size:17px}
+.pulse{width:10px;height:10px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 4px var(--ok3)}
+aside ul{list-style:none;margin-top:14px;font-size:15px;color:var(--n11)}aside li{display:flex;gap:9px;align-items:center;padding:4px 0}
+.nums{margin-top:22px;border-top:1px solid var(--n5)}.nums div{display:flex;justify-content:space-between;align-items:baseline;padding:12px 0;border-bottom:1px solid var(--n4);font-size:15.5px}
+.nums div:last-child{border:0}.nums b{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}.nums small{font-size:15px;color:var(--n11);font-weight:400}
+.phone{width:390px;height:844px;flex:none;border-radius:44px;border:10px solid #1b1b1a;overflow:hidden;background:var(--n2);position:relative}
+.phone .pn{margin-top:30px;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;background:var(--n1);border-bottom:1px solid var(--n5);font-weight:600}
+.phone .pb{padding:22px 16px}.phone h1{font-size:27px;gap:12px;align-items:flex-start}.phone h1 .dot{margin-top:10px;width:12px;height:12px}.phone .sum{font-size:16px}
+.phone .it{flex-direction:column;align-items:stretch;gap:14px;padding:16px}.phone .it .btn{height:48px}
+.tab{position:absolute;left:0;right:0;bottom:0;height:80px;background:var(--n1);border-top:1px solid var(--n5);display:flex;justify-content:space-around;padding-top:10px;font-size:12px;font-weight:600;color:var(--n11)}
+.tab div{display:flex;flex-direction:column;align-items:center;gap:4px;position:relative;min-width:60px}.tab .on{color:var(--n12)}
+.tab .bd{position:absolute;top:-4px;right:8px;min-width:18px;height:18px;border-radius:9px;background:var(--a9);color:#21201c;font-size:11px;display:flex;align-items:center;justify-content:center;border:2px solid var(--n1)}
+</style><body>
+<div class="bt">Today</div><p class="bl">The heading is what needs you, with the marigold dot. Maggie’s summary sits under it once, so nothing is said twice. Her rules and the day’s numbers stay at the side. Larger type: 38px heading, 17px rows, 16px body.</p>
+<div class="lab">Light, desktop and phone</div>
+<div class="row"><div class="app L frame">
+<div class="nav"><span class="b"><svg width="28" height="28" viewBox="0 0 256 256" aria-hidden="true"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="var(--n12)" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="18" fill="#ffc53d"/></svg>ApplyScout</span><a class="on">Today</a><a>Review<span class="cnt">5</span></a><a>Applications</a><a>Campaign</a><a>Profile</a><span style="flex:1"></span><span class="ext"><svg class="i " width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22v-5" />
+  <path d="M15 8V2" />
+  <path d="M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z" />
+  <path d="M9 8V2" /></svg>Extension connected</span><span class="btn gh"><svg class="i " width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.636" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Account"><circle cx="12" cy="12" r="10" />
+  <circle cx="12" cy="10" r="3" />
+  <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662" /></svg></span></div>
+<div class="body"><div>
+<p class="date">Saturday 10 October</p>
+<h1><span class="dot"></span>2 applications need your answer</h1>
+<p class="sum">Maggie sent 7 today and found 14 new roles. 3 more are ready for you to send yourself.</p>
+<div class="list">
+<div class="it you"><div class="t"><b>Growth Product Manager, Northwind</b><span>Singapore. The form asks if you can work there without sponsorship. Maggie won’t guess this.</span></div><span class="btn p">Answer</span></div>
+<div class="it you"><div class="t"><b>Senior Product Manager, Harbor Cloud</b><span>Bengaluru. Stopped at a sign-in page, so this one is yours to finish.</span></div><span class="btn s"><svg class="i " width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6" />
+  <path d="M10 14 21 3" />
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></svg>Open the form</span></div></div>
+<h2>Ready for you to send <span>3</span></h2>
+<div class="list">
+<div class="it"><div class="t"><b>Product Manager, Lumen Pay</b><span>Tailored resume and cover letter ready.</span></div><span class="btn s">Send it</span></div>
+<div class="it"><div class="t"><b>Associate Product Manager, Brightpath</b><span>Tailored resume ready. No cover letter asked for.</span></div><span class="btn s">Send it</span></div>
+<div class="it more"><a>Show 1 more</a></div></div></div>
+<aside><div class="st"><span class="pulse"></span>Maggie is applying</div>
+<ul><li><svg class="i " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>You approve each application</li><li><svg class="i " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>Daily limit 10, resets 5:30 am</li><li><svg class="i " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>Uses only facts you confirmed</li></ul>
+<span class="btn s" style="width:100%;margin-top:16px"><svg class="i " width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="14" y="3" width="5" height="18" rx="1" />
+  <rect x="5" y="3" width="5" height="18" rx="1" /></svg>Pause Maggie</span>
+<div class="nums"><div><span>Sent today</span><b>7<small> of 10</small></b></div><div><span><a>Not confirmed yet</a></span><b>1</b></div><div><span><a>New matches</a></span><b>14</b></div></div></aside></div></div>
+<div class="phone L"><div class="pn"><span style="display:flex;align-items:center;gap:8px"><svg width="26" height="26" viewBox="0 0 256 256" aria-hidden="true"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="var(--n12)" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="18" fill="#ffc53d"/></svg>ApplyScout</span><span style="display:flex;align-items:center;gap:8px;font-size:14px"><span class="pulse"></span>Applying</span></div>
+<div class="pb"><p class="date">Saturday 10 October</p><h1><span class="dot"></span>2 applications need your answer</h1><p class="sum">Maggie sent 7 today. 3 more are ready to send.</p>
+<div class="list"><div class="it you"><div class="t"><b>Growth PM, Northwind</b><span>Can you work in Singapore without sponsorship?</span></div><span class="btn p">Answer</span></div>
+<div class="it you" style="flex-direction:row;align-items:center"><div class="t"><b>Senior PM, Harbor Cloud</b><span>Stopped at a sign-in page</span></div><svg class="i " width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.636" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></div></div></div>
+<div class="tab"><div class="on"><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+  <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>Today</div><div class=""><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+  <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>Review<span class=bd>5</span></div><div class=""><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12h.01" />
+  <path d="M16 6V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+  <path d="M22 13a18.15 18.15 0 0 1-20 0" />
+  <rect width="20" height="14" x="2" y="6" rx="2" /></svg>Applications</div><div class=""><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="19" r="3" />
+  <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15" />
+  <circle cx="18" cy="5" r="3" /></svg>Campaign</div><div class=""><svg class="i " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" />
+  <circle cx="12" cy="10" r="3" />
+  <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662" /></svg>Profile</div></div></div></div>
+<div class="lab">Dark <span>Radix sand dark scale. Marigold stays the same; text on dark tints uses the dark scale’s step 12.</span></div>
+<div class="app D frame">
+<div class="nav"><span class="b"><svg width="28" height="28" viewBox="0 0 256 256" aria-hidden="true"><path d="M56 188.7 L128 64 L200 188.7" fill="none" stroke="var(--n12)" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/><circle cx="128" cy="158" r="18" fill="#ffc53d"/></svg>ApplyScout</span><a class="on">Today</a><a>Review<span class="cnt">5</span></a><a>Applications</a><a>Campaign</a><a>Profile</a><span style="flex:1"></span><span class="ext"><svg class="i " width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22v-5" />
+  <path d="M15 8V2" />
+  <path d="M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z" />
+  <path d="M9 8V2" /></svg>Extension connected</span><span class="btn gh"><svg class="i " width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.636" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Account"><circle cx="12" cy="12" r="10" />
+  <circle cx="12" cy="10" r="3" />
+  <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662" /></svg></span></div>
+<div class="body"><div>
+<p class="date">Saturday 10 October</p>
+<h1><span class="dot"></span>2 applications need your answer</h1>
+<p class="sum">Maggie sent 7 today and found 14 new roles. 3 more are ready for you to send yourself.</p>
+<div class="list">
+<div class="it you"><div class="t"><b>Growth Product Manager, Northwind</b><span>Singapore. The form asks if you can work there without sponsorship. Maggie won’t guess this.</span></div><span class="btn p">Answer</span></div>
+<div class="it you"><div class="t"><b>Senior Product Manager, Harbor Cloud</b><span>Bengaluru. Stopped at a sign-in page, so this one is yours to finish.</span></div><span class="btn s"><svg class="i " width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6" />
+  <path d="M10 14 21 3" />
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></svg>Open the form</span></div></div>
+<h2>Ready for you to send <span>3</span></h2>
+<div class="list">
+<div class="it"><div class="t"><b>Product Manager, Lumen Pay</b><span>Tailored resume and cover letter ready.</span></div><span class="btn s">Send it</span></div>
+<div class="it"><div class="t"><b>Associate Product Manager, Brightpath</b><span>Tailored resume ready. No cover letter asked for.</span></div><span class="btn s">Send it</span></div>
+<div class="it more"><a>Show 1 more</a></div></div></div>
+<aside><div class="st"><span class="pulse"></span>Maggie is applying</div>
+<ul><li><svg class="i " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>You approve each application</li><li><svg class="i " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>Daily limit 10, resets 5:30 am</li><li><svg class="i " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>Uses only facts you confirmed</li></ul>
+<span class="btn s" style="width:100%;margin-top:16px"><svg class="i " width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="14" y="3" width="5" height="18" rx="1" />
+  <rect x="5" y="3" width="5" height="18" rx="1" /></svg>Pause Maggie</span>
+<div class="nums"><div><span>Sent today</span><b>7<small> of 10</small></b></div><div><span><a>Not confirmed yet</a></span><b>1</b></div><div><span><a>New matches</a></span><b>14</b></div></div></aside></div></div>
+</body>
