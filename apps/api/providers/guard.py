@@ -137,9 +137,44 @@ def _check_spend(provider: str, cost_usd: float) -> None:
         raise SpendCapReached(f"{provider} daily cap ${cap:.2f} reached (spent ${spent:.4f})")
 
 
+_spent_here: dict[str, float] = {}  # USD this process recorded per provider (tailoring cost metric)
+
+
+def spent_here(provider: str) -> float:
+    return _spent_here.get(provider, 0.0)
+
+
+def _day_key(provider: str, kind: str) -> str:
+    return f"guard:{provider}:{kind}:{datetime.now(timezone.utc):%Y-%m-%d}"
+
+
+def usage(redis, provider: str) -> dict:
+    """Calls admitted in the last full minute — the rate limiter's own counter, capped at the
+    limit because a refused attempt increments it too — and HTTP 429s today (/ops/health)."""
+    calls = int(redis.get(f"guard:{provider}:rpm:{int(time.time() // 60) - 1}") or 0)
+    limit = RPM.get(provider)
+    return {"calls_last_minute": min(calls, limit) if limit else calls,
+            "rate_limited_today": int(redis.get(_day_key(provider, "429")) or 0)}
+
+
+def _record_429(provider: str) -> None:
+    def op(r):
+        r.incr(_day_key(provider, "429"))
+        r.expire(_day_key(provider, "429"), 2 * 86400)
+    _safe(op)
+
+
+def _status(exc: Exception) -> int | None:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code
+    status = getattr(exc, "status_code", None)
+    return status if isinstance(status, int) else None
+
+
 def _record_spend(provider: str, cost_usd: float) -> None:
     if cost_usd <= 0:
         return
+    _spent_here[provider] = spent_here(provider) + cost_usd
 
     def op(r):
         r.incrbyfloat(_spend_key(provider), cost_usd)
@@ -179,6 +214,8 @@ def call(provider: str, fn, *, cost_usd: float = 0.0, retries: int = 2):
         try:
             result = fn()
         except Exception as exc:
+            if _status(exc) == 429:
+                _record_429(provider)
             if not _retryable(exc):
                 raise
             _record_failure(provider)
