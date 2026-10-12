@@ -41,6 +41,11 @@ def _scan_for_violations():
     return violations
 
 
+def test_no_personal_resume_seed_is_committed():
+    # NEXT-WORK-PLAN P0 #4: resume_kb/facts.json held the owner's real resume facts.
+    assert not (API_DIR / "resume_kb").exists()
+
+
 def test_no_backend_function_looks_like_an_autonomous_application_submitter():
     violations = _scan_for_violations()
     assert violations == [], (
