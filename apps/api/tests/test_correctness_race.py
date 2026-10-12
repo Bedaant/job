@@ -147,5 +147,5 @@ def test_two_users_racing_to_one_recipient_at_cap_minus_one_claim_only_once(_pg_
             t.join(30)
         assert sorted(results, key=str) == [None, "recipient_cap"]
     finally:
-        for u in users:
-            _cleanup(Session, u, jobs)
+        for u in users:  # jobs go with the last user: earlier users' applications still reference them
+            _cleanup(Session, u, jobs if u == users[-1] else [])
