@@ -353,6 +353,18 @@ class NotificationUpdate(BaseModel):
     status: str
 
 
+class OutcomeIn(BaseModel):
+    """POST /applications/{id}/outcome — the one-tap "Heard back?" answer (outcomes.py)."""
+    outcome: Literal["interview", "rejected", "no_reply"]
+
+
+class OutcomePromptOut(BaseModel):
+    application_id: str
+    day: int
+    job_title: str
+    company: str
+
+
 class FieldDescriptorIn(BaseModel):
     field_id: str
     label_text: Optional[str] = None

@@ -14,6 +14,7 @@ from core.security import (
     RESET_TOKEN_MINUTES, create_access_token, create_reset_token, hash_password, reset_token_user_id, verify_password,
 )
 from database import get_db
+from events.outbox import record_funnel
 from digest import smtp_sender
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,8 @@ def signup(payload: schemas.UserCreate, request: Request, db: Session = Depends(
     user = models.User(email=_normalise(payload.email), password_hash=hash_password(payload.password),
                        privacy_consent_at=datetime.utcnow() if payload.privacy_consent else None)
     db.add(user)
+    db.flush()
+    record_funnel(db, user.id, "signup")
     db.commit()
     db.refresh(user)
     return user

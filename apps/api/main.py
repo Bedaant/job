@@ -30,7 +30,8 @@ from outreach import api as outreach_api
 from outreach import gmail
 from connectors.apply_target import resolve_apply_target
 from documents.tailored_resume import DOCX_MIME, ResumeNotRenderable, render_verified_resume, tailored_facts
-from events.outbox import write_event
+from events.outbox import record_funnel, write_event
+import outcomes
 from events.sse import event_stream
 from formfill.deterministic import bind_to_options
 from formfill.map_fields import build_profile_summary, map_form_fields
@@ -743,6 +744,8 @@ def update_campaign(
             "posting we have collected. Add a role, or leave the campaign paused.",
         )
 
+    if campaign.status == models.CampaignStatus.active:
+        record_funnel(db, current_user.id, "campaign_active")
     db.commit()
     db.refresh(campaign)
     if campaign.status == models.CampaignStatus.active and (not was_active or search_changed):
@@ -1094,6 +1097,7 @@ def confirm_facts_bulk(
     response.headers["X-Skipped-Facts"] = ",".join(skipped)
     if not created:
         return []
+    record_funnel(db, profile.user_id, "facts_confirmed")
     db.commit()
 
     # A Voyage failure (the free tier's 429) must not fail the confirm: the facts are
@@ -1577,6 +1581,26 @@ def update_notification(
     db.commit()
     db.refresh(notif)
     return notif
+
+
+@app.get("/outcome-prompts", response_model=list[schemas.OutcomePromptOut])
+def list_outcome_prompts(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    """The in-app "Heard back?" prompts still waiting for a tap (outcomes.py)."""
+    return outcomes.pending_prompts(db, current_user.id)
+
+
+@app.post("/applications/{application_id}/outcome")
+def record_application_outcome(
+    application_id: str,
+    payload: schemas.OutcomeIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    app_row = _owned_application(db, current_user, application_id)
+    outcomes.record_outcome(db, app_row, current_user.id, payload.outcome)
+    record_funnel(db, current_user.id, "outcome_answered")
+    db.commit()
+    return {"application_id": app_row.id, "outcome": app_row.outcome}
 
 
 # ---------- Applications tracker + detail, match actions (WORKLOG latest+46) ----------

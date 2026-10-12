@@ -13,6 +13,7 @@ from email.message import EmailMessage
 from sqlalchemy.orm import Session
 
 import models
+import outcomes
 from core.config import get_settings
 from database import session_scope
 
@@ -82,8 +83,10 @@ def build_digest(db: Session, user: models.User, start: datetime, end: datetime)
             for code, n in skips.most_common(3)
         ],
         "replies": replies,
+        # Prompts created since the window opened, so each is emailed once (the sweep runs just before).
+        "outcome_prompts": outcomes.pending_prompts(db, user.id, since=start),
     }
-    d["had_activity"] = bool(d["sent"] or d["skipped"] or replies)
+    d["had_activity"] = bool(d["sent"] or d["skipped"] or replies or d["outcome_prompts"])
     return d
 
 
@@ -106,6 +109,11 @@ def render_text(d: dict) -> str:
     if d["replies"]:
         lines.append("Replies:")
         lines += [f"  {r['job_title']} at {r['company']}: {r['status']}" for r in d["replies"]]
+    if d.get("outcome_prompts"):
+        web = get_settings().web_base_url
+        lines.append("Heard back? One tap tells Maggie (interview, rejected or no reply yet):")
+        lines += [f"  {p['job_title']} at {p['company']}: {web}/today#outcome-{p['application_id']}"
+                  for p in d["outcome_prompts"]]
     return "\n".join(lines)
 
 
@@ -153,6 +161,7 @@ def daily_digest_task(sender=None) -> dict:
         sender = smtp_sender if get_settings().smtp_host else log_only_sender
     notified = 0
     with session_scope() as db:
+        outcomes.sweep_prompts(db, datetime.utcnow())
         # ponytail: one pass over every user, fine until users number in the thousands.
         for user in db.query(models.User).all():
             done = db.query(models.Notification).filter(
