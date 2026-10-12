@@ -34,6 +34,7 @@ import models
 from batch_prep import prepare_application_for_review
 from campaigns import run_campaign
 from events.outbox import write_event
+import formplans
 from formplans import ROUTED_ATS, plan_job
 from matching.role_judge import judge_campaign_titles
 from matching.service import build_matches
@@ -898,6 +899,11 @@ def sweep_form_plans_task() -> dict:
                            models.FormPlan.id.is_(None))
                    .distinct().limit(10)]
 
+    missing = job_ids and formplans.planner_missing()
+    if missing:
+        # Leave them pending (no row): the next sweep plans them once the planner is installed.
+        logger.warning("form planner unavailable (%s); %d job(s) left unplanned", missing, len(job_ids))
+        return {"enqueued": [], "skipped": missing}
     for job_id in job_ids:
         try:
             get_queue(BACKGROUND_QUEUE).enqueue(

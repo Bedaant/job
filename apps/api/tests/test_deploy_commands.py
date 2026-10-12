@@ -28,3 +28,12 @@ def test_scheduler_runs_as_a_module():
 
 def test_irreversible_sends_have_their_own_worker():
     assert _command("worker-effects") == ["python", "-m", "workers.run_worker", "effects"]
+
+
+def test_the_worker_that_plans_forms_builds_an_image_with_the_planner():
+    # P0 #8: plan_form_task runs on `background`; its image used to lack node, so every plan failed.
+    build = yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))["services"]["worker-background"]["build"]
+    stages = (COMPOSE.parent / "Dockerfile").read_text(encoding="utf-8").split("\nFROM ")
+    planner = next(s for s in stages if s.split("\n")[0].endswith(f"AS {build['target']}"))
+    assert "/usr/local/bin/node" in planner and "chromium" in planner and "plan.mjs" in planner
+    assert stages[-1].startswith("base AS app")  # the default target stays the slim image

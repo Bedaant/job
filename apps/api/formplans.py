@@ -13,8 +13,10 @@ Run: python -m formplans --job-id <id>
 import argparse
 import hashlib
 import json
+import logging
 import os
 import re
+import shutil
 import subprocess
 import uuid
 from datetime import datetime
@@ -28,6 +30,7 @@ from connectors.lever import fetch_lever_jobs
 from connectors.normalize import canonical_hash
 from connectors.pipeline import upsert_jobs
 
+logger = logging.getLogger(__name__)
 PLANNER = Path(__file__).resolve().parents[2] / "tools" / "stagehand-harness" / "plan.mjs"
 FETCHERS = {"greenhouse": fetch_greenhouse_jobs, "lever": fetch_lever_jobs, "ashby": fetch_ashby_jobs}
 # Where a plan reaches the fill. docs/harness-reports/plan-vs-extension.md (2026-09-29):
@@ -94,9 +97,25 @@ def build_plan(report: dict) -> tuple[dict | None, str | None]:
     return {"fields": fields}, None
 
 
+def planner_missing() -> str | None:
+    """What this machine lacks to run the planner, or None. A missing tool is the
+    machine's fault, not the job's, so it must never become a `failed` row."""
+    if not shutil.which("node"):
+        return "node not on PATH"
+    if not PLANNER.exists():
+        return f"{PLANNER} not found"
+    if not (PLANNER.parent / "node_modules").is_dir():
+        return f"{PLANNER.parent / 'node_modules'} not installed (npm ci)"
+    return None
+
+
+_MISSING_TOOL = re.compile(r"ERR_MODULE_NOT_FOUND|Cannot find (module|package)")
+
+
 def plan_job(db, job, url: str | None = None):
     """Run the guarded planner on the job's apply form and upsert its one row.
-    Returns None (no row) when the URL is not an ATS the planner was measured on."""
+    Returns None (no row) when the URL is not an ATS the planner was measured on,
+    or when the planner itself cannot start here (the job stays unplanned, not failed)."""
     target = resolve_apply_target(url or job.apply_url)
     if target["ats_type"] not in FETCHERS:
         return None
@@ -110,8 +129,15 @@ def plan_job(db, job, url: str | None = None):
         proc = subprocess.run(["node", str(PLANNER), url, "-"], timeout=300, capture_output=True)
         lines = [ln for ln in (proc.stdout or b"").decode("utf-8", "replace").splitlines() if ln.startswith("{")]
         if not lines:
-            raise OSError(f"planner wrote no report: {(proc.stderr or b'')[-500:].decode(errors='replace')}")
+            stderr = (proc.stderr or b"")[-500:].decode(errors="replace")
+            if _MISSING_TOOL.search(stderr):
+                logger.warning("form planner unavailable, job %s left unplanned: %s", job_id, stderr)
+                return None
+            raise OSError(f"planner wrote no report: {stderr}")
         plan, error = build_plan(json.loads(lines[-1]))
+    except FileNotFoundError as exc:  # no `node` binary: the machine's fault, not the job's
+        logger.warning("form planner unavailable, job %s left unplanned: %s", job_id, exc)
+        return None
     except (subprocess.TimeoutExpired, OSError, ValueError) as exc:
         plan, error = None, f"{type(exc).__name__}: {exc}"
 

@@ -6,8 +6,9 @@
 #
 # WHAT IS DELIBERATELY ABSENT, because it is what keeps this under ~1GB instead of ~3GB:
 #
-#   * Chromium and tools/stagehand-harness. Form planning stays on the owner's machine by
-#     decision. Everything that must run UNATTENDED — discovery, embedding, matching,
+#   * Chromium and tools/stagehand-harness — from THIS (default) image. They live in the
+#     `planner` target at the bottom, which only worker-background builds (P0 #8).
+#     Everything that must run UNATTENDED — discovery, embedding, matching,
 #     tailoring, truth-check, outreach, the digest — is here.
 #   * tools/browser-use-harness, same reason.
 #   * spaCy's en_core_web_lg (~400MB). PLAN-DEPLOY first claimed the API could not start
@@ -90,3 +91,33 @@ WORKDIR /app/apps/api
 # reloader has no business in a deployed image anyway.
 EXPOSE 8000
 CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# --- planner: `base` plus what tools/stagehand-harness/plan.mjs needs (NEXT-WORK-PLAN P0 #8) ---
+# Only worker-background (which runs plan_form_task) builds this target, so the API, the
+# other workers and the scheduler keep the slim image above. Without it every swept job
+# ended `failed` on a missing `node`. Stagehand 3.7 needs Node ^20.19 || >=22.12, newer
+# than Debian's, so node and the npm tree come from the official image.
+FROM node:22-slim AS planner-deps
+WORKDIR /harness
+COPY tools/stagehand-harness/package.json tools/stagehand-harness/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
+
+FROM base AS planner
+USER root
+# chromium: Stagehand's LOCAL env launches it through chrome-launcher, which reads CHROME_PATH.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends chromium \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=planner-deps /usr/local/bin/node /usr/local/bin/node
+COPY --from=planner-deps --chown=app:app /harness/node_modules /app/tools/stagehand-harness/node_modules
+COPY --chown=app:app tools/stagehand-harness/plan.mjs /app/tools/stagehand-harness/plan.mjs
+# plan.mjs reads its DOM snapshot script out of check_form.py (one source of truth).
+COPY --chown=app:app tools/browser-use-harness/check_form.py tools/browser-use-harness/guard.py \
+     /app/tools/browser-use-harness/
+# Non-root in a container has no user namespace for Chromium's sandbox; the container is the boundary.
+ENV CHROME_PATH=/usr/bin/chromium \
+    CHROMIUM_FLAGS=--no-sandbox
+USER app
+
+# Last stage = the default `docker build` target: keep that the slim image.
+FROM base AS app
