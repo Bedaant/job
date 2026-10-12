@@ -46,6 +46,7 @@ def test_scheduled_batch_work_goes_to_background_and_user_work_to_default(mock_c
     assert queues[jobs.sweep_campaigns_task] == "default"
 
 
+@patch("formplans.planner_missing", lambda: None)
 @patch("workers.jobs.get_redis_connection")
 @patch("workers.jobs.get_queue")
 @patch("workers.jobs.session_scope")

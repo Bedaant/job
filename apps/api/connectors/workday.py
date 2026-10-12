@@ -36,7 +36,6 @@ import httpx
 
 from providers import guard
 
-from connectors.config import FEED_KEYWORDS as KEYWORDS
 from connectors.config import TOKEN_COMPANY_NAMES, WORKDAY_BOARDS
 from connectors.normalize import coerce_posted_at
 
@@ -86,9 +85,9 @@ def _get(base: str, external_path: str) -> dict:
     return guard.call(f"workday:{httpx.URL(base).host}", once)
 
 
-def _matches(title: str | None) -> bool:
+def _matches(title: str | None, keywords: list[str]) -> bool:
     t = (title or "").lower()
-    return not KEYWORDS or any(k.lower() in t for k in KEYWORDS)
+    return any(k.lower() in t for k in keywords)
 
 
 def _list_board(base: str) -> list[dict]:
@@ -132,9 +131,10 @@ def _list_board(base: str) -> list[dict]:
     )
 
 
-def fetch_workday_jobs(tenant: str) -> list[dict]:
+def fetch_workday_jobs(tenant: str, keywords: list[str]) -> list[dict]:
     """Normalized job dicts for one Workday employer. `tenant` is the key in
-    `config.WORKDAY_BOARDS`, whose value is "wd<N>/<site>".
+    `config.WORKDAY_BOARDS`, whose value is "wd<N>/<site>". Only titles containing
+    one of `keywords` (active campaign roles) are hydrated; none means nothing is fetched.
 
     Raises on any HTTP failure, including a single detail fetch. That is
     deliberate: a job missing from the returned list is indistinguishable from a
@@ -143,7 +143,7 @@ def fetch_workday_jobs(tenant: str) -> list[dict]:
     sweep gets nothing — the same rule jobicy's pagination follows.
     """
     board = WORKDAY_BOARDS.get(tenant)
-    if not board:
+    if not board or not keywords:
         return []
     wd, _, site = board.partition("/")
     base = f"https://{tenant}.{wd}.myworkdayjobs.com/wday/cxs/{tenant}/{site}"
@@ -151,7 +151,7 @@ def fetch_workday_jobs(tenant: str) -> list[dict]:
 
     jobs = []
     for listed in _list_board(base):
-        if not _matches(listed.get("title")):
+        if not _matches(listed.get("title"), keywords):
             continue
         time.sleep(PAGE_PACING_SECONDS)
         info = (_get(base, listed["externalPath"]) or {}).get("jobPostingInfo") or {}

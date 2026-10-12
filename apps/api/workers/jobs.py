@@ -34,6 +34,7 @@ import models
 from batch_prep import prepare_application_for_review
 from campaigns import run_campaign
 from events.outbox import write_event
+import formplans
 from formplans import ROUTED_ATS, plan_job
 from matching.role_judge import judge_campaign_titles
 from matching.service import build_matches
@@ -277,71 +278,9 @@ def _fetch_keyword_source(fetcher, keywords: list[str]) -> tuple[list[dict], lis
     return jobs, []
 
 
-def _fetch_jobspy_source(keywords: list[str], locations: list[str]) -> tuple[list[dict], list]:
-    """One scrape per keyword PER LOCATION (GAPS 3.2).
-
-    The cross product is the point, not laziness: `location="India"` returns Indianapolis
-    because Glassdoor prefix-matches the string, so the only way to get Indian results is
-    to ask city by city. Measured 2026-10-09 — 147 unique PM jobs across 101 companies
-    from six cities, against a prior measured ceiling of 23.
-
-    Contributes **no sweep batch**. A keyword+location slice is not a complete listing,
-    so absence from a payload means "not in that search", not "gone" (ADR-017 §2). That
-    is also enforced independently by `SWEEPABLE_SOURCES`, and a test asserts no
-    `jobspy_*` source ever joins it.
-
-    Each scrape is a subprocess into `tools/.venv-jobspy/` (its pinned numpy 1.26.3
-    conflicts with this app's numpy 2.x), so failures are isolated per query: one city
-    going 403 must not cost the other five.
-    """
-    jobs: list[dict] = []
-    i = 0
-    for keyword in keywords:
-        for location in locations:
-            _pace(i)
-            i += 1
-            try:
-                jobs.extend(fetch_jobspy_jobs(keyword, sites=conn_config.JOBSPY_SITES,
-                                              location=location))
-            except Exception:
-                logger.warning(
-                    "jobspy query failed for %r in %r", keyword, location, exc_info=False
-                )
-    return jobs, []
-
-
-def _fetch_linkedin_source(keywords: list[str], locations: list[str]) -> tuple[list[dict], list]:
-    """One Apify search per keyword per location (GAPS 3.1).
-
-    The only source that reaches the companies GAPS 3.1 lists as having no
-    greenhouse/lever/ashby board at all — PhonePe appeared in the first 15 rows measured.
-    A bare country works here, unlike JobSpy/Glassdoor where "India" returns Indianapolis,
-    so the cross product stays small and cheap (~$0.0015/row).
-
-    Contributes **no sweep batch**: a keyword+location slice is not a complete listing, so
-    absence means "not in that search", not "gone" (ADR-017 §2). `SWEEPABLE_SOURCES`
-    enforces that independently and a test pins that no `linkedin_*` source joins it.
-
-    Each query is isolated: this is a paid third-party browser-driven actor, so one
-    keyword timing out must not cost the others or the sources queued behind it.
-    """
-    jobs: list[dict] = []
-    i = 0
-    for keyword in keywords:
-        for location in locations:
-            _pace(i)
-            i += 1
-            try:
-                jobs.extend(fetch_linkedin_jobs(keyword, location,
-                                                rows=conn_config.LINKEDIN_JOB_ROWS))
-            except Exception:
-                logger.warning("linkedin query failed for %r in %r", keyword, location)
-    return jobs, []
-
-
 def _fetch_linkedin_posts_source(queries: list[str]) -> tuple[list[dict], list]:
-    """Hiring posts: all queries in one Apify run. No sweep batch, same reason as
-    `_fetch_linkedin_source` — a search slice is not a complete listing."""
+    """Hiring posts: all queries in one Apify run. No sweep batch: a search slice is not a
+    complete listing (ADR-017 §2)."""
     return fetch_linkedin_posts(queries, rows=conn_config.LINKEDIN_POST_ROWS), []
 
 
@@ -425,23 +364,35 @@ def _discovery_units() -> list[tuple[str, str | None]]:
         *(("ashby", t) for t in conn_config.ASHBY_ORG_TOKENS),
         # Workday is skipped on runs where it is not due (_workday_tokens).
         *(("workday", t) for t in _workday_tokens()),
-        ("jobspy", None), ("linkedin", None), ("linkedin_posts", None), ("feeds", None),
+        # LinkedIn and JobSpy title searches run per campaign (campaign_search_task and
+        # refresh_campaign_searches_task); hiring posts are role-agnostic, so they stay here.
+        ("linkedin_posts", None), ("feeds", None),
     ]
+
+
+# Remotive/Reed queries and Workday's filter: one request (or detail fetch) per term, so capped.
+CAMPAIGN_KEYWORD_LIMIT = 10
+
+
+def _campaign_keywords() -> list[str]:
+    """The roles of every active campaign: what the keyword sources search for (P0 #6)."""
+    with session_scope() as db:
+        rows = (db.query(models.Campaign.roles)
+                .filter(models.Campaign.status == models.CampaignStatus.active)
+                .order_by(models.Campaign.created_at).all())
+    return _first_unique((role for (roles,) in rows for role in roles or []), CAMPAIGN_KEYWORD_LIMIT)
 
 
 def _unit_fetch(source: str, token: str | None):
     """The fetch for one unit, returning (jobs, [(token, jobs)] sweep batches).
     Looked up at call time so tests can patch the module-level connector functions."""
     if source in _ATS_FETCHERS:
-        fetcher = {"greenhouse": fetch_greenhouse_jobs, "lever": fetch_lever_jobs,
-                   "ashby": fetch_ashby_jobs, "workday": fetch_workday_jobs}[source]
+        fetcher = {"greenhouse": fetch_greenhouse_jobs, "lever": fetch_lever_jobs, "ashby": fetch_ashby_jobs,
+                   "workday": lambda t: fetch_workday_jobs(t, _campaign_keywords())}[source]
         return lambda: _fetch_ats_source(fetcher, [token])
     return {
-        "remotive": lambda: _fetch_keyword_source(fetch_remotive_jobs, conn_config.REMOTIVE_KEYWORDS),
-        "reed": lambda: _fetch_keyword_source(fetch_reed_jobs, conn_config.REED_KEYWORDS),
-        "jobspy": lambda: _fetch_jobspy_source(conn_config.JOBSPY_KEYWORDS, conn_config.JOBSPY_LOCATIONS),
-        "linkedin": lambda: _fetch_linkedin_source(
-            conn_config.LINKEDIN_JOB_KEYWORDS, conn_config.LINKEDIN_JOB_LOCATIONS),
+        "remotive": lambda: _fetch_keyword_source(fetch_remotive_jobs, _campaign_keywords()),
+        "reed": lambda: _fetch_keyword_source(fetch_reed_jobs, _campaign_keywords()),
         "linkedin_posts": lambda: _fetch_linkedin_posts_source(conn_config.LINKEDIN_POST_QUERIES),
     }[source]
 
@@ -640,10 +591,9 @@ def _fetch_pairs(fetch_one, pairs) -> tuple[list[dict], list]:
     return jobs, []
 
 
-def _search_and_save(parts: dict[str, list], token: str) -> int:
-    """Fetch each search source for these pairs/queries and save it as its own unit.
-    No transaction is open during any fetch."""
-    fetches = {
+def _search_fetches(parts: dict[str, list]) -> dict:
+    """source -> the fetch for these pairs/queries (scripts/measure_campaign_yield.py reuses it)."""
+    return {
         "linkedin": lambda: _fetch_pairs(
             lambda r, l: fetch_linkedin_jobs(r, l, rows=CAMPAIGN_SEARCH_ROWS), parts["linkedin"]),
         "linkedin_posts": lambda: _fetch_linkedin_posts_source(parts["linkedin_posts"]),
@@ -651,8 +601,13 @@ def _search_and_save(parts: dict[str, list], token: str) -> int:
             lambda r, l: fetch_jobspy_jobs(r, sites=conn_config.JOBSPY_SITES, location=l),
             parts["jobspy"]),
     }
+
+
+def _search_and_save(parts: dict[str, list], token: str) -> int:
+    """Fetch each search source for these pairs/queries and save it as its own unit.
+    No transaction is open during any fetch."""
     inserted = 0
-    for source, fetch in fetches.items():
+    for source, fetch in _search_fetches(parts).items():
         if not parts[source]:
             continue
         jobs, _batches, run = _isolate(source, fetch)
@@ -829,14 +784,30 @@ def embed_backlog_task() -> dict:
 SWEEP_JUDGE_LIMIT = 100
 
 
-def sweep_campaigns_task() -> dict:
-    """Scheduled (workers/run_scheduler.py): for every active campaign, rebuild
-    its profile's matches and enqueue a run. Runs on the owner role with no
-    request, so there is no RLS tenant — every query here and downstream is
-    scoped by campaign.id / profile_id explicitly.
+# P1 #16: the sweep only lists campaigns; each campaign's judge + match + run is its own job, so one
+# slow or broken campaign times out or fails alone. A run tailors up to daily_cap applications.
+CAMPAIGN_SWEEP_TIMEOUT_SECONDS = 5 * 60
+CAMPAIGN_JOB_TIMEOUT_SECONDS = 30 * 60
 
-    Each campaign gets its own session and try/except: one user's bad data
-    must never stop everyone else's run.
+
+def sweep_campaign_task(campaign_id: str, run_id: str) -> dict:
+    """One active campaign's scheduled pass: judge new titles, rebuild matches, run it."""
+    # Cached verdicts make this cheap after the first pass; bounded so a pass stays short.
+    judge_campaign_titles(campaign_id, limit=SWEEP_JUDGE_LIMIT, scope=session_scope)
+    with session_scope() as db:
+        campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
+        if campaign is None:
+            return {"skipped": True, "reason": "campaign not found"}
+        # No facts, or no job embeddings (no VOYAGE_API_KEY) → [] and the
+        # run works from the matches that already exist.
+        build_matches(db, campaign.profile)
+    return run_campaign_task(campaign_id, run_id=run_id, scheduled=True)
+
+
+def sweep_campaigns_task() -> dict:
+    """Scheduled (workers/run_scheduler.py): enqueue one sweep_campaign_task per active
+    campaign. Runs on the owner role with no request, so there is no RLS tenant — every
+    query here and downstream is scoped by campaign.id / profile_id explicitly.
     """
     bucket = int(time.time() // CAMPAIGN_SWEEP_INTERVAL_SECONDS)
     with session_scope() as db:
@@ -846,26 +817,18 @@ def sweep_campaigns_task() -> dict:
 
     enqueued, failed = [], []
     for campaign_id in campaign_ids:
+        # rq 2.x ids: [A-Za-z0-9_-] only. "sweep" keeps these apart from manual run ids.
+        run_id = f"campaign-{campaign_id}-sweep-{bucket}"
         try:
-            # Cached verdicts make this cheap after the first pass; bounded so a sweep stays short.
-            judge_campaign_titles(campaign_id, limit=SWEEP_JUDGE_LIMIT, scope=session_scope)
-            with session_scope() as db:
-                campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
-                # No facts, or no job embeddings (no VOYAGE_API_KEY) → [] and the
-                # run works from the matches that already exist.
-                build_matches(db, campaign.profile)
-            # rq 2.x ids: [A-Za-z0-9_-] only. "sweep" keeps these apart from manual run ids.
-            run_id = f"campaign-{campaign_id}-sweep-{bucket}"
-            try:
-                get_queue().enqueue(
-                    run_campaign_task, job_id=run_id, unique=True,
-                    kwargs={"campaign_id": campaign_id, "run_id": run_id, "scheduled": True},
-                )
-            except DuplicateJobError:
-                pass  # already queued in this window
+            get_queue().enqueue(
+                sweep_campaign_task, job_id=run_id, unique=True, job_timeout=CAMPAIGN_JOB_TIMEOUT_SECONDS,
+                kwargs={"campaign_id": campaign_id, "run_id": run_id},
+            )
             enqueued.append(campaign_id)
+        except DuplicateJobError:
+            enqueued.append(campaign_id)  # already queued in this window
         except Exception:
-            logger.exception("scheduled sweep failed for campaign %s", campaign_id)
+            logger.exception("scheduled sweep failed to enqueue campaign %s", campaign_id)
             failed.append(campaign_id)
     return {"enqueued": enqueued, "failed": failed}
 
@@ -898,6 +861,11 @@ def sweep_form_plans_task() -> dict:
                            models.FormPlan.id.is_(None))
                    .distinct().limit(10)]
 
+    missing = job_ids and formplans.planner_missing()
+    if missing:
+        # Leave them pending (no row): the next sweep plans them once the planner is installed.
+        logger.warning("form planner unavailable (%s); %d job(s) left unplanned", missing, len(job_ids))
+        return {"enqueued": [], "skipped": missing}
     for job_id in job_ids:
         try:
             get_queue(BACKGROUND_QUEUE).enqueue(

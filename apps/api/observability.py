@@ -4,6 +4,7 @@ Every problem found on 2026-10-10 (a save killed by Neon, a 290 s stage, a click
 discovery) was found with hand-written probes. This makes the system report them itself.
 """
 import logging
+import statistics
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
@@ -18,6 +19,7 @@ from core.deps import require_owner
 from database import get_db
 from digest import smtp_sender
 from matching.scoring import compute_match_score
+from providers import guard
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,10 @@ BACKLOG_THRESHOLD = 50
 STAGE_BUDGET_MS = 10 * 60 * 1000
 ALERT_TTL_SECONDS = 60 * 60
 _RECENT_FAILURES = 50
+SUBMITTING_STALE_MINUTES = 15
+REDIS_CLIENT_ALERT = 25  # Redis Cloud free tier caps at 30 clients (GAPS 5.3)
+TAILORING_KEY = "metrics:tailoring"
+TAILORING_SAMPLES = 200
 
 
 def _utc_naive(value: datetime | None) -> datetime | None:
@@ -40,21 +46,41 @@ def _redis():
 
 
 def _queue_stats(redis) -> tuple[dict, datetime | None]:
-    """Depth and failure count per queue, plus when discovery last failed."""
+    """Depth, failure count and oldest waiting job's age per queue, plus when discovery last failed."""
     from rq import Queue
     from rq.job import Job
 
-    stats, last_failed = {}, None
+    stats, last_failed, now = {}, None, datetime.utcnow()
     for name in QUEUES:
         queue = Queue(name, connection=redis)
         registry = queue.failed_job_registry
-        stats[name] = {"queued": queue.count, "failed": registry.count}
+        head = Job.fetch_many(queue.get_job_ids(0, 1), connection=redis)  # index 0 = oldest
+        enqueued = _utc_naive(head[0].enqueued_at) if head and head[0] else None
+        stats[name] = {"queued": queue.count, "failed": registry.count,
+                       "oldest_queued_age_seconds": round((now - enqueued).total_seconds()) if enqueued else None}
         ids = registry.get_job_ids(0, _RECENT_FAILURES - 1, desc=True, cleanup=False)
         for job in Job.fetch_many(ids, connection=redis):
             if job and (job.func_name or "").endswith("discover_jobs_task") and job.ended_at:
                 ended = _utc_naive(job.ended_at)
                 last_failed = max(last_failed, ended) if last_failed else ended
     return stats, last_failed
+
+
+def record_tailoring(redis, seconds: float, cost_usd: float) -> None:
+    """One tailoring's wall time and LLM cost (guard's per-call estimate); newest 200 kept."""
+    redis.lpush(TAILORING_KEY, f"{seconds:.3f} {cost_usd:.4f}")
+    redis.ltrim(TAILORING_KEY, 0, TAILORING_SAMPLES - 1)
+
+
+def _tailoring(redis) -> dict:
+    rows = [[float(x) for x in (r.decode() if isinstance(r, bytes) else r).split()]
+            for r in redis.lrange(TAILORING_KEY, 0, -1)]
+    if not rows:
+        return {"samples": 0}
+    secs = sorted(s for s, _ in rows)
+    p95 = statistics.quantiles(secs, n=100, method="inclusive")[94] if len(secs) > 1 else secs[0]
+    return {"samples": len(rows), "p50_seconds": round(statistics.median(secs), 1),
+            "p95_seconds": round(p95, 1), "avg_cost_usd": round(statistics.fmean(c for _, c in rows), 4)}
 
 
 def health(db: Session, redis) -> dict:
@@ -81,6 +107,13 @@ def health(db: Session, redis) -> dict:
         "last_discovery_saved_at": last_saved.isoformat() if last_saved else None,
         "last_discovery_failed_at": last_failed.isoformat() if last_failed else None,
         "discovery_failed": bool(last_failed and (last_saved is None or last_failed > last_saved)),
+        # updated_at is the proxy for "entered submitting": the claim is the row's last write.
+        "submitting_stale": db.query(models.Application).filter(
+            models.Application.status == models.ApplicationStatus.submitting,
+            models.Application.updated_at < now - timedelta(minutes=SUBMITTING_STALE_MINUTES)).count(),
+        "llm": guard.usage(redis, "llm"),
+        "tailoring": _tailoring(redis),
+        "redis_clients": redis.info("clients")["connected_clients"],
     }
 
 
@@ -117,6 +150,8 @@ def check_and_alert(db: Session, redis, sender=None) -> list[str]:
             if (r["duration_ms"] or 0) > STAGE_BUDGET_MS}
     if slow:
         problems["stage_budget"] = f"Sources over the {STAGE_BUDGET_MS // 60000} min budget (ms): {slow}"
+    if snap["redis_clients"] > REDIS_CLIENT_ALERT:
+        problems["redis_clients"] = f"{snap['redis_clients']} Redis clients connected; the free tier refuses at 30."
     return [kind for kind, body in problems.items() if send_alert(redis, kind, body, sender)]
 
 

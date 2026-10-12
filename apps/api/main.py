@@ -1147,8 +1147,8 @@ def list_sources(db: Session = Depends(get_db), _user: models.User = Depends(get
     from connectors import config as conn_config
 
     reasons = {
-        "remotive": None if conn_config.REMOTIVE_KEYWORDS else "Not searched right now.",
-        "reed": None if conn_config.REED_KEYWORDS and settings.reed_api_key else "Not connected yet.",
+        "remotive": None,  # searched with active campaigns' roles
+        "reed": None if settings.reed_api_key else "Not connected yet.",
         "greenhouse": None if conn_config.GREENHOUSE_BOARD_TOKENS else "No company boards added yet.",
         "lever": None if conn_config.LEVER_COMPANY_TOKENS else "No company boards added yet.",
         "ashby": None if conn_config.ASHBY_ORG_TOKENS else "No company boards added yet.",

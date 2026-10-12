@@ -16,6 +16,7 @@ from observability import canary_task, check_and_alert_task
 from workers.jobs import (
     BACKGROUND_QUEUE,
     CAMPAIGN_SWEEP_INTERVAL_SECONDS,
+    CAMPAIGN_SWEEP_TIMEOUT_SECONDS,
     DISCOVERY_TIMEOUT_SECONDS,
     EMBED_BACKLOG_INTERVAL_SECONDS,
     discover_jobs_task,
@@ -58,6 +59,8 @@ def start_scheduler() -> Scheduler:
         if job.func_name in names:
             scheduler.cancel(job)
 
+    timeouts = {discover_jobs_task: DISCOVERY_TIMEOUT_SECONDS, refresh_campaign_searches_task: DISCOVERY_TIMEOUT_SECONDS,
+                sweep_campaigns_task: CAMPAIGN_SWEEP_TIMEOUT_SECONDS}
     background = {discover_jobs_task, embed_backlog_task, sweep_form_plans_task, check_and_alert_task, canary_task,
                   refresh_campaign_searches_task}
     for func, interval in recurring.items():
@@ -67,7 +70,7 @@ def start_scheduler() -> Scheduler:
             interval=interval,
             repeat=None,  # repeat forever
             queue_name=BACKGROUND_QUEUE if func in background else "default",
-            timeout=DISCOVERY_TIMEOUT_SECONDS if func in (discover_jobs_task, refresh_campaign_searches_task) else None,
+            timeout=timeouts.get(func),
         )
     return scheduler
 

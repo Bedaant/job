@@ -163,13 +163,6 @@ def test_locations_are_cities_never_a_bare_country():
         assert "," in loc, f"{loc!r} is not city-qualified — 'India' alone matches Indianapolis"
 
 
-def test_keywords_are_not_empty():
-    """`JOBSPY_KEYWORDS` was `[]`, so even once wired the connector would have searched
-    for nothing — the second reason GAPS 3.2 produced no rows."""
-    from connectors import config
-    assert config.JOBSPY_KEYWORDS
-
-
 def test_jobspy_is_never_swept_for_delistings():
     """A keyword+location slice is not a complete listing, so absence from a payload
     means "not in that search", not "gone" (ADR-017 §2). Sweeping it would tombstone

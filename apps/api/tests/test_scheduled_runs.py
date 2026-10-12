@@ -58,18 +58,48 @@ def test_sweep_builds_matches_and_runs_every_active_campaign(mock_scope, mock_qu
 
     result = jobs.sweep_campaigns_task()
 
-    # Matches were built without anyone opening GET /matches...
-    assert db.query(models.Match).filter(models.Match.profile_id == active.profile_id).count() == 1
-    # ...and only the active campaign was enqueued, with an id rq accepts.
+    # Only the active campaign was enqueued, with an id rq accepts...
     assert result["enqueued"] == [active.id]
     call = enqueue.call_args
-    assert call.args[0] is jobs.run_campaign_task
+    assert call.args[0] is jobs.sweep_campaign_task
     assert call.kwargs["unique"] is True
     validate_job_id(call.kwargs["job_id"])
-    assert call.kwargs["kwargs"] == {"campaign_id": active.id, "run_id": call.kwargs["job_id"], "scheduled": True}
+    assert call.kwargs["kwargs"] == {"campaign_id": active.id, "run_id": call.kwargs["job_id"]}
 
     _drain(enqueue)
+    # ...and its job built matches without anyone opening GET /matches, then ran it.
+    assert db.query(models.Match).filter(models.Match.profile_id == active.profile_id).count() == 1
     assert db.query(models.Application).filter(models.Application.campaign_id == active.id).count() == 1
+
+
+@patch("workers.jobs.judge_campaign_titles")
+@patch("workers.jobs.build_matches")
+@patch("workers.jobs.get_redis_connection")
+@patch("workers.jobs.get_queue")
+@patch("workers.jobs.session_scope")
+def test_sweep_fans_out_one_job_per_campaign_with_a_timeout(mock_scope, mock_queue, mock_redis, build, judge):
+    """P1 #16: the sweep used to judge titles and build matches for every campaign in ONE job
+    (RQ's default 180 s); one slow campaign could time the whole sweep out for everyone."""
+    db = _session()
+    a, b = _campaign(db, _profile(db, "a@x.com")), _campaign(db, _profile(db, "b@x.com"))
+    enqueue = _wire(db, mock_scope, mock_queue, mock_redis)
+
+    assert sorted(jobs.sweep_campaigns_task()["enqueued"]) == sorted([a.id, b.id])
+
+    build.assert_not_called()
+    judge.assert_not_called()
+    assert [c.args[0] for c in enqueue.call_args_list] == [jobs.sweep_campaign_task] * 2
+    assert {c.kwargs["kwargs"]["campaign_id"] for c in enqueue.call_args_list} == {a.id, b.id}
+    assert all(c.kwargs["job_timeout"] == jobs.CAMPAIGN_JOB_TIMEOUT_SECONDS for c in enqueue.call_args_list)
+
+
+@patch("workers.run_scheduler.get_redis_connection")
+@patch("workers.run_scheduler.Scheduler")
+def test_the_campaign_sweep_is_scheduled_with_an_explicit_timeout(mock_scheduler_cls, _redis):
+    mock_scheduler_cls.return_value.get_jobs.return_value = []
+    run_scheduler.start_scheduler()
+    timeouts = {c.kwargs["func"]: c.kwargs["timeout"] for c in mock_scheduler_cls.return_value.schedule.call_args_list}
+    assert timeouts[jobs.sweep_campaigns_task] == jobs.CAMPAIGN_SWEEP_TIMEOUT_SECONDS
 
 
 @patch("workers.jobs.get_redis_connection")
@@ -103,9 +133,10 @@ def test_sweep_skips_matching_gracefully_without_facts_or_embeddings(mock_scope,
     no_facts = _campaign(db, _profile(db, "nofacts@x.com"))
     no_embeddings = _campaign(db, _profile_with_centroid(db, "noemb@x.com", VEC_A))
     _job(db, 1)  # embedding=None, as when VOYAGE_API_KEY is absent
-    _wire(db, mock_scope, mock_queue, mock_redis)
+    enqueue = _wire(db, mock_scope, mock_queue, mock_redis)
 
     result = jobs.sweep_campaigns_task()
+    _drain(enqueue)
 
     assert sorted(result["enqueued"]) == sorted([no_facts.id, no_embeddings.id])
     assert result["failed"] == []
@@ -119,7 +150,6 @@ def test_one_campaign_failing_does_not_stop_the_others(mock_scope, mock_queue, m
     db = _session()
     broken = _campaign(db, _profile(db, "broken@x.com"))
     fine = _campaign(db, _profile(db, "fine@x.com"))
-    _wire(db, mock_scope, mock_queue, mock_redis)
 
     real_build = jobs.build_matches
 
@@ -128,11 +158,19 @@ def test_one_campaign_failing_does_not_stop_the_others(mock_scope, mock_queue, m
             raise RuntimeError("boom")
         return real_build(db_, profile)
 
+    enqueue = _wire(db, mock_scope, mock_queue, mock_redis)
     with patch("workers.jobs.build_matches", side_effect=build):
-        result = jobs.sweep_campaigns_task()
+        assert jobs.sweep_campaigns_task()["enqueued"] == [broken.id, fine.id]
+        outcomes = {}
+        for call in enqueue.call_args_list:  # separate RQ jobs: a raise fails only its own
+            kwargs = call.kwargs["kwargs"]
+            try:
+                outcomes[kwargs["campaign_id"]] = call.args[0](**kwargs)
+            except RuntimeError:
+                outcomes[kwargs["campaign_id"]] = "failed"
 
-    assert result["failed"] == [broken.id]
-    assert result["enqueued"] == [fine.id]
+    assert outcomes[broken.id] == "failed"
+    assert outcomes[fine.id] != "failed"
 
 
 @patch("campaigns.prepare_application_for_review")
