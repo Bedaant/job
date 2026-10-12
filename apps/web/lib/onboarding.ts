@@ -294,6 +294,23 @@ export async function launchCampaign(body: CampaignCreate): Promise<{ campaign: 
   return { campaign, started };
 }
 
+export type FirstMatchesState = "loading" | "found" | "searching" | "none";
+
+/** What StepDone's "First matches" shows. `lastRunAt` null on a started campaign =
+ *  the first run hasn't finished (campaign.last_run_at is stamped when it does). */
+export function firstMatchesState(
+  started: boolean,
+  matchCount: number | undefined,
+  lastRunAt: string | null | undefined,
+): FirstMatchesState {
+  if (matchCount === undefined) return "loading";
+  if (matchCount > 0) return "found";
+  return started && lastRunAt === null ? "searching" : "none";
+}
+
+/** How often StepDone re-checks while the first search runs. */
+export const SEARCH_POLL_MS = 5000;
+
 /** User-facing text for any failure: the API's own message (written for users),
  *  otherwise a connection hint. Never a raw exception string. */
 export function errorText(err: unknown): string {
