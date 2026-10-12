@@ -6557,6 +6557,20 @@ and enforcement on the truth-check.
 
 ---
 
+### 2026-10-12 — NEXT-WORK-PLAN implementation branch: status
+
+**What changed.** Merged into `feat/next-work-plan`: Track A (send gate, account deletion coverage, `sent_log`, send pause), E2 (Workday adapter, form-fill LLM fallback with grounded answers), G2 (LinkedIn data-export import as unconfirmed facts), G1 (outcome capture, first-party funnel, digest opt-out), D (campaign sweep fan-out, queue age on `/ops/health`, observability). Referral rules (refuse with no specific signal before any model call; follow-up cap 2; one-ask advisory) landed with the G2 merge. Fixed a real autoflush bug in `events/outbox.record_funnel` (funnel query flushed a half-built Match).
+
+**Verified.** API suite 1500 passed, 6 skipped (sqlite in-memory). Web vitest 159 passed. `tsc --noEmit` exit 0. Alembic has a single head, `0038`.
+
+**Not verified.** Postgres/pgvector lane not run. No migration applied to Neon. No live browser or live API checks.
+
+**Not done.** The Data Analyst, Bengaluru yield measurement (`apps/api/scripts/measure_campaign_yield.py`) did not run. It stopped at import because `Settings` rejects the placeholder `JWT_SECRET`. No spend occurred. Needs the owner to set a real `JWT_SECRET`. Owner-only items untouched: facts.json history rewrite, Google OAuth verification, legal review, Redis/Apify/NIM limits, SMTP, deploy, Singapore move.
+
+**Problems hit.** Worktrees have no `.env`, so tests only run in the main checkout with the project venv (`apps/api/.venv`). A rate limit terminated four subagent tracks mid-run; their partial work was reviewed and merged only after tests passed. The Track D test fixture lacked `status` after the send gate merged; fixed in `93a0bda`.
+
+**Next.** Owner sets `JWT_SECRET` and approves the yield run again if the cost is still acceptable, then review the merge for a PR.
+
 ## Entry template
 
 Copy this for each change.
