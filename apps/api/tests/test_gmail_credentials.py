@@ -396,6 +396,8 @@ def test_the_authorize_response_names_the_uri_that_must_be_registered(db):
     """
     from outreach import gmail as g
 
-    out = g.gmail_authorize(user_id=_user(db).id)
+    from fastapi import Response
+
+    out = g.gmail_authorize(Response(), user_id=_user(db).id)
     assert out["redirect_uri"] == g._redirect_uri()
     assert out["authorize_url"].startswith("https://accounts.google.com/")

@@ -5,6 +5,8 @@ import os
 # runs before anything imports core.config. Tests that need another provider
 # patch it explicitly.
 os.environ["LLM_PROVIDER"] = "anthropic"
+# Settings refuses short or placeholder JWT secrets at boot. Suite-only value, signs nothing real.
+os.environ["JWT_SECRET"] = "Hn4vQ8rZ2kLw7Ys1Bd5Jx9Pc3Mf6Tg0Ue"
 
 from pathlib import Path
 

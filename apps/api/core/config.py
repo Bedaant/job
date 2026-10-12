@@ -1,6 +1,9 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_PLACEHOLDER_WORDS = ("change", "placeholder", "example", "not-a-real", "secret", "default", "test")
 
 
 class Settings(BaseSettings):
@@ -54,6 +57,16 @@ class Settings(BaseSettings):
         return {"chat_template_kwargs": {"enable_thinking": self.nvidia_enable_thinking}}
 
     jwt_secret: str
+
+    @field_validator("jwt_secret")
+    @classmethod
+    def _strong_jwt_secret(cls, v: str) -> str:
+        # Signs logins, reset links, OAuth state and opt-out links: a guessable one forges all four.
+        lowered = v.lower()
+        if len(v) < 32 or len(set(v)) < 10 or any(w in lowered for w in _PLACEHOLDER_WORDS):
+            raise ValueError("JWT_SECRET must be a random value of at least 32 characters, not a placeholder")
+        return v
+
     jwt_algorithm: str = "HS256"
     jwt_expires_minutes: int = 60 * 24 * 7  # 7 days
 

@@ -115,7 +115,7 @@ def test_extract_facts_uses_the_nvidia_model_when_provider_is_nvidia():
 
 def test_nvidia_extra_body_turns_thinking_off_only_for_the_real_nvidia_provider():
     from core.config import Settings
-    base = dict(database_url="sqlite://", jwt_secret="x", redis_url="redis://localhost")
+    base = dict(database_url="sqlite://", jwt_secret="Hn4vQ8rZ2kLw7Ys1Bd5Jx9Pc3Mf6Tg0Ue",redis_url="redis://localhost")
     assert Settings(**base, llm_provider="nvidia").nvidia_extra_body() == {
         "chat_template_kwargs": {"enable_thinking": False}
     }
