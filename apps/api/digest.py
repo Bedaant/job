@@ -31,7 +31,7 @@ SKIP_LABELS = {
 
 
 def build_digest(db: Session, user: models.User, start: datetime, end: datetime) -> dict:
-    from main import _ready_to_send  # lazy: main imports the workers that import this
+    from routes.applications import _ready_to_send  # lazy: routes.applications imports the workers that import this
 
     S = models.ApplicationStatus
     profiles = db.query(models.Profile).filter(models.Profile.user_id == user.id).all()

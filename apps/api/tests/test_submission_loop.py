@@ -336,7 +336,7 @@ def test_a_successful_submission_queues_outreach():
     _, (app_id,) = _seed(client, headers, [models.ApplicationStatus.approved])
     client.post(f"/applications/{app_id}/claim-submission", headers=headers)
 
-    with patch("main.get_queue") as queue:
+    with patch("routes.applications.get_queue") as queue:
         r = client.post(
             f"/applications/{app_id}/submission-result",
             headers=headers, json={"outcome": "submitted"},
@@ -357,7 +357,7 @@ def test_an_outcome_that_never_sent_does_not_queue_outreach():
     headers = _auth(client, "outreachnotrigger@example.com")
     _, (app_id,) = _seed(client, headers, [models.ApplicationStatus.approved])
 
-    with patch("main.get_queue") as queue:
+    with patch("routes.applications.get_queue") as queue:
         r = client.post(
             f"/applications/{app_id}/submission-result",
             headers=headers, json={"outcome": "failed", "reason": "no form"},
@@ -379,7 +379,7 @@ def test_a_broken_queue_does_not_lose_the_submission_result():
     _, (app_id,) = _seed(client, headers, [models.ApplicationStatus.approved])
     client.post(f"/applications/{app_id}/claim-submission", headers=headers)
 
-    with patch("main.get_queue", side_effect=RuntimeError("redis down")):
+    with patch("routes.applications.get_queue", side_effect=RuntimeError("redis down")):
         r = client.post(
             f"/applications/{app_id}/submission-result",
             headers=headers, json={"outcome": "submitted"},

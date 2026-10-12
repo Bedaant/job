@@ -37,7 +37,7 @@ def _new_user(client, email):
     return {"Authorization": f"Bearer {token}"}
 
 
-@patch("main.map_form_fields")
+@patch("routes.extension.map_form_fields")
 def test_map_fields_endpoint_returns_mappings_for_owned_profile(mock_map):
     mock_map.return_value = [
         {"field_id": "f1", "maps_to": "profile.email", "confidence": 0.9, "value": "formfill-test@example.com"},

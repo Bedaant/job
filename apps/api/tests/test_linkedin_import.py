@@ -106,8 +106,8 @@ def test_zip_upload_returns_unconfirmed_drafts_and_keeps_no_raw_file(client, tmp
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
 
     # Deterministic import: no model call is allowed on this path.
-    with patch("main.extract_facts_from_text", side_effect=AssertionError("LLM called")), \
-            patch("main.extract_basics", side_effect=AssertionError("LLM called")):
+    with patch("routes.profiles.extract_facts_from_text", side_effect=AssertionError("LLM called")), \
+            patch("routes.profiles.extract_basics", side_effect=AssertionError("LLM called")):
         resp = test_client.post(
             f"/profiles/{profile_id}/resume", headers=headers,
             files={"file": ("Basic_LinkedInDataExport.zip", raw, "application/zip")},
