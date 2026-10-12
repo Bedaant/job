@@ -68,6 +68,8 @@ class User(Base):
     password_hash = Column(String, nullable=True)  # null when Google-only (later)
     created_at = Column(DateTime, default=datetime.utcnow)
     deleted_at = Column(DateTime, nullable=True)
+    # When the user accepted the privacy notice at signup; NULL = never recorded (0035).
+    privacy_consent_at = Column(DateTime, nullable=True)
     # Last time the browser extension called in (work-queue / map-fields). Under
     # ADR-015 nothing is submitted without it, so the web app shows it (0016).
     extension_last_seen_at = Column(DateTime, nullable=True)

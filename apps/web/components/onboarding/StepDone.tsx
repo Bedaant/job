@@ -6,7 +6,7 @@ import { Loader2Icon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ApiError, api } from "@/lib/api";
 import type { Campaign } from "@/lib/api";
-import { errorText } from "@/lib/onboarding";
+import { errorText, firstMatchesState, SEARCH_POLL_MS } from "@/lib/onboarding";
 import { ExtensionStatus } from "@/components/ExtensionStatus";
 import { submitModeLine } from "@/lib/assisted";
 import { FailureNotice } from "./fields";
@@ -16,13 +16,17 @@ export function StepDone({ campaign, profileId, started }: { campaign: Campaign;
     queryKey: ["campaign-stats", campaign.id],
     queryFn: () => api.getCampaignStats(campaign.id),
     retry: false,
+    // Poll until the first run stamps last_run_at.
+    refetchInterval: (q) => (started && q.state.data?.last_run_at === null ? SEARCH_POLL_MS : false),
   });
 
   const matchesQuery = useQuery({
     queryKey: ["matches", profileId],
     queryFn: () => api.listMatches(profileId),
     retry: false,
+    refetchInterval: started && statsQuery.data?.last_run_at === null ? SEARCH_POLL_MS : false,
   });
+  const matchesState = firstMatchesState(started, matchesQuery.data?.length, statsQuery.data?.last_run_at);
 
   return (
     <div className="space-y-6">
@@ -43,30 +47,32 @@ export function StepDone({ campaign, profileId, started }: { campaign: Campaign;
         </p>
       </div>
 
-      <section aria-labelledby="extension-heading" className="space-y-3 rounded-md border border-input p-4">
-        <h3 id="extension-heading" className="text-base font-medium">
-          Let Maggie apply from your browser
+      <section aria-labelledby="assisted-heading" className="space-y-3 rounded-md border border-input p-4">
+        <h3 id="assisted-heading" className="text-base font-medium">
+          Send applications from any device
         </h3>
         <p className="text-sm text-muted-foreground">
-          Maggie finds and tailors from here, but she sends applications from <em>your</em> browser, signed in as
-          you — never from a shared bot.{" "}
-          {campaign.auto_submit
-            ? "Until the ApplyScout extension is running, nothing is sent."
-            : "In Assisted mode it's optional: it fills in the employer's form for you, and you press Submit."}
+          Works on your phone, no extension needed. Maggie prepares each application; in <strong>Ready to send</strong>{" "}
+          you download the tailored resume, open the employer&apos;s form and press Submit yourself.
+          {campaign.auto_submit && " Automatic sending needs the ApplyScout extension on a computer; until it's connected, nothing is sent automatically."}
         </p>
-        <ol className="list-decimal space-y-2 pl-5 text-sm">
-          <li>
-            Install the extension. It isn&apos;t in the Chrome Web Store yet: open{" "}
-            <code className="rounded bg-secondary px-1">chrome://extensions</code>, turn on Developer mode, choose{" "}
-            <strong>Load unpacked</strong> and pick the <code className="rounded bg-secondary px-1">apps/extension/dist</code>{" "}
-            folder.
-          </li>
-          <li>Click the ApplyScout icon in the toolbar and sign in with this account.</li>
-          <li>
-            Press <strong>Run apply queue</strong>. Keep the browser open while it works; it applies up to your daily
-            cap.
-          </li>
-        </ol>
+        <Link
+          href="/review#ready-to-send"
+          className="inline-flex min-h-11 items-center rounded-md border border-input px-4 text-sm font-medium hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Open Ready to send
+        </Link>
+      </section>
+
+      {/* Browser extensions don't run on phones, so this is for computers only. */}
+      <section aria-labelledby="extension-heading" className="hidden space-y-3 rounded-md border border-input p-4 md:block">
+        <h3 id="extension-heading" className="text-base font-medium">
+          On a computer: the ApplyScout extension (optional)
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          If you have the extension, it fills in the employer&apos;s form from <em>your</em> browser, signed in as
+          you. Click the ApplyScout icon, sign in with this account and press <strong>Run apply queue</strong>.
+        </p>
         <ExtensionStatus />
       </section>
 
@@ -120,13 +126,18 @@ export function StepDone({ campaign, profileId, started }: { campaign: Campaign;
         {matchesQuery.isError && (
           <FailureNotice title="Could not load matches" detail={errorText(matchesQuery.error)} />
         )}
-        {matchesQuery.isSuccess && matchesQuery.data.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            Nothing yet. The first pass takes a few minutes; matches appear on your matches page as they land —
-            you do not need to sit here.
+        {matchesState === "searching" && (
+          <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2Icon className="h-4 w-4 animate-spin" aria-hidden="true" />
+            Searching for your matches. This takes a few minutes; you don&apos;t need to stay on this page.
           </p>
         )}
-        {matchesQuery.data && matchesQuery.data.length > 0 && (
+        {matchesState === "none" && (
+          <p className="text-sm text-muted-foreground">
+            Nothing yet. Matches appear on your matches page as Maggie finds them — you do not need to sit here.
+          </p>
+        )}
+        {matchesQuery.data && matchesState === "found" && (
           <ul className="divide-y divide-border rounded-md border border-input">
             {matchesQuery.data.slice(0, 5).map((match) => (
               <li key={match.id} className="flex items-center justify-between gap-4 p-3">

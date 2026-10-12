@@ -10,6 +10,9 @@ export default defineConfig({
     environment: "node",
     include: ["lib/**/*.test.ts"],
   },
+  // tsconfig says jsx "preserve" (Next compiles it); tests that render a component
+  // to static HTML (react-dom/server, still no DOM) need it compiled here.
+  oxc: { jsx: { runtime: "automatic" } },
   resolve: {
     alias: { "@": path.resolve(__dirname, ".") },
   },

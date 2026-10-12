@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -24,7 +25,8 @@ def signup(payload: schemas.UserCreate, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
 
-    user = models.User(email=payload.email, password_hash=hash_password(payload.password))
+    user = models.User(email=payload.email, password_hash=hash_password(payload.password),
+                       privacy_consent_at=datetime.utcnow() if payload.privacy_consent else None)
     db.add(user)
     db.commit()
     db.refresh(user)
