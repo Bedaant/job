@@ -63,7 +63,6 @@ NAMES = {"acme": "Acme Corp"}
 def _cfg():
     return (patch("connectors.workday.WORKDAY_BOARDS", BOARDS),
             patch("connectors.workday.TOKEN_COMPANY_NAMES", NAMES),
-            patch("connectors.workday.KEYWORDS", ["product manager"]),
             patch("connectors.workday.PAGE_PACING_SECONDS", 0))
 
 
@@ -74,7 +73,7 @@ def _run(post_pages, details):
     for p in patches:
         p.start()
     try:
-        return workday.fetch_workday_jobs("acme")
+        return workday.fetch_workday_jobs("acme", ["product manager"])
     finally:
         for p in patches:
             p.stop()
@@ -151,7 +150,7 @@ def test_the_board_is_paginated_to_exhaustion_at_twenty_per_page():
     for p in patches:
         p.start()
     try:
-        jobs = workday.fetch_workday_jobs("acme")
+        jobs = workday.fetch_workday_jobs("acme", ["product manager"])
     finally:
         for p in patches:
             p.stop()
@@ -172,7 +171,7 @@ def test_a_board_bigger_than_the_page_cap_raises_rather_than_truncating():
         p.start()
     try:
         with pytest.raises(RuntimeError, match="page cap"):
-            workday.fetch_workday_jobs("acme")
+            workday.fetch_workday_jobs("acme", ["product manager"])
     finally:
         for p in patches:
             p.stop()
@@ -190,7 +189,7 @@ def test_a_listing_that_ends_early_raises_instead_of_being_swept():
         p.start()
     try:
         with pytest.raises(RuntimeError, match="incomplete"):
-            workday.fetch_workday_jobs("acme")
+            workday.fetch_workday_jobs("acme", ["product manager"])
     finally:
         for p in patches:
             p.stop()
@@ -204,7 +203,7 @@ def test_a_genuinely_empty_board_is_not_an_error():
     for p in patches:
         p.start()
     try:
-        assert workday.fetch_workday_jobs("acme") == []
+        assert workday.fetch_workday_jobs("acme", ["product manager"]) == []
     finally:
         for p in patches:
             p.stop()
@@ -221,7 +220,7 @@ def test_a_failed_detail_fetch_raises_instead_of_dropping_the_job():
         p.start()
     try:
         with pytest.raises(RuntimeError):
-            workday.fetch_workday_jobs("acme")
+            workday.fetch_workday_jobs("acme", ["product manager"])
     finally:
         for p in patches:
             p.stop()
@@ -232,7 +231,7 @@ def test_an_unconfigured_tenant_is_a_no_op():
     for p in patches:
         p.start()
     try:
-        assert workday.fetch_workday_jobs("nosuchtenant") == []
+        assert workday.fetch_workday_jobs("nosuchtenant", ["product manager"]) == []
     finally:
         for p in patches:
             p.stop()

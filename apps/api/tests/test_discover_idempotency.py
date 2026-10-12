@@ -72,7 +72,6 @@ def test_ats_boards_keep_every_posting(mock_scope, _embed, mock_upsert):
         p.start()
     try:
         with patch("workers.jobs.conn_config.GREENHOUSE_BOARD_TOKENS", ["acme"]), \
-             patch("workers.jobs.conn_config.FEED_KEYWORDS", ["product manager"]), \
              patch("workers.jobs.fetch_greenhouse_jobs", return_value=board):
             discover_inline()
     finally:

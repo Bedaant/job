@@ -164,7 +164,6 @@ def test_linkedin_is_never_swept_for_delistings():
 def test_configured_locations_are_real_places():
     from connectors import config
     assert config.LINKEDIN_JOB_LOCATIONS
-    assert config.LINKEDIN_JOB_KEYWORDS
 
 
 def test_a_201_created_is_success_not_a_failure():
