@@ -16,10 +16,33 @@ Verified but deliberately absent (no truthful profile value): greenhouse country
 lever location (typeahead) and org (no current-company column). Lever
 urls[LinkedIn]/urls[GitHub] are left to deterministic.py's network rule.
 File inputs (resume, cover_letter) are attached client-side, never mapped here.
+
+workday is the exception to "read off a live form": its keys are Workday
+`data-automation-id` values (the extension sends them as `automation_id`, a
+wrapper's "formField-" prefix stripped) RECONSTRUCTED from public knowledge of
+Workday's DOM, both the older `legalNameSection_*` and the newer `legalName--*`
+conventions, NOT captured (no live access, NEXT-WORK-PLAN 4.2). Verify on a live
+tenant before trusting. NEVER = a field the generic rules would mis-map: flagged.
 """
+
+NEVER = "never"  # recognised, but no profile value may ever go here
 
 ATS_FIELD_SCHEMAS: dict[str, dict[str, str]] = {
     "greenhouse": {"first_name": "given_name", "last_name": "family_name", "email": "email", "phone": "phone"},
     "lever": {"name": "full_name", "email": "email", "phone": "phone", "urls[Portfolio]": "website_url"},
     "ashby": {"_systemfield_name": "full_name", "_systemfield_email": "email"},
+    "workday": {
+        "legalNameSection_firstName": "given_name", "legalName--firstName": "given_name",
+        "legalNameSection_lastName": "family_name", "legalName--lastName": "family_name",
+        "email": "email", "emailAddress--emailAddress": "email",
+        "phone-number": "phone", "phoneNumber--phoneNumber": "phone",
+        "addressSection_addressLine1": "street_address", "address--addressLine1": "street_address",
+        "addressSection_city": "city", "address--city": "city",
+        "addressSection_postalCode": "postal_code", "address--postalCode": "postal_code",
+        # "Country Phone Code" / extension / middle name: the label rules would put the phone
+        # number or a name part here.
+        "countryPhoneCode": NEVER, "phoneNumber--countryPhoneCode": NEVER,
+        "phone-extension": NEVER, "phoneNumber--extension": NEVER,
+        "legalNameSection_middleName": NEVER, "legalName--middleName": NEVER,
+    },
 }

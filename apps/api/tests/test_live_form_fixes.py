@@ -212,10 +212,13 @@ def test_llm_value_outside_the_options_is_flagged(mock_call_llm):
 ])
 @patch("formfill.map_fields.call_llm")
 def test_llm_value_is_normalised_to_the_option_text(mock_call_llm, value, options, expected):
+    # NEXT-WORK-PLAN 4.3: a choice stands only on cited profile text (test_formfill_probes.py).
     mock_call_llm.return_value = _llm_returns(
-        {"field_id": "f1", "maps_to": "literal:yes", "confidence": 0.9, "value": value})
+        {"field_id": "f1", "maps_to": "literal:yes", "confidence": 0.9, "value": value,
+         "evidence": "relocation within India"})
     fields = [{"field_id": "f1", "label_text": "Open to relocation?", "input_type": "radio", "options": options}]
-    assert map_form_fields(fields, PROFILE)[0]["value"] == expected
+    profile = {**PROFILE, "headline": "Open to relocation within India"}
+    assert map_form_fields(fields, profile)[0]["value"] == expected
 
 
 @patch("formfill.map_fields.call_llm")

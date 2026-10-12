@@ -367,6 +367,8 @@ class FieldDescriptorIn(BaseModel):
     autocomplete: Optional[str] = None
     name: Optional[str] = None
     dom_id: Optional[str] = None
+    # Workday's data-automation-id (formfill/ats_schemas.py), bounded like ats_type.
+    automation_id: Optional[str] = Field(None, max_length=128)
 
 
 class MapFieldsRequest(BaseModel):
