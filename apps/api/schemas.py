@@ -9,6 +9,7 @@ from models import ApplicationStatus
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
+    privacy_consent: bool = False  # the signup checkbox; True stamps users.privacy_consent_at
 
 
 class ForgotPasswordIn(BaseModel):

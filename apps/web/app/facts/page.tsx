@@ -7,6 +7,7 @@ import { api, ApiError, type ApplicantBasics, type FactDraft, type ResumeFact, t
 import { FACT_CATEGORIES, blankFact, validateBasics } from "@/lib/onboarding";
 import { factChanges, undoableDeletes } from "@/lib/profile";
 import { AppShell, useRequireAuth } from "@/components/AppShell";
+import { DeleteAccount } from "@/components/DeleteAccount";
 import { Chips, Field } from "@/components/onboarding/fields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,6 +67,7 @@ export default function ProfilePage() {
           <FactsSection profileId={profile.id} />
           <AboutSection profileId={profile.id} />
           <AnswersSection profileId={profile.id} />
+          <DeleteAccount />
         </div>
       )}
     </AppShell>

@@ -319,11 +319,15 @@ export const api = {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
     });
   },
-  signup: (email: string, password: string) =>
+  signup: (email: string, password: string, privacyConsent: boolean) =>
     request<{ id: string; email: string }>("/auth/signup", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, privacy_consent: privacyConsent }),
     }),
+  /** Deletes the account and everything it owns. Irreversible. */
+  deleteAccount: async () => {
+    await send("/account", { method: "DELETE" });
+  },
   forgotPassword: (email: string) =>
     request<{ ok: boolean }>("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
   resetPassword: (token: string, password: string) =>

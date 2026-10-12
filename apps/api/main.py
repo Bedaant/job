@@ -25,6 +25,7 @@ import models
 import schemas
 from tailoring.engine import tailor_application
 from auth.router import router as auth_router
+from account import router as account_router
 from outreach import api as outreach_api
 from outreach import gmail
 from connectors.apply_target import resolve_apply_target
@@ -74,6 +75,7 @@ app.include_router(outreach_api.router)
 app.include_router(gmail.router)
 app.include_router(ats_controls.router)
 app.include_router(ops_router)
+app.include_router(account_router)
 
 
 # ---------- Job discovery ----------
