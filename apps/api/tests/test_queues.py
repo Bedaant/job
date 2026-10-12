@@ -26,7 +26,7 @@ def test_manual_discovery_goes_to_the_background_queue():
     client, SessionLocal = _client()
     _bind(client, SessionLocal)
     headers = _auth(client, "queue-discover@example.com")
-    with patch("main.get_queue") as get_queue, patch("main._workers_online", return_value=True):
+    with patch("routes.campaigns.get_queue") as get_queue, patch("routes.campaigns._workers_online", return_value=True):
         get_queue.return_value.enqueue.return_value = MagicMock(id="d1", get_status=lambda: "queued")
         assert client.post("/discover/run", headers=headers).status_code == 200
     get_queue.assert_called_with("background")
@@ -110,7 +110,7 @@ def test_manual_discovery_gets_the_discovery_time_limit():
     client, SessionLocal = _client()
     _bind(client, SessionLocal)
     headers = _auth(client, "queue-timeout@example.com")
-    with patch("main.get_queue") as get_queue, patch("main._workers_online", return_value=True):
+    with patch("routes.campaigns.get_queue") as get_queue, patch("routes.campaigns._workers_online", return_value=True):
         get_queue.return_value.enqueue.return_value = MagicMock(id="d1", get_status=lambda: "queued")
         client.post("/discover/run", headers=headers)
     assert get_queue.return_value.enqueue.call_args.kwargs["job_timeout"] == jobs.DISCOVERY_TIMEOUT_SECONDS

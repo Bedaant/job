@@ -250,7 +250,7 @@ def test_sources_only_advertises_sources_discovery_actually_fetches():
     to be given a label, and a label can't outlive its fetcher.
     """
     from connectors import config as conn_config
-    from main import _SOURCE_LABELS
+    from routes.feed import _SOURCE_LABELS
 
     fetched = (
         {"remotive", "reed", "greenhouse", "lever", "ashby", "workday"}

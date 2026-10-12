@@ -130,7 +130,7 @@ def test_starting_a_campaign_queues_its_search():
     headers = _auth(client, "brand@example.com")
     cid = _start(client, headers)
     queue = MagicMock()
-    with patch("main.get_queue", return_value=queue) as get_queue:
+    with patch("routes.campaigns.get_queue", return_value=queue) as get_queue:
         assert client.patch(f"/campaigns/{cid}", headers=headers,
                             json={"status": "active"}).status_code == 200
     get_queue.assert_called_with(wj.BACKGROUND_QUEUE)
@@ -143,7 +143,7 @@ def test_changing_titles_on_an_active_campaign_searches_again_but_pausing_does_n
     headers = _auth(client, "brand2@example.com")
     cid = _start(client, headers)
     queue = MagicMock()
-    with patch("main.get_queue", return_value=queue):
+    with patch("routes.campaigns.get_queue", return_value=queue):
         client.patch(f"/campaigns/{cid}", headers=headers, json={"status": "active"})
         client.patch(f"/campaigns/{cid}", headers=headers, json={"roles": ["CMO"]})
         client.patch(f"/campaigns/{cid}", headers=headers, json={"status": "paused"})
@@ -155,7 +155,7 @@ def test_a_queue_outage_never_fails_starting_the_campaign():
     client, _ = _client()
     headers = _auth(client, "brand3@example.com")
     cid = _start(client, headers)
-    with patch("main.get_queue", side_effect=ConnectionError("redis down")):
+    with patch("routes.campaigns.get_queue", side_effect=ConnectionError("redis down")):
         r = client.patch(f"/campaigns/{cid}", headers=headers, json={"status": "active"})
     assert r.status_code == 200 and r.json()["status"] == "active"
 

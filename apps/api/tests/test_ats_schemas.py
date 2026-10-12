@@ -65,7 +65,7 @@ def test_map_form_fields_uses_the_ats_table_with_zero_llm_calls(mock_call_llm):
     mock_call_llm.assert_not_called()
 
 
-@patch("main.map_form_fields", return_value=[])
+@patch("routes.extension.map_form_fields", return_value=[])
 def test_endpoint_forwards_ats_type_and_bounds_it(mock_map):
     client = _client()
     headers = _new_user(client, "ats-schema@example.com")
@@ -116,7 +116,7 @@ def test_workday_country_phone_code_never_takes_the_phone_number(mock_call_llm):
     mock_call_llm.assert_not_called()
 
 
-@patch("main.map_form_fields", return_value=[])
+@patch("routes.extension.map_form_fields", return_value=[])
 def test_endpoint_detects_workday_from_the_url_and_forwards_automation_id(mock_map):
     client = _client()
     headers = _new_user(client, "ats-detect@example.com")

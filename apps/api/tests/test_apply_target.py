@@ -363,7 +363,7 @@ def test_work_queue_serves_the_resolved_url_and_the_detected_ats():
     headers = _auth(client, "resolver@example.com")
     _seed(client, SessionLocal, headers, "https://remoteok.com/l/123")
 
-    with patch("main.resolve_apply_target", return_value={
+    with patch("routes.extension.resolve_apply_target", return_value={
         "final_url": "https://boards.greenhouse.io/acmecorp/jobs/4001",
         "ats_type": "greenhouse", "board_token": "acmecorp", "resolved": True,
     }):
@@ -380,7 +380,7 @@ def test_work_queue_falls_back_to_the_original_url_when_resolution_fails():
     headers = _auth(client, "fallback@example.com")
     _seed(client, SessionLocal, headers, "https://remoteok.com/l/456")
 
-    with patch("main.resolve_apply_target", return_value={
+    with patch("routes.extension.resolve_apply_target", return_value={
         "final_url": "https://remoteok.com/l/456",
         "ats_type": None, "board_token": None, "resolved": False,
     }):
@@ -398,7 +398,7 @@ def test_work_queue_stays_backward_compatible_for_the_existing_driver():
     headers = _auth(client, "compat@example.com")
     app_id = _seed(client, SessionLocal, headers, "https://remoteok.com/l/789")
 
-    with patch("main.resolve_apply_target", return_value={
+    with patch("routes.extension.resolve_apply_target", return_value={
         "final_url": "https://jobs.lever.co/acme/1",
         "ats_type": "lever", "board_token": "acme", "resolved": True,
     }):
@@ -419,7 +419,7 @@ def test_work_queue_survives_a_resolver_that_blows_up():
     headers = _auth(client, "boom@example.com")
     _seed(client, SessionLocal, headers, "https://remoteok.com/l/999")
 
-    with patch("main.resolve_apply_target", side_effect=RuntimeError("resolver exploded")):
+    with patch("routes.extension.resolve_apply_target", side_effect=RuntimeError("resolver exploded")):
         resp = client.get("/extension/work-queue", headers=headers)
 
     assert resp.status_code == 200

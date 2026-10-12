@@ -179,7 +179,7 @@ def test_list_matches_hides_dismissed_and_links_existing_applications():
     def fake_build(db, profile):
         return db.query(models.Match).filter(models.Match.profile_id == profile.id).all()
 
-    with patch("main.build_matches", side_effect=fake_build):
+    with patch("routes.matches.build_matches", side_effect=fake_build):
         rows = client.get(f"/matches?profile_id={profile_id}", headers=headers).json()
 
     assert [r["id"] for r in rows] == [kept_id]
@@ -191,7 +191,7 @@ def test_prepare_creates_the_application_and_enqueues_batch_prep():
     client, SessionLocal, headers, profile_id, _ = _setup("prepare@example.com", ())
     match_id, job_id = _match(SessionLocal, profile_id)
 
-    with patch("main.get_queue") as queue:
+    with patch("routes.matches.get_queue") as queue:
         resp = client.post(f"/matches/{match_id}/prepare", headers=headers)
         again = client.post(f"/matches/{match_id}/prepare", headers=headers)
 
@@ -210,7 +210,7 @@ def test_prepare_does_not_retailor_an_already_prepared_application():
     client, SessionLocal, headers, profile_id, _ = _setup("prepare-done@example.com", ())
     match_id, job_id = _match(SessionLocal, profile_id)
     app_id = _add(SessionLocal, models.Application(profile_id=profile_id, job_id=job_id, status=S.ready_for_review))
-    with patch("main.get_queue") as queue:
+    with patch("routes.matches.get_queue") as queue:
         resp = client.post(f"/matches/{match_id}/prepare", headers=headers)
     assert resp.json() == {"application_id": app_id, "status": "ready_for_review", "queued": False}
     queue.return_value.enqueue.assert_not_called()
@@ -219,7 +219,7 @@ def test_prepare_does_not_retailor_an_already_prepared_application():
 def test_prepare_says_so_when_the_queue_is_down_and_keeps_the_application():
     client, SessionLocal, headers, profile_id, _ = _setup("prepare-down@example.com", ())
     match_id, _ = _match(SessionLocal, profile_id)
-    with patch("main.get_queue") as queue:
+    with patch("routes.matches.get_queue") as queue:
         queue.return_value.enqueue.side_effect = ConnectionError("redis gone")
         resp = client.post(f"/matches/{match_id}/prepare", headers=headers)
     assert resp.status_code == 503
@@ -232,6 +232,6 @@ def test_prepare_is_owner_scoped():
     client, SessionLocal, _, profile_id, _ = _setup("prepare-owner@example.com", ())
     match_id, _ = _match(SessionLocal, profile_id)
     other = _auth(client, "prepare-intruder@example.com")
-    with patch("main.get_queue"):
+    with patch("routes.matches.get_queue"):
         assert client.post(f"/matches/{match_id}/prepare", headers=other).status_code == 404
 

@@ -268,7 +268,7 @@ def _job_id(SessionLocal, application_id):
         db.close()
 
 
-@patch("main.map_form_fields", return_value=[])
+@patch("routes.extension.map_form_fields", return_value=[])
 def test_map_fields_passes_the_stored_plan(mock_map):
     client, SessionLocal = _client()
     _bind(client, SessionLocal)
