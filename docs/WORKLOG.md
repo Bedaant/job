@@ -6606,6 +6606,16 @@ and enforcement on the truth-check.
 
 **Next.** Owner approves applying 0040 to Neon, then run the Postgres lane. Then open a PR from `feat/next-work-plan`.
 
+### 2026-10-12 (late night) — 0040 applied to Neon and read back
+
+**What changed.** `alembic upgrade head` on Neon: 0039 → 0040, nothing else pending.
+
+**Verified (live Neon, read back, not assumed).** `alembic_version` = `0040`. `contacts`, `outreach`, `gmail_credentials`, `fill_snapshots`: `relrowsecurity` and `relforcerowsecurity` both true, one `tenant_isolation` policy (ALL) each. The two roles differ: owner `neondb_owner` bypasses RLS, app `job_copilot_app` does not. With no tenant set the app role counts 0 rows in all four tables while the owner role sees outreach 1 and gmail_credentials 1, so RLS bites and the owner connection (workers, `get_owner_db`) is unaffected.
+
+**Not verified.** The Postgres-lane tests (cross-user isolation, two-session race) are still skipped: no `TEST_DATABASE_URL`, Docker Desktop broken. The Gmail OAuth callback upsert under `WITH CHECK` and the unsubscribe route on `get_owner_db` were not exercised against live Neon. Watch the first real Gmail connect after deploy.
+
+**Next.** Pull request `feat/next-work-plan` into `main`. Then proof of submission, extension upload of the tailored resume and cover letter.
+
 ## Entry template
 
 Copy this for each change.
