@@ -1,6 +1,8 @@
 # Plan: deployment (DEPLOY-A…D)
 
-**Status:** not started. Closes `GAPS.md` 5.1, which is now the largest open item — stage
+**Status (2026-10-12):** DEPLOY-A (first-boot fixes) is done. The `Dockerfile`, `docker-compose.deploy.yml` and `Caddyfile` are written at the repo root. DEPLOY-B…D are not done and nothing is deployed. Neon is at migration 0040 (any "0026" verification line below is the old value). Docker Desktop on the owner's machine is broken, so the image has not been built there.
+
+*Original status line:* not started. Closes `GAPS.md` 5.1, which is now the largest open item — stage
 8 works, Gmail OAuth works, and 147 India roles are reachable, but none of it runs when
 the owner's laptop is closed. *"Maggie works while you sleep"* is the one product claim
 in `README.md` that is currently false.

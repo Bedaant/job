@@ -1,6 +1,6 @@
 # Gap register — what is open across all phases
 
-**Created 2026-10-03; row 6.9 added 2026-10-12**, after Phase 2 (WORKLOG latest+69). Compiled by sweeping
+**Created 2026-10-03; row 6.9 added 2026-10-12. NOT re-swept in the 2026-10-12 docs pass: for what is done since, read the status table in `docs/NEXT-WORK-PLAN.md` first, and verify any row here against the code before acting (three rows have been wrong).** Original header: created 2026-10-03; row 6.9 added 2026-10-12, after Phase 2 (WORKLOG latest+69). Compiled by sweeping
 `docs/WORKLOG.md` (5,557 lines, entries latest+28 → latest+69), `DECISIONS.md` (ADR-001…017),
 `PLAN-MULTI-ATS.md`, and the session memory, then **verifying each claim against the code as it
 stands today** rather than trusting the entry that first recorded it.

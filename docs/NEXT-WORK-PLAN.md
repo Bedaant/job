@@ -1,13 +1,44 @@
 # Next work plan (everything except design)
 
-Written 2026-10-12 from the council audit (`docs/council/2026-10-10-council-report.md`), the form-filling research (`reports/Job application form filling tools.md`), and the product decisions made since. **Nothing in this file has been implemented.** Hand this file to Claude and have it work through it in order.
+Written 2026-10-12 from the council audit (`docs/council/2026-10-10-council-report.md`), the form-filling research (`reports/Job application form filling tools.md`), and the product decisions made since. **Status banner (2026-10-12): most of P0 and P1 is now implemented on branch `feat/next-work-plan` (PR #24). The plan text below is the original and is unchanged; the table right under this line says what is done. Nothing here has been deployed or exercised with an outside user.**
+
+## Status by item (2026-10-12)
+
+Source: `docs/WORKLOG.md` entries of 2026-10-12, plus a spot-check of the code. "Done" means built and tested on SQLite; none of it has run in production with a real user. Items marked *not checked* were not re-verified when this table was written.
+
+| Item | Status |
+|---|---|
+| P0-1 `can_send()` and transition table | Done: `send_gate.py` |
+| P0-2 pause switches and sent log | Done: `app_flags`, `users.sends_paused`, `sent_log` (migration 0034) |
+| P0-3 auth hardening | Done: placeholder `JWT_SECRET` rejected at boot, Gmail OAuth nonce cookie, auth rate limit (fails open if Redis is down). *Not checked:* password minimum, case-insensitive email |
+| P0-4 remove `facts.json` | Removed from the tree. **Git history not rewritten** (owner decision); the file is still in `origin/main` history |
+| P0-5 onboarding without the extension | Done in code (Assisted path in `StepDone.tsx`). *Not checked at 390 px in a browser* |
+| P0-6 non-PM yield | Done for one campaign: Data Analyst, Bengaluru, 38 relevant of 58 against a bar of 20. One role, one city, one run |
+| P0-7 account deletion and consent | Done: `account.py`, migration 0035 |
+| P0-8 planner binary | *Not checked* |
+| P1-9 proof of submission | **Open** |
+| P1-10 outcome capture, funnel | Done: `outcomes.py`, migration 0038 |
+| P1-11 RLS on the four tables | Done and applied to Neon (migration 0040). Boot warning for unset `APP_DATABASE_URL` was **not** built (no startup hook exists). Postgres test written; its first CI run failed on two test bugs, since fixed on the branch |
+| P1-12 auth rate limit | Partly: see P0-3 |
+| P1-13 Langfuse redaction | Done in `tailoring/engine.py::_redact_for_trace`. Known ceiling: NER can miss an uncommon name |
+| P1-14 extension uploads tailored resume and cover letter | **Open** |
+| P1-15 attempt counter, stale `submitting` sweeper | Done: `supervisor.py`, `applications.prep_attempts` (migration 0039) |
+| P1-16 campaign fan-out, queue age | Done: `/ops/health` reports queue age |
+| P1-17 per-recipient cap, injection screening | Done: 2 cold notes per address per day across users, with an advisory lock; `untrusted.py`. Recipient domain checks skipped on purpose (no rule that would not also refuse real recruiters) |
+| P1-18 hermetic tests, Postgres lane | Hermetic: done. Postgres lane exists in CI and has never been green yet |
+| P1-19 digest links and opt-out | Opt-out done. Other items *not checked* |
+| Section 4, form filling | Workday adapter and the grounded LLM fallback are done. Fixture corpus size and probe thresholds *not checked* |
+| Section 5, LinkedIn and referrals | LinkedIn data-export import done (unconfirmed facts). Referral rules done (refuse with no specific signal, follow-up cap 2) |
+| Section 6, metrics | Queue age done; the rest *not checked* |
+| Sections 7 to 9 | Not started, by design |
+| Section 8, owner-only | All still open |
 
 ## 0. Rules for whoever executes this (Claude or a person)
 1. **No design work.** Do not restyle the UI, change colours, fonts or layout, or build the landing page. Functional UI changes that a task needs (for example the phone path in onboarding) are fine, using the existing components and tokens.
 2. **Safety first.** Do P0 before anything else. Nothing may reach an employer or a recruiter unless the single `can_send()` check passes.
 3. **Approval gates.** Do not deploy, spend money, change pricing, rotate secrets, rewrite git history, or create a pull request without explicit approval. Never print secret values.
 4. **Evidence.** Each task ends with a test that fails before and passes after (unmocked where the task says so). Update `docs/WORKLOG.md` and `docs/GAPS.md` honestly: say what was verified and what was not.
-5. **Numbering.** ADR numbers and Alembic revisions never get reused. The next ADR is **ADR-022**; the next migration is **0034**.
+5. **Numbering.** ADR numbers and Alembic revisions never get reused. The next ADR is **ADR-023**; the next migration is **0041** (Neon is at 0040).
 6. **Branch.** Commit to the designated branch and push. Small commits, one task per commit.
 
 ## 1. Where the product stands (so nobody re-derives it)

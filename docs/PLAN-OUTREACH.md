@@ -1,7 +1,8 @@
 # Plan: referral outreach (REACH-B…E)
 
-**Status:** not started, and **blocked on `docs/PLAN-GMAIL-CREDENTIALS.md` (REACH-A)** —
-nothing here can run without a stored, decryptable Gmail credential.
+**Status (2026-10-12):** built (REACH-B…E) and tested in the SQLite and Postgres-lane suites; the modules are in `apps/api/outreach/`. Not exercised live: it waits on the owner's `APIFY_TOKEN` and Google OAuth credentials. The text below is the original plan and is still the best statement of intent. Safety rules (send gate, 2 cold notes per address per day, suppression, opt-out) are in `docs/ARCHITECTURE.md` section 5.
+
+*Original status line:* blocked on `docs/PLAN-GMAIL-CREDENTIALS.md` (REACH-A) — nothing here can run without a stored, decryptable Gmail credential.
 
 **Stage prefix.** `REACH-*`, per the naming convention in `PLAN-JOB-COLLECTION.md`. Never
 write a bare "Phase N": two other plans already use numbers for unrelated work.

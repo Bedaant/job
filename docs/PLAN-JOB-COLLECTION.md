@@ -1,6 +1,8 @@
 # Plan: job collection
 
-**Status:** in progress. Stages COLLECT-A and COLLECT-B are done; COLLECT-C is next and
+**Status (2026-10-12):** COLLECT-A…F are done (COLLECT-C partly; COLLECT-E was rejected). The text below was written while A and B were the only stages built, so its "next" language is out of date; `README.md` has the current stage table.
+
+*Original status line:* in progress. Stages COLLECT-A and COLLECT-B are done; COLLECT-C is next and
 starts with a decision, not with code.
 
 **Why this doc exists.** This plan had no document. Stages A and B were built from "Next" notes

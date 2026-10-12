@@ -10,4 +10,6 @@ Interactive diagrams of Job Copilot, made with [Archify](https://github.com/tt-a
 
 The JSON in [`src/`](src) is the source for each diagram. To change one, edit its JSON and re-render with the Archify skill (`finalize <type> <file.json> <output.html> --quality showcase`).
 
+**Stale in one respect (2026-10-12):** the outreach parts drawn as PLANNED are now built (REACH-A…E, `apps/api/outreach/`), though not yet exercised live. Nothing is deployed either. The diagrams do not show Postgres RLS or the send gate. `docs/ARCHITECTURE.md` is the current reference.
+
 These diagrams were drawn from this repo's docs and the plan in the README. They are not checked line by line against the code. Anything marked PLANNED or drawn with a dashed purple line is not built yet.

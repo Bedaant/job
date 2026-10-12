@@ -119,10 +119,11 @@ def test_two_users_racing_to_one_recipient_at_cap_minus_one_claim_only_once(_pg_
             o = _outreach(db, p, status=models.OutreachStatus.sent, email=f"r-{tag}@acme.com",
                           sent_at=datetime.utcnow())
         else:
-            o = _outreach(db, p, email=f"R-{tag}@Acme.com")
+            # same address in a different case: the job external_id embeds the email, so it must differ
+            o = _outreach(db, p, email=f"R-{tag}@Acme.com" if not racers else f"r-{tag}@ACME.com")
             racers.append((o.id, p.id))
         users.append(p.user_id)
-        jobs.append(o.application.job_id)
+        jobs.append(db.get(models.Application, o.application_id).job_id)
     db.commit()
     db.close()
 
@@ -146,5 +147,5 @@ def test_two_users_racing_to_one_recipient_at_cap_minus_one_claim_only_once(_pg_
             t.join(30)
         assert sorted(results, key=str) == [None, "recipient_cap"]
     finally:
-        for u in users:
-            _cleanup(Session, u, jobs)
+        for u in users:  # jobs go with the last user: earlier users' applications still reference them
+            _cleanup(Session, u, jobs if u == users[-1] else [])
