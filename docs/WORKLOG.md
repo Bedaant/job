@@ -6593,6 +6593,19 @@ and enforcement on the truth-check.
 
 **Next.** Owner decisions: open a PR from `feat/next-work-plan` to `main` (none open, nothing pushed); rewrite git history for the old `facts.json`. Then the remaining code items: proof of submission, RLS on contacts/outreach/gmail_credentials/fill_snapshots, extension upload of the tailored resume and cover letter.
 
+### 2026-10-12 (night) — Three tracks lost to a shutdown, redone: RLS 0040, routes/ split, race-safe recipient cap
+
+**What changed.** A laptop shutdown killed three agents mid-run with nothing saved; they were restarted with the same briefs and merged one at a time.
+- **RLS (migration 0040).** `contacts`, `outreach`, `gmail_credentials`, `fill_snapshots` get ENABLE + FORCE + a `tenant_isolation` policy copied from 0010. Owner column: profile_id → profiles.user_id (contacts, outreach), user_id (gmail_credentials), application_id → profile → user (fill_snapshots). Workers already use `session_scope()` (owner role), so they are unaffected. Two token-less web routes would have broken and were fixed: the Gmail OAuth callback now sets the tenant from its signed state (`core.deps.set_tenant`), and the public unsubscribe route reads on the owner role via a new `database.get_owner_db` — the first web route on the owner role; the HMAC token is what authorises its one write. No boot-time privilege warning: there is no startup hook anywhere.
+- **`main.py` split.** 1,774 → 61 lines; routes moved to `apps/api/routes/` (applications, extension, resume_facts, profiles, matches, feed, campaigns incl. discovery and `/jobs`, `_shared`). Test edits are patch-target strings and imports only (14 files); `digest.py` now imports `_ready_to_send` from `routes.applications`.
+- **Recipient cap.** `claim_outreach` takes `pg_advisory_xact_lock(hashtext(lower(email)))` before counting, so two workers can no longer both send to an address at cap-1. No-op on SQLite.
+
+**Verified.** API suite 1513 passed, 8 skipped (sqlite in-memory) after each merge. Split checked independently: the flattened list of 82 endpoints and the OpenAPI hash are identical before and after. Alembic single head `0040`. Dockerfile copies all of `apps/api`, so `routes/` ships; `main:app` is unchanged.
+
+**Not verified.** 0040 is not applied to Neon (needs the owner's approval). The three new Postgres-lane tests (A cannot read B in each table; two sessions racing for one recipient) were skipped: no `TEST_DATABASE_URL`. Whether `get_owner_db` really connects as a role that bypasses RLS on Neon is unproven until 0040 is applied.
+
+**Next.** Owner approves applying 0040 to Neon, then run the Postgres lane. Then open a PR from `feat/next-work-plan`.
+
 ## Entry template
 
 Copy this for each change.
