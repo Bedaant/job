@@ -65,6 +65,14 @@ export function undoMessage(action: SendAction, job: { title: string; company: s
   return action === "sent" ? `Marked as sent: ${what}.` : `Removed: ${what}.`;
 }
 
+const SENT_KIND: Record<string, string> = {
+  submission: "Application form submitted",
+  email: "Application emailed",
+  outreach_email: "Note to a recruiter",
+};
+
+export const sentKindLabel = (kind: string) => SENT_KIND[kind] ?? kind;
+
 /** Batch approve never includes a flagged card: the server's can_send gate refuses it. */
 export function batchSelectable<T extends { flagged_unsupported_claims: string[] }>(queue: T[]): T[] {
   return queue.filter((a) => a.flagged_unsupported_claims.length === 0);

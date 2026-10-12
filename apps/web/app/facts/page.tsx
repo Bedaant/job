@@ -6,9 +6,11 @@ import { FileUpIcon, PlusIcon } from "lucide-react";
 import { api, ApiError, type ApplicantBasics, type FactDraft, type ResumeFact, type SavedAnswer } from "@/lib/api";
 import { FACT_CATEGORIES, blankFact, validateBasics } from "@/lib/onboarding";
 import { factChanges, undoableDeletes } from "@/lib/profile";
+import { sentKindLabel } from "@/lib/assisted";
 import { AppShell, useRequireAuth } from "@/components/AppShell";
 import { Chips, Field } from "@/components/onboarding/fields";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -53,7 +55,7 @@ export default function ProfilePage() {
       {profile && (
         <div className="space-y-12">
           <nav aria-label="Profile sections" className="flex flex-wrap gap-2">
-            {[["#facts", "Facts"], ["#about", "About you"], ["#answers", "Saved answers"]].map(([href, label]) => (
+            {[["#facts", "Facts"], ["#about", "About you"], ["#answers", "Saved answers"], ["#sending", "Sending"]].map(([href, label]) => (
               <a
                 key={href}
                 href={href}
@@ -66,6 +68,7 @@ export default function ProfilePage() {
           <FactsSection profileId={profile.id} />
           <AboutSection profileId={profile.id} />
           <AnswersSection profileId={profile.id} />
+          <SendingSection />
         </div>
       )}
     </AppShell>
@@ -501,6 +504,68 @@ function AnswersSection({ profileId }: { profileId: string }) {
           {answers.map((a) => (
             <AnswerRow key={a.id} profileId={profileId} answer={a} deleting={del.isPending && del.variables === a.id}
               onDelete={() => { setError(null); del.mutate(a.id); }} />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------- Sending
+
+function SendingSection() {
+  const queryClient = useQueryClient();
+  const safetyQuery = useQuery({ queryKey: ["send-safety"], queryFn: api.getSendSafety });
+  const logQuery = useQuery({ queryKey: ["sent-log"], queryFn: api.listSentLog });
+  const toggle = useMutation({
+    mutationFn: api.setSendsPaused,
+    onSuccess: (data) => queryClient.setQueryData(["send-safety"], data),
+  });
+  const log = logQuery.data ?? [];
+
+  return (
+    <section id="sending" aria-labelledby="sending-h" className="scroll-mt-24 space-y-6">
+      <div className="space-y-1">
+        <h2 id="sending-h" className="text-2xl font-semibold">Sending</h2>
+        <p className="text-muted-foreground">
+          Pause stops everything from going to employers and recruiters until you turn it back on.
+        </p>
+      </div>
+      {safetyQuery.isSuccess && (
+        <div className="space-y-3">
+          <div className="flex min-h-11 items-center gap-3">
+            <Checkbox
+              id="pause-sends"
+              checked={safetyQuery.data.paused}
+              disabled={toggle.isPending}
+              onCheckedChange={(c) => toggle.mutate(c === true)}
+            />
+            <Label htmlFor="pause-sends">Pause all sends</Label>
+          </div>
+          {safetyQuery.data.paused_globally && (
+            <Saved>ApplyScout has paused all sending for now. Nothing will be sent until it is turned back on.</Saved>
+          )}
+        </div>
+      )}
+      <div aria-live="polite">
+        {toggle.isError && <Alert>{errorText(toggle.error, "Couldn't change that. Try again.")}</Alert>}
+        {safetyQuery.isError && <Alert>{errorText(safetyQuery.error, "Couldn't load your send settings.")}</Alert>}
+        {logQuery.isError && <Alert>{errorText(logQuery.error, "Couldn't load what was sent.")}</Alert>}
+      </div>
+      <h3 className="text-lg font-semibold">What was sent</h3>
+      {logQuery.isLoading && <Skeleton className="h-24 w-full rounded-2xl" />}
+      {logQuery.isSuccess && log.length === 0 && (
+        <p className="rounded-2xl border border-dashed px-6 py-8 text-center text-muted-foreground">Nothing has been sent yet.</p>
+      )}
+      {log.length > 0 && (
+        <ul className="divide-y rounded-2xl border bg-card shadow-sm">
+          {log.map((e, i) => (
+            <li key={i} className="space-y-1 px-5 py-4">
+              <p className="font-medium">{sentKindLabel(e.kind)}</p>
+              <p className="break-all text-sm text-muted-foreground">
+                {e.recipient} · {new Date(`${e.created_at}Z`).toLocaleString()}
+              </p>
+            </li>
           ))}
         </ul>
       )}

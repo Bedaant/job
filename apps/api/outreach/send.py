@@ -19,6 +19,7 @@ from datetime import datetime
 from sqlalchemy import or_
 
 import models
+import send_gate
 from campaigns import utc_day_start
 from outreach.suppression import is_suppressed
 
@@ -129,6 +130,10 @@ def claim_outreach(db, outreach_id: str, profile_id: str) -> str | None:
     if row.status is not models.OutreachStatus.approved:
         return "not_approved"
 
+    # Paused (send_gate.can_send): held `approved`, like the cap, so it goes once unpaused.
+    if not send_gate.can_send(db, row.profile.user)[0]:
+        return "paused"
+
     # Re-checked here and not only at drafting time: the gap between the two is minutes
     # at best, and an opt-out that loses that race is not an opt-out.
     contact = row.contact
@@ -197,6 +202,7 @@ def send_outreach(db, row: models.Outreach, sender) -> bool:
     row.status = models.OutreachStatus.sent
     row.sent_at = datetime.utcnow()
     row.gmail_message_id = str(message_id)
+    send_gate.log_sent(db, row.profile.user_id, "outreach_email", to, row.application_id)
     return True
 
 

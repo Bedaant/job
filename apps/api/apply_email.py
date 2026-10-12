@@ -156,6 +156,7 @@ def send_application_email(db, application_id: str) -> str:
         # TYPE only: a provider error can echo the message or the credential.
         logger.warning("email application %s send unconfirmed: %s", application.id, type(exc).__name__)
         send_gate.transition(application, models.ApplicationStatus.submitted_unconfirmed)
+        send_gate.log_sent(db, profile.user_id, "email", to, application.id)  # it may have gone
         _note(application, f"[unconfirmed] Sending to {to} raised {type(exc).__name__}; it may or may not "
                            "have gone. Check your Sent folder, then mark it applied.")
         write_event(db, profile.user_id, "application.status_changed",
@@ -166,6 +167,7 @@ def send_application_email(db, application_id: str) -> str:
         return _back_to_review(db, application, "failed", "failed", "The email was not delivered.")
 
     send_gate.transition(application, models.ApplicationStatus.applied)
+    send_gate.log_sent(db, profile.user_id, "email", to, application.id)
     application.applied_at = datetime.utcnow()
     _note(application, f"[submitted] Emailed your resume to {to}.")
     write_event(db, profile.user_id, "application.submitted",

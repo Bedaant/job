@@ -79,6 +79,7 @@ app.include_router(outreach_api.router)
 app.include_router(gmail.router)
 app.include_router(ats_controls.router)
 app.include_router(ops_router)
+app.include_router(send_gate.router)
 
 
 # ---------- Job discovery ----------
@@ -357,6 +358,8 @@ def claim_submission(
     # The at-most-once guarantee is unchanged: the row is no longer `approved`,
     # so a second claim still 409s.
     send_gate.transition(application, models.ApplicationStatus.submitting)
+    # Logged at the claim: from here the form may reach the employer.
+    send_gate.log_sent(db, current_user.id, "submission", application.job.apply_url, application.id)
     write_event(
         db, current_user.id, "application.status_changed",
         {"application_id": application.id, "status": "submitting"},
@@ -430,6 +433,8 @@ def extension_work_queue(
     self-draining.
     """
     _mark_extension_seen(db, current_user)
+    if not send_gate.can_send(db, current_user)[0]:  # paused: hand the driver nothing
+        return []
     rows = (
         _work_queue_query(db, current_user)
         .order_by(models.Application.created_at.asc())

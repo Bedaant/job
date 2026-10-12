@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 import models
+import send_gate
 from core.deps import get_current_user, resolve_profile_ownership
 from database import get_db
 from outreach import optout
@@ -179,6 +180,9 @@ def approve_outreach(
     if row.flagged_unsupported_claims:
         # ADR-006. The check is a gate, not a label: edit the note or skip it.
         raise HTTPException(409, "This note makes a claim your facts don't support. Edit it first.")
+    ok, reasons = send_gate.can_send(db, user)
+    if not ok:
+        raise HTTPException(409, "Not sent: " + " ".join(reasons))
 
     row.status = models.OutreachStatus.approved
     row.approved_by = "user"

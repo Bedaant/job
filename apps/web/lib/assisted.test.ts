@@ -11,6 +11,7 @@ import {
   batchSelectable,
   needsYouOnly,
   resumeFilename,
+  sentKindLabel,
   submitModeLine,
   undoMessage,
 } from "./assisted";
@@ -97,6 +98,37 @@ describe("batchSelectable", () => {
       { id: "b", flagged_unsupported_claims: ["Led a team of 50"] },
     ];
     expect(batchSelectable(rows).map((r) => r.id)).toEqual(["a"]);
+  });
+});
+
+describe("send safety", () => {
+  it("names each kind of sent-log entry", () => {
+    expect(sentKindLabel("submission")).toBe("Application form submitted");
+    expect(sentKindLabel("email")).toBe("Application emailed");
+    expect(sentKindLabel("outreach_email")).toBe("Note to a recruiter");
+  });
+
+  it("flips the user's own pause with a PUT of exactly that flag", async () => {
+    let body: unknown = null;
+    server.use(
+      http.put(`${API_URL}/send-safety`, async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ paused: true, paused_globally: false });
+      }),
+    );
+    expect(await api.setSendsPaused(true)).toEqual({ paused: true, paused_globally: false });
+    expect(body).toEqual({ paused: true });
+  });
+
+  it("reads the switches and the sent log", async () => {
+    server.use(
+      http.get(`${API_URL}/send-safety`, () => HttpResponse.json({ paused: false, paused_globally: true })),
+      http.get(`${API_URL}/sent-log`, () =>
+        HttpResponse.json([{ kind: "email", recipient: "hr@acme.com", application_id: "a1", created_at: "2026-10-12T10:00:00" }]),
+      ),
+    );
+    expect((await api.getSendSafety()).paused_globally).toBe(true);
+    expect((await api.listSentLog())[0].recipient).toBe("hr@acme.com");
   });
 });
 
