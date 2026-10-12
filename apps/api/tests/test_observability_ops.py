@@ -271,7 +271,7 @@ def test_prepare_records_one_tailoring_sample(monkeypatch):
     monkeypatch.setattr(batch_prep, "write_event", lambda *a, **k: None)
     query = SimpleNamespace(filter=lambda *a: SimpleNamespace(all=lambda: []))
     db = SimpleNamespace(query=lambda model: query, commit=lambda: None, refresh=lambda a: None)
-    app = SimpleNamespace(id="a1", profile=SimpleNamespace(id="p1", user_id="u1"),
+    app = SimpleNamespace(id="a1", status=models.ApplicationStatus.saved, profile=SimpleNamespace(id="p1", user_id="u1"),
                           job=SimpleNamespace(title="T", company="C", description=""))
     batch_prep.prepare_application_for_review(db, app)
     assert len(samples) == 1 and samples[0] >= 0
