@@ -195,6 +195,8 @@ export function ApplicationCard({
         <div className="flex items-start gap-3">
           <Checkbox
             checked={selected}
+            // A flagged card can't be approved (the server's can_send gate refuses it).
+            disabled={flagged_unsupported_claims.length > 0}
             onCheckedChange={(checked) => onToggleSelected(checked === true)}
             aria-label={`Select ${job.title} at ${job.company}`}
             className="mt-1"

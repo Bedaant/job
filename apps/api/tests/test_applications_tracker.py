@@ -22,7 +22,7 @@ def _setup(email, statuses=(S.applied,)):
     client, SessionLocal = _client()
     _bind(client, SessionLocal)
     headers = _auth(client, email)
-    profile_id, ids = _seed(client, headers, list(statuses))
+    profile_id, ids = _seed(client, headers, list(statuses), tailored=False)
     return client, SessionLocal, headers, profile_id, ids
 
 

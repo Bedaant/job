@@ -81,6 +81,9 @@ def test_a_later_submitted_outcome_clears_pending_questions():
     headers = _auth(client, "pq-submitted@example.com")
     profile_id, (app_id,) = _seed(client, headers, [models.ApplicationStatus.approved])
     _needs_human(client, headers, app_id, ["Portfolio URL"])
+    # The user answers it (send_gate refuses a claim while a question is open), then re-approves.
+    client.put(f"/profiles/{profile_id}/answers", headers=headers,
+               json={"question_text": "Portfolio URL", "answer_text": "https://asha.dev"})
 
     db = SessionLocal()
     row = db.query(models.Application).filter(models.Application.id == app_id).first()

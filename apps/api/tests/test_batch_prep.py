@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 import main
 import models
+from tests.test_submission_loop import grounded
 from batch_prep import prepare_application_for_review
 from database import Base, get_db
 
@@ -108,7 +109,7 @@ def test_batch_approve_transitions_all_and_is_all_or_nothing():
     job = models.Job(source="remotive", external_id="1", canonical_hash="h1", title="Backend Engineer",
                       company="Acme", apply_url="https://x")
     db.add(job); db.commit()
-    app1 = models.Application(profile_id=profile["id"], job_id=job.id, status=models.ApplicationStatus.ready_for_review)
+    app1 = models.Application(profile_id=profile["id"], job_id=job.id, status=models.ApplicationStatus.ready_for_review, **grounded(db, profile["id"]))
     db.add(app1); db.commit()
     app1_id = app1.id
     db.close()
@@ -170,7 +171,7 @@ def test_dismiss_via_existing_patch_endpoint():
     job = models.Job(source="remotive", external_id="1", canonical_hash="h1", title="Backend Engineer",
                       company="Acme", apply_url="https://x")
     db.add(job); db.commit()
-    app1 = models.Application(profile_id=profile["id"], job_id=job.id, status=models.ApplicationStatus.ready_for_review)
+    app1 = models.Application(profile_id=profile["id"], job_id=job.id, status=models.ApplicationStatus.ready_for_review, **grounded(db, profile["id"]))
     db.add(app1); db.commit()
     app1_id = app1.id
     db.close()
@@ -196,7 +197,7 @@ def test_claim_submission_transitions_approved_to_submitting_then_applied():
     job = models.Job(source="remotive", external_id="1", canonical_hash="h1", title="Backend Engineer",
                       company="Acme", apply_url="https://x")
     db.add(job); db.commit()
-    app1 = models.Application(profile_id=profile["id"], job_id=job.id, status=models.ApplicationStatus.approved)
+    app1 = models.Application(profile_id=profile["id"], job_id=job.id, status=models.ApplicationStatus.approved, **grounded(db, profile["id"]))
     db.add(app1); db.commit()
     app1_id = app1.id
     db.close()
@@ -234,7 +235,7 @@ def test_claim_submission_cannot_fire_twice():
     job = models.Job(source="remotive", external_id="1", canonical_hash="h1", title="Backend Engineer",
                       company="Acme", apply_url="https://x")
     db.add(job); db.commit()
-    app1 = models.Application(profile_id=profile["id"], job_id=job.id, status=models.ApplicationStatus.approved)
+    app1 = models.Application(profile_id=profile["id"], job_id=job.id, status=models.ApplicationStatus.approved, **grounded(db, profile["id"]))
     db.add(app1); db.commit()
     app1_id = app1.id
     db.close()
@@ -274,7 +275,7 @@ def test_claim_submission_409s_when_not_approved():
     job = models.Job(source="remotive", external_id="1", canonical_hash="h1", title="Backend Engineer",
                       company="Acme", apply_url="https://x")
     db.add(job); db.commit()
-    app1 = models.Application(profile_id=profile["id"], job_id=job.id, status=models.ApplicationStatus.ready_for_review)
+    app1 = models.Application(profile_id=profile["id"], job_id=job.id, status=models.ApplicationStatus.ready_for_review, **grounded(db, profile["id"]))
     db.add(app1); db.commit()
     app1_id = app1.id
     db.close()

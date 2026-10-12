@@ -8,6 +8,7 @@ import {
   copyText,
   coverageChange,
   isHttpUrl,
+  batchSelectable,
   needsYouOnly,
   resumeFilename,
   submitModeLine,
@@ -86,6 +87,16 @@ describe("undoMessage", () => {
 describe("needsYouOnly", () => {
   it("keeps a prepared application out of the needs-you list", () => {
     expect(needsYouOnly([{ id: "a" }, { id: "b" }, { id: "c" }], [{ id: "b" }])).toEqual([{ id: "a" }, { id: "c" }]);
+  });
+});
+
+describe("batchSelectable", () => {
+  it("never offers a flagged card for batch approve", () => {
+    const rows = [
+      { id: "a", flagged_unsupported_claims: [] },
+      { id: "b", flagged_unsupported_claims: ["Led a team of 50"] },
+    ];
+    expect(batchSelectable(rows).map((r) => r.id)).toEqual(["a"]);
   });
 });
 

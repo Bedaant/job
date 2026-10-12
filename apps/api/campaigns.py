@@ -20,6 +20,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 import models
+import send_gate
 from batch_prep import prepare_application_for_review
 from events.outbox import write_event
 from matching.filters import CITY_COUNTRY, LOCATION_ALIASES, remote_open_to
@@ -387,11 +388,13 @@ def run_campaign(db: Session, campaign: models.Campaign) -> dict:
     for application in created + stuck:
         try:
             prepare_application_for_review(db, application)
-            if campaign.auto_submit:
+            # A blocked application (a hard flag, no grounded bullet, an open question)
+            # stays in review even in auto mode: send_gate.can_send is the one gate.
+            if campaign.auto_submit and send_gate.can_send(db, campaign.profile.user, application)[0]:
                 # ADR-015: campaign-level approval already happened, so there is
                 # no per-item review step. Web submission is the extension's job;
                 # a mailto: job is queued for email here (send_if_mailto).
-                application.status = models.ApplicationStatus.approved
+                send_gate.transition(application, models.ApplicationStatus.approved)
                 db.commit()
                 send_if_mailto(db, application)
             prepared += 1

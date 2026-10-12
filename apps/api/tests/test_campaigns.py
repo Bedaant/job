@@ -20,6 +20,7 @@ from sqlalchemy.pool import StaticPool
 import campaigns as campaigns_mod
 import main
 import models
+from tests.test_submission_loop import grounded
 from database import Base, get_db
 
 
@@ -360,6 +361,7 @@ def test_run_campaign_leaves_applications_ready_for_review_when_auto_submit_fals
 def test_run_campaign_marks_approved_when_auto_submit_true(mock_prepare):
     def fake_prepare(db, application):
         application.status = models.ApplicationStatus.ready_for_review
+        application.tailored_resume_json = grounded(db, profile.id)["tailored_resume_json"]
         db.commit()
         return application
 
