@@ -284,6 +284,7 @@ def test_scheduler_registers_discovery_and_campaign_sweep(mock_scheduler_cls, _r
         run_scheduler.check_and_alert_task: 15 * 60,
         run_scheduler.canary_task: run_scheduler.DIGEST_INTERVAL_SECONDS,
         jobs.refresh_campaign_searches_task: run_scheduler.DIGEST_INTERVAL_SECONDS,
+        run_scheduler.supervise_task: 15 * 60,
     }
 
 

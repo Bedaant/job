@@ -6571,6 +6571,16 @@ and enforcement on the truth-check.
 
 **Next.** Owner sets `JWT_SECRET` and approves the yield run again if the cost is still acceptable, then review the merge for a PR.
 
+### 2026-10-12 (later) — Autopilot hardening: the unattended loop heals itself
+
+**What changed.** `supervisor.py` (scheduled every 15 min) moves `submitting` rows older than 30 min to `submitted_unconfirmed` (never back to `approved`), notes it on the row, logs mailto sends as possibly gone, and emails the owner. `run_campaign` counts failed preps in `applications.prep_attempts` (migration 0039), stops retrying at 3 and emits `application.needs_human`; a guard refusal (circuit open, spend cap) does not count; failures are now logged (they were swallowed). Auto mode never sends a posting whose text tries to instruct the model (`untrusted.py`, the form-fill phrase list moved there and shared); a human can still approve it. The tailoring prompt fences the job description in `<job_description>` as data. `claim_outreach` caps cold notes to one address at 2 a day across all users.
+
+**Verified.** 8 new tests in `tests/test_autopilot.py`, red first. API suite 1508 passed, 6 skipped. Alembic single head `0039`.
+
+**Not verified.** Migration 0039 not applied to Neon. Supervisor not run against the real scheduler. The injection screen is a phrase list; the truth gate and human review remain the second line.
+
+**Skipped on purpose.** A per-campaign LLM spend cap: spend is already bounded by `daily_cap` x prep, plus the new retry cap and the guard's global daily USD cap. Recipient domain checks: no rule that would not also refuse real recruiters. A new end-to-end test: `test_apply_email.py` already covers campaign → auto-approve → email.
+
 ## Entry template
 
 Copy this for each change.

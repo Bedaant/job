@@ -280,6 +280,9 @@ class Application(Base):
     # Separate from `status` on purpose: it is what the user told us, not a send transition.
     outcome = Column(String, nullable=True)
     outcome_at = Column(DateTime, nullable=True)
+    # Failed tailoring passes (0039). campaigns.run_campaign retries a stuck prep each run and
+    # stops at MAX_PREP_ATTEMPTS; a provider outage the guard refused does not count.
+    prep_attempts = Column(Integer, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

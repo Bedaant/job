@@ -706,7 +706,8 @@ def prepare_applications_task(application_ids: list[str]) -> dict:
             try:
                 prepare_application_for_review(db, application)
                 prepared += 1
-            except Exception as exc:
+            except Exception:
+                logger.exception("prep failed for application %s", application_id)
                 failed.append(application_id)
                 db.rollback()
     return {"prepared": prepared, "failed": failed}

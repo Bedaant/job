@@ -16,7 +16,7 @@ exist and be tested before REACH-A's Gmail credential does.
 import logging
 from datetime import datetime
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 
 import models
 import send_gate
@@ -32,8 +32,30 @@ DAILY_CAP = 10
 # One ceiling per user across both irreversible email channels (outreach + apply-by-email),
 # each of which also keeps its own 10: without it the two sum to 20 from one Gmail account.
 ACCOUNT_DAILY_CAP = 15
+# One recruiter, all users together (P1 #17): several users finding the same person on the
+# same day must not turn into a pile of cold notes from ApplyScout in one inbox.
+RECIPIENT_DAILY_CAP = 2
 # RQ queue for irreversible sends, so they never wait behind tailoring or discovery.
 EFFECTS_QUEUE = "effects"
+
+
+def recipient_sends_today(db, email: str) -> int:
+    """Cold notes to this address today or in flight, from every user (contacts are per profile)."""
+    # ponytail: the user lock does not serialise across users, so two concurrent claims can
+    # reach cap+1. A row lock on a per-recipient table if that ever matters.
+    return (
+        db.query(models.Outreach)
+        .join(models.Contact, models.Outreach.contact_id == models.Contact.id)
+        .filter(
+            func.lower(models.Contact.email) == (email or "").lower(),
+            or_(
+                (models.Outreach.status == models.OutreachStatus.sent)
+                & (models.Outreach.sent_at >= utc_day_start()),
+                models.Outreach.status == models.OutreachStatus.sending,
+            ),
+        )
+        .count()
+    )
 
 
 def email_applications_today(db, user_id: str) -> int:
@@ -160,6 +182,8 @@ def claim_outreach(db, outreach_id: str, profile_id: str) -> str | None:
     lock_user(db, user_id)
     if sent_today(db, profile_id) >= DAILY_CAP or account_sends_today(db, user_id) >= ACCOUNT_DAILY_CAP:
         return "daily_cap"
+    if recipient_sends_today(db, contact.email) >= RECIPIENT_DAILY_CAP:
+        return "recipient_cap"
 
     row.status = models.OutreachStatus.sending
     return None

@@ -14,6 +14,7 @@ from formfill.deterministic import (
     bind_to_options, match_field_deterministic, recognised_profile_key,
 )
 from tailoring.engine import call_llm
+from untrusted import looks_like_instructions
 
 CONFIDENCE_THRESHOLD = 0.75
 
@@ -26,21 +27,11 @@ MAX_PROMPT_OPTIONS = 50
 # and option-less radios/checkboxes (see _unanswerable).
 _UNANSWERABLE_TYPES = {"hidden", "search", "file", "submit", "button", "password"}
 
-# NEXT-WORK-PLAN 4.5: page text is data, never instructions. A field whose label,
-# name or options try to instruct the model is never sent to it (flagged instead).
-# ponytail: a phrase list, not a classifier; the evidence check below is the
-# second line for anything phrased around it.
-_INJECTION = re.compile(
-    r"\bignore\b.{0,20}\b(?:previous|prior|above|earlier|all)\b|\bdisregard\b|system prompt"
-    r"|\byou are now\b|\bnew instructions\b|(?:^|\W)(?:system|assistant)\s*:"
-    r"|\b(?:answer|fill|select|pick)\b.{0,15}\b(?:every|all)\b.{0,15}\b(?:question|field)s?\b",
-    re.I,
-)
-
-
+# A field whose label, name or options try to instruct the model is never sent to it
+# (flagged instead); the evidence check below is the second line.
 def _hostile(field: dict) -> bool:
     text = " ".join([field.get("label_text") or "", field.get("name") or "", *(field.get("options") or [])])
-    return bool(_INJECTION.search(text))
+    return looks_like_instructions(text)
 
 
 def _profile_texts(value) -> list[str]:
