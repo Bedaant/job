@@ -16,7 +16,7 @@ exist and be tested before REACH-A's Gmail credential does.
 import logging
 from datetime import datetime
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 
 import models
 import send_gate
@@ -39,10 +39,16 @@ RECIPIENT_DAILY_CAP = 2
 EFFECTS_QUEUE = "effects"
 
 
+def lock_recipient(db, email: str) -> None:
+    """The user lock does not serialise claims across users, so two could both count cap-1.
+    Transaction-scoped; taken last in `claim_outreach`, one per transaction, so no cycle."""
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": (email or "").lower()})
+
+
 def recipient_sends_today(db, email: str) -> int:
-    """Cold notes to this address today or in flight, from every user (contacts are per profile)."""
-    # ponytail: the user lock does not serialise across users, so two concurrent claims can
-    # reach cap+1. A row lock on a per-recipient table if that ever matters.
+    """Cold notes to this address today or in flight, from every user (contacts are per profile).
+    Callers hold `lock_recipient`."""
     return (
         db.query(models.Outreach)
         .join(models.Contact, models.Outreach.contact_id == models.Contact.id)
@@ -182,6 +188,7 @@ def claim_outreach(db, outreach_id: str, profile_id: str) -> str | None:
     lock_user(db, user_id)
     if sent_today(db, profile_id) >= DAILY_CAP or account_sends_today(db, user_id) >= ACCOUNT_DAILY_CAP:
         return "daily_cap"
+    lock_recipient(db, contact.email)
     if recipient_sends_today(db, contact.email) >= RECIPIENT_DAILY_CAP:
         return "recipient_cap"
 
