@@ -36,6 +36,7 @@ from formfill.deterministic import bind_to_options
 from formfill.map_fields import build_profile_summary, map_form_fields
 from formplans import current_plan
 from parsing.extract import extract_text_from_docx, extract_text_from_pdf
+from parsing.linkedin_export import ExportRejected, read_linkedin_export
 from parsing.llm_extract import extract_basics, extract_facts_from_text
 from workers.jobs import (
     BACKGROUND_QUEUE, DISCOVERY_TIMEOUT_SECONDS, discover_jobs_task, get_queue, get_redis_connection, prepare_applications_task,
@@ -986,11 +987,28 @@ async def upload_resume(
     db: Session = Depends(get_db),
     file: UploadFile = File(...),
 ):
-    raw = await file.read()
+    try:
+        raw = await file.read()
+    finally:
+        await file.close()  # a >1MB upload is spooled to a temp file; don't keep it
     if len(raw) > MAX_RESUME_UPLOAD_BYTES:
         raise HTTPException(413, "Resume file exceeds 5MB limit")
 
     filename = (file.filename or "").lower()
+    if filename.endswith(".zip"):
+        # LinkedIn data export: deterministic, no model call. Drafts only, like a resume.
+        try:
+            facts, basics_draft = read_linkedin_export(raw)
+        except ExportRejected as exc:
+            raise HTTPException(422, str(exc))
+        del raw
+        upload = models.ResumeUpload(profile_id=profile.id, status="ready", draft_facts=facts)
+        db.add(upload)
+        db.commit()
+        db.refresh(upload)
+        return schemas.ResumeUploadOut(upload_id=upload.id, status=upload.status,
+                                       facts=upload.draft_facts, basics=basics_draft)
+
     try:
         if filename.endswith(".pdf"):
             text = extract_text_from_pdf(raw)

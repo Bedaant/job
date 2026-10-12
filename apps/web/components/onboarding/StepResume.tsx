@@ -30,13 +30,15 @@ export function StepResume({
     <div className="space-y-5">
       <p className="text-sm text-muted-foreground">
         Drop in whatever you have. It does not need to be tidy and it does not need to be ATS-friendly — that
-        is the part we do. A PDF or Word file under 5MB.
+        is the part we do. A PDF or Word file under 5MB, a LinkedIn &quot;Save to PDF&quot;, or your LinkedIn data
+        export (.zip). The file is read and then discarded.
       </p>
 
       <Dropzone
         accept={{
           "application/pdf": [".pdf"],
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+          "application/zip": [".zip"],
         }}
         maxFiles={1}
         multiple={false}
@@ -57,7 +59,7 @@ export function StepResume({
             </div>
             <p className="my-2 text-sm font-medium">Upload your resume</p>
             <p className="text-xs text-muted-foreground">Drag and drop or click to choose a file</p>
-            <p className="text-xs text-muted-foreground">PDF or Word (.docx), up to 5 MB</p>
+            <p className="text-xs text-muted-foreground">PDF, Word (.docx) or LinkedIn export (.zip), up to 5 MB</p>
           </div>
         </DropzoneEmptyState>
         <DropzoneContent />

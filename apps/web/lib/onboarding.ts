@@ -321,6 +321,6 @@ export function errorText(err: unknown): string {
 /** react-dropzone's rejection text ("File is larger than 5242880 bytes") in words a person uses. */
 export function rejectedFileMessage(raw: string): string {
   if (/larger/i.test(raw)) return "That file is over 5 MB. Try a smaller PDF or Word file.";
-  if (/type/i.test(raw)) return "That file isn't a PDF or Word (.docx) file.";
+  if (/type/i.test(raw)) return "That file isn't a PDF, Word (.docx) or LinkedIn export (.zip) file.";
   return "Drop one file at a time.";
 }
