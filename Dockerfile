@@ -29,14 +29,29 @@ RUN apt-get update \
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    # Not boilerplate — earned. Two builds failed here with
+    # "Could not find a version that satisfies the requirement X (from versions: none)"
+    # on a DIFFERENT package each time (sqlalchemy, then uvicorn), both of which install
+    # fine in a bare container. A random package failing per run is intermittent DNS or
+    # index flakiness inside the build network, not a bad pin — and the default 5
+    # retries with a 15s timeout is not enough to ride it out. The misleading part is
+    # the message: "from versions: none" reads like the version does not exist.
+    PIP_RETRIES=10 \
+    PIP_TIMEOUT=120
 
 WORKDIR /app
 
 # Requirements first, so a code change does not reinstall the dependency tree.
 COPY apps/api/requirements.txt /app/apps/api/requirements.txt
-RUN pip install -r /app/apps/api/requirements.txt
+# BuildKit cache mount, and `PIP_NO_CACHE_DIR` is deliberately NOT set so it is usable.
+# A third build failed here with a ReadTimeoutError from files.pythonhosted.org 437s in,
+# after two earlier failures on a different package each. With no cache every retry
+# re-downloads the whole tree — scikit-learn, numpy and pandas are most of it — so a slow
+# link can never finish. The mount persists between attempts, so each build resumes
+# instead of starting over. It is build-time only and adds nothing to the image.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r /app/apps/api/requirements.txt
 
 # The second venv for JobSpy. It MUST be isolated: python-jobspy hard-pins
 # numpy==1.26.3, which conflicts with pgvector/scikit-learn's numpy 2.x and broke a real
@@ -50,8 +65,9 @@ RUN pip install -r /app/apps/api/requirements.txt
 # >=1.3.0 is not cosmetic: on the previously pinned 1.1.82, ZipRecruiter AND Glassdoor
 # both answered HTTP 403. 1.3.0 is what makes Glassdoor work, and Glassdoor is the only
 # site in JOBSPY_SITES.
-RUN python -m venv /app/tools/.venv-jobspy \
- && /app/tools/.venv-jobspy/bin/pip install --no-cache-dir "python-jobspy>=1.3.0"
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m venv /app/tools/.venv-jobspy \
+ && /app/tools/.venv-jobspy/bin/pip install "python-jobspy>=1.3.0"
 
 # Layout is load-bearing. `connectors/jobspy_connector.py` resolves tools/ as
 # ../../../tools from apps/api/connectors/, and formplans.py does the same with
