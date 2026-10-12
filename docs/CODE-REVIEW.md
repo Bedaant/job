@@ -1,5 +1,8 @@
 # Job Copilot — Code Review: existing MVP
 
+> **Historical document.** A review of the original single-user MVP on 2026-08-15. Its blockers (tenancy, N+1 ingest, `create_all()`, no migrations) were addressed in the Phase 0/1 work recorded in `docs/WORKLOG.md`, and tenancy is now two layers (ADR-022). Kept as a record of why those choices were made. It does not describe the current code.
+
+
 - **Date:** 2026-08-15
 - **Reviewed:** `apps/api/` (main, models, database, schemas, connectors, tailoring),
   `apps/web/`, `docker-compose.yml`, `.env.example`

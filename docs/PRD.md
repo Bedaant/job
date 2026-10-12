@@ -1,5 +1,8 @@
 # Job Copilot — Product Requirements Document
 
+> **Historical document.** Written 2026-08-15 as the founding product spec. The product has since been renamed ApplyScout (agent Maggie, ADR-015) and the scope changed: the LLM is NVIDIA NIM, auth is custom, and autopilot campaigns replace the review-every-application flow. Use it for the original intent and personas, not for what is built. Current state: `README.md`; current design: `docs/ARCHITECTURE.md`; why: `docs/DECISIONS.md`.
+
+
 - **Status:** Draft v1.0
 - **Owner:** Bedaant Srivastav
 - **Last updated:** 2026-08-15

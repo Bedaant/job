@@ -76,4 +76,4 @@ def test_one_user_cannot_read_anothers_rows_in_any_of_the_four_tables(db_session
     db_session.execute(text("SELECT set_config('app.current_user_id', :uid, true)"), {"uid": rows["a"]})
     for table in TABLES:
         assert db_session.execute(text(f"SELECT count(*) FROM {table}")).scalar() == 1, table
-    assert db_session.execute(text("SELECT user_id FROM gmail_credentials")).scalar() == rows["a"]
+    assert str(db_session.execute(text("SELECT user_id FROM gmail_credentials")).scalar()) == rows["a"]

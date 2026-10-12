@@ -4,7 +4,7 @@
 > is a proposal with a justification and a "what if we don't" column. Approve per-line,
 > per-group, or reject.
 >
-> **Current status: NOTHING INSTALLED. Awaiting approval.**
+> **Current status (2026-08-15, STALE): nothing installed, awaiting approval.** The project has since been built and its dependencies are installed. For the real inventory read `apps/api/requirements.txt`, `apps/web/package.json` and `apps/extension/package.json`. The approval rule itself (ADR-010: never install a dependency without asking) still stands. Docker Desktop on the owner's machine is currently broken.
 
 - **Last updated:** 2026-08-15
 - **Machine state:** Node v22.14.0, npm 10.9.2, Python 3.11.9, git 2.55.0. **Docker is

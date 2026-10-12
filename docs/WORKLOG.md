@@ -4,7 +4,9 @@
 person (or agent) picks up the work, **read this file first** — it says where the project
 stands, what was decided, what is in flight, and what to do next.
 
-**Rule.** Every change to this repo gets an entry here, appended at the top. An entry
+**Rule.** Every change to this repo gets an entry here. **Ordering is mixed:** older entries
+are newest-first near the top, but the 2026-10-12 entries sit together just above
+"Entry template" near the end of the file. Search for the date, not the position. An entry
 records what changed, why, which files, and what broke. Errors and dead ends are recorded
 too — a failed approach that is not written down gets retried by the next person.
 
@@ -12,7 +14,19 @@ too — a failed approach that is not written down gets retried by the next pers
 
 ## Current state — read this first
 
-**As of 2026-10-09 (latest+85).** Product is **ApplyScout**, agent **Maggie** (ADR-015).
+**As of 2026-10-12.** (This block was refreshed in the docs pass; the bullets below that still
+say 2026-10-09 or earlier are context, superseded by the facts in this paragraph.)
+
+- **Now:** 1513 API tests pass (8 skipped), web 159, extension 144. Neon is at migration
+  **0040** (read back live). Postgres RLS is live on every tenant table (ADR-022).
+  `main.py` is split into `routes/`. Stage 8 (REACH-A…E) is built; it waits on the owner's
+  Apify token and Google OAuth credentials. DEPLOY-A first-boot fixes are done, the image and
+  compose files are written, nothing is deployed. Work is on PR #24
+  (`feat/next-work-plan` → `main`). Its Postgres CI lane failed 2 of 1520 tests, both
+  test-only bugs, fixed on `docs/engineer-handoff` and not yet re-run in CI. Start at
+  `README.md`, then `docs/NEXT-WORK-PLAN.md` (status table).
+
+**Earlier snapshot (2026-10-09, latest+85).** Product is **ApplyScout**, agent **Maggie** (ADR-015).
 Autonomous multi-source auto-apply: the user approves a campaign once, then agents
 discover → tailor → submit through the user's own browser.
 
@@ -28,9 +42,9 @@ discover → tailor → submit through the user's own browser.
   ADR, latest+34. `ANTHROPIC_API_KEY` is still a placeholder, which no longer blocks the
   product; it blocks only the ADR-014 eval harness, and that harness is pointed at the wrong
   provider. **Tailoring quality is currently unmeasured** (`GAPS.md` 6.1).
-- **1101 tests passing. Neon at migration 0026** (verified against the real database, not
+- *(superseded, see Now above)* 1101 tests passing. Neon at migration 0026 (verified against the real database, not
   assumed from the files). Migrations 0022-0026 have all run against real Postgres.
-- **Stage 8 (referral outreach) is in progress** — `docs/PLAN-OUTREACH.md` (REACH-B..E) and
+- *(superseded)* Stage 8 (referral outreach) was in progress — `docs/PLAN-OUTREACH.md` (REACH-B..E) and
   `docs/PLAN-GMAIL-CREDENTIALS.md` (REACH-A). REACH-B/C and REACH-D's send path are built and
   tested. Blocked on the owner for two credentials only: an `APIFY_TOKEN` and a Google Cloud
   OAuth client. Nothing else in stage 8 is blocked.

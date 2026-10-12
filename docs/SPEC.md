@@ -1,5 +1,8 @@
 # Job Copilot — Technical Specification
 
+> **Historical document.** Written 2026-08-15, before most of the code. The DDL in section 1 is NOT authoritative any more: the real schema is `apps/api/models.py` plus Alembic migrations 0001 to 0040. Several interfaces here (3-pass tailor, Better Auth, object-store signed URLs) were not built that way. Current design: `docs/ARCHITECTURE.md`. Treat this file as background and check the code before relying on any detail.
+
+
 - **Status:** Draft v1.0
 - **Last updated:** 2026-08-15
 - **Companion to:** `docs/PRD.md`, `docs/ARCHITECTURE.md`

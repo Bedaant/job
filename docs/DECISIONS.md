@@ -5,8 +5,8 @@ the consequence that actually matters, and what would make us revisit it.
 
 **ADR numbers are stable and must never be reused or renumbered** — 178 citations across
 `docs/`, `apps/api/`, `apps/extension/` and ten Alembic migrations refer to them by
-number. Two of these ADRs have been superseded in *policy* but still name structural
-guards that run in production; they are kept for that reason and marked accordingly.
+number. Three of these ADRs have been superseded in *policy* (ADR-001, ADR-002, ADR-007); the first two still name structural
+guards that run in production, and are kept for that reason and marked accordingly.
 
 Superseded means the policy changed, not that the reasoning was wrong. When a decision
 is reversed, the new ADR says so and the old one stays.
@@ -144,7 +144,10 @@ what makes the second pass worth paying for.
 
 ## ADR-007 — Tenancy enforced in application code, not Postgres RLS
 
-**2026-08-15** · **Accepted**
+**2026-08-15** · **Superseded by ADR-022** · **Application-code scoping is still live**
+
+**Superseded by ADR-022 (2026-10-12):** Postgres row-level security is now enforced as well. What is
+below stays true as the first layer. The original text follows.
 
 **Decided.** One FastAPI dependency resolves and validates ownership; repository functions
 accept resolved objects, never raw request IDs. Plus a CI test generated from the route
@@ -451,3 +454,47 @@ backstop: a campaign with no roles still only saw product roles, because nothing
 collected. Once the pool went unfiltered (1,768 → 5,119 rows on the first run), a roles-less
 active campaign drew from the entire pool. An ACTIVE campaign now requires at least one
 non-blank role, enforced on the resulting state at the write boundary.
+
+
+---
+
+## ADR-022 — Row-level security as a second tenancy layer, and the owner-role route
+
+**2026-10-12** · **Accepted** · Supersedes ADR-007
+
+**Decided.** Tenancy is enforced twice. Layer one is unchanged from ADR-007: every query is
+scoped by the resolved user and a route-table-generated test asserts cross-user 404s. Layer
+two is Postgres row-level security: ENABLE and FORCE ROW LEVEL SECURITY with a
+`tenant_isolation` policy on `NULLIF(current_setting('app.current_user_id', true), '')`,
+first on the tenant tables (migration 0010) and then on `contacts`, `outreach`,
+`gmail_credentials` and `fill_snapshots` (migration 0040).
+
+The API connects through two engines (`database.py`):
+
+| engine | role | RLS | used by |
+|---|---|---|---|
+| `app_engine` / `AppSessionLocal` | restricted, from `APP_DATABASE_URL` | enforced | `get_db`: every authenticated request |
+| `engine` / `SessionLocal` | owner, from `DATABASE_URL` | bypassed | Alembic, workers (`session_scope()`), `get_owner_db` |
+
+The tenant is set per transaction with `set_config('app.current_user_id', …, true)` from
+`get_current_user` (`core.deps.set_tenant`) and re-applied after a commit by `_reapply_tenant`.
+With no tenant set, a query on the restricted role returns zero rows (fail closed).
+
+**Why.** ADR-007 said to revisit when a non-application process gets direct database access.
+Workers, scripts and ad-hoc owner queries already do, and a single missing `WHERE` in a new
+route would leak another user's Gmail credential or outreach drafts. RLS turns that bug from
+a leak into an empty result. Verified live on Neon on 2026-10-12: owner `neondb_owner`
+bypasses RLS, app role `job_copilot_app` does not.
+
+**The consequence that needs a rule.** Two web routes carry no logged-in user. The Gmail
+OAuth callback sets the tenant from its signed state. The public unsubscribe route uses
+`database.get_owner_db`, the **only web route on the owner role**; its HMAC token is what
+authorises its single write. Do not add a second route on `get_owner_db` without an ADR.
+
+**Known limits.** `APP_DATABASE_URL` falls back to `DATABASE_URL` when unset, so a
+misconfigured deploy silently loses layer two; there is no startup check because the app has no
+startup hook. The SQLite test engine cannot enforce RLS, so only the Postgres lane
+(`tests/test_rls_outreach_tables.py`) proves it.
+
+**Revisit when.** A table needs cross-tenant reads from the web tier, or the role setup moves
+off Neon.

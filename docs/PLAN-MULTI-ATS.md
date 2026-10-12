@@ -5,7 +5,9 @@
 > parallel with its own `COLLECT-*` stages, and that collision stalled a session on 2026-10-03.
 > Always write the prefix. See that doc's naming section.
 
-**Status:** accepted 2026-09-29 (ADR-016, amended after Phase 0: the planner is Stagehand `extract()`, not browser-use): **a read-only planner plans each job on the server (read-only, synthetic profile); the extension executes the plan and submits in the user's browser; the extension's own filler is the fallback.**
+**Status update (2026-10-12):** ATS-0…2 are done. Plan routing is live for Greenhouse only; Lever and Ashby measured no gain on required fields. ATS-3 is not done, and its premise needs rethinking before it is executed. A Workday adapter exists (`connectors/workday.py`). See `README.md` and `docs/NEXT-WORK-PLAN.md`.
+
+**Original status:** accepted 2026-09-29 (ADR-016, amended after Phase 0: the planner is Stagehand `extract()`, not browser-use): **a read-only planner plans each job on the server (read-only, synthetic profile); the extension executes the plan and submits in the user's browser; the extension's own filler is the fallback.**
 **Context:** WORKLOG latest+50…55. One Greenhouse posting produced ~12 bugs. Most were
 in the shared engine, not Greenhouse: frames, re-rendered forms, timeouts, optional
 fields, Review gaps. The question is how to reach Lever, Ashby, Workable,
