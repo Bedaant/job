@@ -161,7 +161,8 @@ def recognised_profile_key(field: dict, ats_type: str | None = None) -> str | No
 
     # A verified system field on a known ATS wins over every generic rule.
     schema = ATS_FIELD_SCHEMAS.get(ats_type, {})
-    key = schema.get(name_attr) or schema.get(dom_id)
+    automation_id = (field.get("automation_id") or "").removeprefix("formField-")
+    key = schema.get(name_attr) or schema.get(dom_id) or schema.get(automation_id)
 
     if key is None:
         network_match = (

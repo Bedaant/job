@@ -1356,7 +1356,9 @@ def extension_map_fields(
     # ADR-016: the job's shared form plan (no PII, so no ownership check). None = fill as before.
     plan = current_plan(db, payload.job_id) if payload.job_id else None
     return map_form_fields(
-        fields, profile_summary, answer_lookup=answer_lookup, ats_type=payload.ats_type, plan=plan
+        # The popup's fill sends no ats_type: the page URL decides, as for the kill switch.
+        fields, profile_summary, answer_lookup=answer_lookup,
+        ats_type=ats_controls._ats_of(payload.ats_type, payload.url), plan=plan,
     )
 
 

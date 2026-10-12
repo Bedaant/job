@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from formfill.ats_schemas import ATS_FIELD_SCHEMAS
+from formfill.ats_schemas import ATS_FIELD_SCHEMAS, NEVER
 from formfill.deterministic import match_field_deterministic
 from formfill.map_fields import _BASICS_FIELDS, map_form_fields
 from tests.test_deterministic_fields import PROFILE, _field
@@ -46,7 +46,7 @@ def test_given_and_family_name_are_never_split_from_full_name():
 
 def test_every_schema_target_is_a_key_the_profile_summary_can_hold():
     targets = {key for schema in ATS_FIELD_SCHEMAS.values() for key in schema.values()}
-    assert targets <= {"email", *_BASICS_FIELDS}
+    assert targets <= {"email", NEVER, *_BASICS_FIELDS}
 
 
 @patch("formfill.map_fields.call_llm")
@@ -76,8 +76,53 @@ def test_endpoint_forwards_ats_type_and_bounds_it(mock_map):
     assert client.post("/extension/map-fields", headers=headers, json={**body, "ats_type": "lever"}).status_code == 200
     assert mock_map.call_args.kwargs["ats_type"] == "lever"
 
+    # No ats_type sent: the page URL decides (ats_controls._ats_of, NEXT-WORK-PLAN 4.2).
     assert client.post("/extension/map-fields", headers=headers, json=body).status_code == 200
+    assert mock_map.call_args.kwargs["ats_type"] == "lever"
+    unknown = {**body, "url": "https://careers.example.com/apply"}
+    assert client.post("/extension/map-fields", headers=headers, json=unknown).status_code == 200
     assert mock_map.call_args.kwargs["ats_type"] is None
 
     too_long = {**body, "ats_type": "x" * 33}
     assert client.post("/extension/map-fields", headers=headers, json=too_long).status_code == 422
+
+
+# ---------- Workday (NEXT-WORK-PLAN 4.2): data-automation-id, reconstructed not captured ----------
+
+@pytest.mark.parametrize("automation_id, key", [
+    ("legalNameSection_firstName", "given_name"),
+    ("formField-legalName--firstName", "given_name"),
+    ("legalNameSection_lastName", "family_name"),
+    ("email", "email"),
+    ("phone-number", "phone"),
+    ("addressSection_city", "city"),
+    ("addressSection_postalCode", "postal_code"),
+])
+def test_workday_automation_ids_fill_whatever_the_label_says(automation_id, key):
+    profile = {**PROFILE, "given_name": "Bedaant", "family_name": "Srivastav"}
+    field = _field(label_text="Something odd", dom_id="input-7", automation_id=automation_id)
+    result = match_field_deterministic(field, profile, ats_type="workday")
+    assert result == {"field_id": "f1", "maps_to": f"profile.{key}", "confidence": 1.0, "value": profile[key]}
+
+
+@patch("formfill.map_fields.call_llm")
+def test_workday_country_phone_code_never_takes_the_phone_number(mock_call_llm):
+    """Its label "Country Phone Code" matches the generic phone rule: on Workday it is a
+    country search box, so it is flagged, never sent the phone number or the model."""
+    fields = [{"field_id": "f1", "label_text": "Country Phone Code", "input_type": "text",
+               "automation_id": "countryPhoneCode"}]
+    assert map_form_fields(fields, PROFILE, ats_type="workday") == [
+        {"field_id": "f1", "maps_to": "unknown", "confidence": 0.0, "value": None}]
+    mock_call_llm.assert_not_called()
+
+
+@patch("main.map_form_fields", return_value=[])
+def test_endpoint_detects_workday_from_the_url_and_forwards_automation_id(mock_map):
+    client = _client()
+    headers = _new_user(client, "ats-detect@example.com")
+    profile = client.post("/profiles", headers=headers, json={"persona": "developer"}).json()
+    body = {"profile_id": profile["id"], "url": "https://acme.wd5.myworkdayjobs.com/en-US/External/job/X/apply",
+            "fields": [{"field_id": "f1", "input_type": "text", "automation_id": "email"}]}
+    assert client.post("/extension/map-fields", headers=headers, json=body).status_code == 200
+    assert mock_map.call_args.kwargs["ats_type"] == "workday"
+    assert mock_map.call_args.args[0][0]["automation_id"] == "email"
