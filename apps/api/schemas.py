@@ -8,7 +8,7 @@ from models import ApplicationStatus
 
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(min_length=8)  # the signup page says "At least 8 characters."
 
 
 class ForgotPasswordIn(BaseModel):
