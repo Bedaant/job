@@ -190,6 +190,11 @@ def draft_outreach_for_application(db, application_id: str, sources) -> dict:
             logger.warning("outreach draft failed for %s: %s", row.id, type(exc).__name__)
             skipped += 1
             continue
+        if "refused" in drafted:
+            row.status = models.OutreachStatus.skipped
+            row.skip_reason = drafted["refused"]
+            skipped += 1
+            continue
 
         row.subject = drafted.get("subject")
         row.body = drafted.get("body")

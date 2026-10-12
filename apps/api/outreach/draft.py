@@ -44,6 +44,10 @@ MAX_BODY_WORDS = 120
 
 OPT_OUT_TEMPLATE = "If you would rather not receive notes like this, unsubscribe here: {url}"
 
+MAX_FOLLOW_UPS = 2
+NO_SPECIFIC_REASON = "no_specific_reason"
+FOLLOW_UP_CAP_REACHED = "follow_up_cap_reached"
+
 
 class OutreachDraft(BaseModel):
     """Pass 1's contract. `source_fact_ids` is mandatory and validated against the KB
@@ -126,19 +130,18 @@ def _framing_violations(text: str, signal: dict) -> list[str]:
     return out
 
 
+def _has_reason(signal: dict) -> bool:
+    return bool(signal) and signal.get("kind", "none") != "none" and bool(signal.get("value"))
+
+
 def _connection_block(contact, signal: dict) -> str:
     """What the model is told about the connection, and what it may do with it.
 
     The permission is stated inline rather than only in the system prompt, because this
     is the line the model is most likely to over-read.
     """
-    kind = (signal or {}).get("kind", "none")
-    value = (signal or {}).get("value")
-    if kind == "none" or not value:
-        return (
-            "CONNECTION: none established. Do not invent one. Open by saying plainly "
-            "that you have applied for the role, and why their perspective would help.\n"
-        )
+    kind = signal["kind"]
+    value = signal["value"]
     if signal.get("asserts_about_user"):
         shared = {
             "former_employer": f"you and {contact.full_name} both worked at {value}",
@@ -158,7 +161,7 @@ def _connection_block(contact, signal: dict) -> str:
     )
 
 
-def _system_prompt(signal: dict) -> str:
+def _system_prompt(signal: dict, follow_up: int | None) -> str:
     base = (
         "You are writing a short referral-request email from a job applicant to a person "
         "who works at the company they have just applied to. Use ONLY the candidate's "
@@ -166,11 +169,17 @@ def _system_prompt(signal: dict) -> str:
         "id you return in source_fact_ids. Never invent achievements, metrics, titles, "
         "employers or experience. " + NO_PADDING_RULE + " "
         f"Keep the body under {MAX_BODY_WORDS} words, in plain sentences — no bullet "
-        "lists, no flattery, no 'I am excited to', no praise of the company. Ask one "
-        "concrete thing. Subject: under 60 characters, plain, no emoji. Do not write a "
+        "lists, no flattery, no 'I am excited to', no praise of the company. Give before "
+        "you ask: name the one specific reason you are writing to them, then make exactly "
+        "one small ask. Subject: under 60 characters, plain, no emoji. Do not write a "
         "sign-off with a name, and do not write any unsubscribe line; both are added "
         "afterwards."
     )
+    if follow_up is not None:
+        base += (
+            f" This is follow-up {follow_up} of {MAX_FOLLOW_UPS}. Refer to the earlier note "
+            "in one sentence and do not repeat its pitch."
+        )
     if signal and not signal.get("asserts_about_user"):
         base += (
             " CRITICAL: the connection you are given describes the RECIPIENT only. Any "
@@ -181,7 +190,7 @@ def _system_prompt(signal: dict) -> str:
 
 
 def draft_outreach(facts: list[dict], job: dict, contact, unsubscribe_url: str) -> dict:
-    """Write and check one referral email.
+    """Write and check one referral email, or refuse with `{"refused": reason}`.
 
     `facts` is the profile's CONFIRMED facts as dicts, the same shape
     `tailoring.tailor_application` takes. `contact` is a `ContactCandidate` already
@@ -191,13 +200,30 @@ def draft_outreach(facts: list[dict], job: dict, contact, unsubscribe_url: str) 
     `flagged_unsupported_claims` is the hard gate that blocks approval,
     `advisory_claims` is shown to a human and never blocks (GAPS 6.7).
     """
+    return _write(facts, job, contact, unsubscribe_url, follow_up=None)
+
+
+def draft_follow_up(facts: list[dict], job: dict, contact, already_sent: int,
+                    unsubscribe_url: str) -> dict:
+    """The next note after `already_sent` earlier ones. The cap is enforced here, in code,
+    before any model call, so no prompt can ask for a third."""
+    if already_sent >= MAX_FOLLOW_UPS:
+        return {"refused": FOLLOW_UP_CAP_REACHED}
+    return _write(facts, job, contact, unsubscribe_url, follow_up=already_sent + 1)
+
+
+def _write(facts, job, contact, unsubscribe_url, follow_up: int | None) -> dict:
+    signal = contact.warm_signal or {}
+    if not _has_reason(signal):
+        # A note with no real reason behind it asks a stranger for a favour for nothing.
+        return {"refused": NO_SPECIFIC_REASON}
+
     known_fact_ids = {f["id"] for f in facts if f.get("id")}
     if not known_fact_ids:
         # Nothing could be grounded, so there is no honest email to write. The caller
         # records this as a skip rather than sending something unbacked.
         raise ValueError("cannot draft outreach: no confirmed facts with ids")
 
-    signal = contact.warm_signal or {}
     user = (
         f"CANDIDATE FACTS KB:\n{json.dumps(facts, indent=2)}\n\n"
         f"RECIPIENT: {contact.full_name}"
@@ -208,7 +234,7 @@ def draft_outreach(facts: list[dict], job: dict, contact, unsubscribe_url: str) 
     )
 
     draft = _call_claude_structured(
-        _system_prompt(signal), user, OutreachDraft,
+        _system_prompt(signal, follow_up), user, OutreachDraft,
         context={"known_fact_ids": known_fact_ids},
     )
 
@@ -218,6 +244,8 @@ def draft_outreach(facts: list[dict], job: dict, contact, unsubscribe_url: str) 
     # and taking it whole is what guarantees no JD can reach it (ADR-006).
     model_findings, det_findings = truth_check(facts, draft.subject, [], draft.body)
     hard, advisory = split_gate_findings(model_findings, det_findings)
+    if draft.body.count("?") > 1:
+        advisory.append("more than one ask in the body: keep to one small ask")
 
     # The deterministic framing guard. Appended to the HARD gate because implying a
     # shared role the facts do not support is an unsupported claim about the user, which
