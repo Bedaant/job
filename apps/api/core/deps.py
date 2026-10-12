@@ -6,7 +6,7 @@ from sqlalchemy import event, text
 from sqlalchemy.orm import Session
 
 import models
-from core.security import decode_access_token
+from core.security import ACCESS_TOKEN_TYPE, decode_access_token
 from database import get_db
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -19,6 +19,8 @@ def get_current_user(
     try:
         payload = decode_access_token(token)
     except ValueError:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
+    if payload.get("typ") != ACCESS_TOKEN_TYPE:  # a reset or OAuth-state token is not a login
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
 
     user = db.query(models.User).filter(models.User.id == payload.get("sub")).first()
