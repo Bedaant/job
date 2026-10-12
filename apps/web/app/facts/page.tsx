@@ -161,7 +161,7 @@ function FactsSection({ profileId }: { profileId: string }) {
       </div>
 
       <div>
-        <input ref={fileInput} id="resume-file" type="file" accept=".pdf,.docx" className="sr-only"
+        <input ref={fileInput} id="resume-file" type="file" accept=".pdf,.docx,.zip" className="sr-only"
           disabled={uploadMutation.isPending}
           onChange={(e) => {
             const file = e.target.files?.[0];
@@ -177,7 +177,7 @@ function FactsSection({ profileId }: { profileId: string }) {
         >
           <FileUpIcon className="size-8 text-primary" aria-hidden="true" />
           <span className="font-semibold">{uploadMutation.isPending ? "Reading your resume…" : "Add facts from a resume"}</span>
-          <span className="text-sm text-muted-foreground">PDF or Word, under 5 MB · nothing is saved until you confirm</span>
+          <span className="text-sm text-muted-foreground">PDF, Word or LinkedIn export (.zip), under 5 MB · nothing is saved until you confirm</span>
         </button>
       </div>
 
