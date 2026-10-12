@@ -29,6 +29,8 @@ def _exported(monkeypatch, call):
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-suite")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-suite")
     monkeypatch.setenv("LANGFUSE_HOST", "http://langfuse.invalid")
+    # A client built at import time from a local .env would also trigger the multi-project skip.
+    LangfuseResourceManager.reset()
     with patch.object(OTLPSpanExporter, "export", capture):
         client = engine._tracing_client()
         monkeypatch.setattr(engine, "_langfuse", client)

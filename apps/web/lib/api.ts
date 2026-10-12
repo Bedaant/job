@@ -236,6 +236,18 @@ export interface CampaignStats {
   last_run_at: string | null;
 }
 
+export interface SendSafety {
+  paused: boolean;
+  paused_globally: boolean;
+}
+
+export interface SentLogEntry {
+  kind: "submission" | "email" | "outreach_email";
+  recipient: string;
+  application_id: string | null;
+  created_at: string;
+}
+
 export interface ExtensionStatus {
   connected: boolean;
   last_seen_at: string | null;
@@ -393,6 +405,11 @@ export const api = {
       body: JSON.stringify({ status: "applied" }),
       keepalive: true,
     }),
+  getSendSafety: () => request<SendSafety>("/send-safety"),
+  /** The user's own "pause all sends". */
+  setSendsPaused: (paused: boolean) =>
+    request<SendSafety>("/send-safety", { method: "PUT", body: JSON.stringify({ paused }) }),
+  listSentLog: () => request<SentLogEntry[]>("/sent-log"),
   batchApprove: (applicationIds: string[]) =>
     request<{ approved: string[] }>("/applications/batch-approve", {
       method: "POST",

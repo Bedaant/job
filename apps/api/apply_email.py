@@ -19,6 +19,7 @@ from datetime import datetime
 from urllib.parse import unquote
 
 import models
+import send_gate
 from documents.tailored_resume import DOCX_MIME, render_verified_resume, tailored_facts
 from events.outbox import write_event
 from outreach.send import ACCOUNT_DAILY_CAP, account_sends_today, email_applications_today, lock_user
@@ -75,7 +76,7 @@ def _note(application, stamp: str) -> None:
 
 
 def _back_to_review(db, application, outcome: str, code: str, reason: str) -> str:
-    application.status = models.ApplicationStatus.ready_for_review
+    send_gate.transition(application, models.ApplicationStatus.ready_for_review)
     _note(application, f"[{outcome}] {reason}")
     write_event(db, application.profile.user_id, f"application.{outcome}", {
         "application_id": application.id, "status": application.status.value, "reason": reason,
@@ -99,6 +100,9 @@ def send_application_email(db, application_id: str) -> str:
         return "not_approved"
 
     profile, job = application.profile, application.job
+    ok, reasons = send_gate.can_send(db, profile.user, application)
+    if not ok:
+        return _back_to_review(db, application, "needs_human", "blocked", " ".join(reasons) + " Nothing was sent.")
     to = recipient(job.apply_url)
     if to is None:
         return _back_to_review(db, application, "needs_human", "bad_address",
@@ -136,7 +140,7 @@ def send_application_email(db, application_id: str) -> str:
 
     # Committed BEFORE the send: a crash mid-send leaves `submitting` (visible, never
     # re-sent) rather than `approved` (sent again by the next trigger).
-    application.status = models.ApplicationStatus.submitting
+    send_gate.transition(application, models.ApplicationStatus.submitting)
     write_event(db, profile.user_id, "application.status_changed",
                 {"application_id": application.id, "status": "submitting"})
     db.commit()
@@ -151,7 +155,8 @@ def send_application_email(db, application_id: str) -> str:
         # is never re-approvable: `submitted_unconfirmed`, like the extension's unconfirmed submit.
         # TYPE only: a provider error can echo the message or the credential.
         logger.warning("email application %s send unconfirmed: %s", application.id, type(exc).__name__)
-        application.status = models.ApplicationStatus.submitted_unconfirmed
+        send_gate.transition(application, models.ApplicationStatus.submitted_unconfirmed)
+        send_gate.log_sent(db, profile.user_id, "email", to, application.id)  # it may have gone
         _note(application, f"[unconfirmed] Sending to {to} raised {type(exc).__name__}; it may or may not "
                            "have gone. Check your Sent folder, then mark it applied.")
         write_event(db, profile.user_id, "application.status_changed",
@@ -161,7 +166,8 @@ def send_application_email(db, application_id: str) -> str:
     if not message_id:
         return _back_to_review(db, application, "failed", "failed", "The email was not delivered.")
 
-    application.status = models.ApplicationStatus.applied
+    send_gate.transition(application, models.ApplicationStatus.applied)
+    send_gate.log_sent(db, profile.user_id, "email", to, application.id)
     application.applied_at = datetime.utcnow()
     _note(application, f"[submitted] Emailed your resume to {to}.")
     write_event(db, profile.user_id, "application.submitted",
@@ -202,7 +208,7 @@ def enqueue_send(db, application) -> None:
     except Exception as exc:
         # Left `approved`, nothing would ever send it — hand it back instead (as batch-approve does).
         logger.warning("email application %s enqueue failed: %s", application.id, type(exc).__name__)
-        application.status = models.ApplicationStatus.ready_for_review
+        send_gate.transition(application, models.ApplicationStatus.ready_for_review)
         _note(application, f"[needs_human] Could not queue the email ({type(exc).__name__}). Approve again.")
         db.commit()
 

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, Depends, HTTPException, Query, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
@@ -23,6 +23,7 @@ from core.deps import get_current_user, get_owned_profile, resolve_profile_owner
 from database import get_db
 import models
 import schemas
+import send_gate
 from tailoring.engine import tailor_application
 from auth.router import router as auth_router
 from account import router as account_router
@@ -32,7 +33,6 @@ from connectors.apply_target import resolve_apply_target
 from documents.tailored_resume import DOCX_MIME, ResumeNotRenderable, render_verified_resume, tailored_facts
 from events.outbox import write_event
 from events.sse import event_stream
-from formfill.deterministic import bind_to_options
 from formfill.map_fields import build_profile_summary, map_form_fields
 from formplans import current_plan
 from parsing.extract import extract_text_from_docx, extract_text_from_pdf
@@ -68,6 +68,11 @@ app.add_middleware(
 
 app.include_router(auth_router)
 
+
+@app.exception_handler(send_gate.InvalidTransition)
+def _invalid_transition(_request: Request, exc: send_gate.InvalidTransition):
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
 # Stage 8 (`docs/PLAN-OUTREACH.md`). Their own routers rather than another 200 lines
 # here: `outreach.api` carries the review/approve/skip surface plus the PUBLIC
 # unsubscribe route, and `outreach.gmail` the OAuth grant REACH-D's send path needs.
@@ -76,6 +81,7 @@ app.include_router(gmail.router)
 app.include_router(ats_controls.router)
 app.include_router(ops_router)
 app.include_router(account_router)
+app.include_router(send_gate.router)
 
 
 # ---------- Job discovery ----------
@@ -188,10 +194,7 @@ def _ready_to_send(db: Session, profile: models.Profile) -> list[schemas.Applica
     rows = _review_rows(
         db, profile, [models.ApplicationStatus.ready_for_review, models.ApplicationStatus.approved]
     )
-    return [
-        r for r in rows
-        if r.tailored_bullets and not r.flagged_unsupported_claims and not r.pending_questions
-    ]
+    return [r for r in rows if not send_gate.blockers(db, db.get(models.Application, r.id))]
 
 
 def _review_rows(db: Session, profile: models.Profile, statuses) -> list[schemas.ApplicationReviewOut]:
@@ -213,7 +216,7 @@ def _review_rows(db: Session, profile: models.Profile, statuses) -> list[schemas
     for row in rows:
         match = matches_by_job_id.get(row.job_id)
         tailored = row.tailored_resume_json or {}
-        pending, options, consent, prepared = _split_pending(db, profile.id, row.pending_questions)
+        pending, options, consent, prepared = send_gate.split_pending(db, profile.id, row.pending_questions)
         result.append(schemas.ApplicationReviewOut(
             id=row.id,
             job=row.job,
@@ -234,34 +237,6 @@ def _review_rows(db: Session, profile: models.Profile, statuses) -> list[schemas
             created_at=row.created_at,
         ))
     return result
-
-
-def _split_pending(db: Session, profile_id: str, stored: list | None):
-    """What a needs_human run left for the user, derived on every read (never
-    stored twice): a question drops off the moment the bank can answer it,
-    however the answer got there. Returns (pending, options, consent, prepared).
-
-    Consent is its own list: never answerable here (answer_bank rail), the user
-    ticks it on the form. A dropdown stays pending until its bank answer picks
-    one of its options — the same bind map_fields fills with, so "prepared"
-    means the next run really fills it.
-    """
-    pending, options, consent, prepared = [], {}, [], []
-    for entry in stored or []:
-        # A bare string is a row stored before options were reported.
-        q, opts = (entry, []) if isinstance(entry, str) else (entry["question"], entry.get("options") or [])
-        if answer_bank_service.is_consent_field(q, opts):
-            consent.append(q)
-            continue
-        hit = answer_bank_service.find_answer(db, profile_id, q)
-        answer = bind_to_options(hit.answer_text, opts) if hit else None
-        if answer is None:
-            pending.append(q)
-            if opts:
-                options[q] = opts
-        else:
-            prepared.append(schemas.PreparedAnswerOut(question=q, answer=answer))
-    return pending, options, consent, prepared
 
 
 @app.post("/applications/batch-prepare")
@@ -314,10 +289,13 @@ def batch_approve_applications(
         raise HTTPException(404, "One or more applications not found")
     if any(row.status != models.ApplicationStatus.ready_for_review for row in rows):
         raise HTTPException(422, "One or more applications are not ready for review")
+    blocked = [r for row in rows for r in send_gate.can_send(db, current_user, row)[1]]
+    if blocked:
+        raise HTTPException(409, "Nothing was approved: " + " ".join(dict.fromkeys(blocked)))
 
     approved_ids = []
     for row in rows:
-        row.status = models.ApplicationStatus.approved
+        send_gate.transition(row, models.ApplicationStatus.approved)
         write_event(
             db, current_user.id, "application.approved",
             {"application_id": row.id},
@@ -370,6 +348,9 @@ def claim_submission(
         raise HTTPException(404, "Application not found")
     if application.status != models.ApplicationStatus.approved:
         raise HTTPException(409, "Application is not in an approved, claimable state")
+    ok, reasons = send_gate.can_send(db, current_user, application)
+    if not ok:
+        raise HTTPException(409, "Not sent: " + " ".join(reasons))
 
     # `submitting`, NOT `applied`: at this point nothing has been sent. The
     # native form submit fires after this call returns. Marking `applied` here
@@ -378,7 +359,9 @@ def claim_submission(
     # happened. POST /applications/{id}/submission-result closes the window.
     # The at-most-once guarantee is unchanged: the row is no longer `approved`,
     # so a second claim still 409s.
-    application.status = models.ApplicationStatus.submitting
+    send_gate.transition(application, models.ApplicationStatus.submitting)
+    # Logged at the claim: from here the form may reach the employer.
+    send_gate.log_sent(db, current_user.id, "submission", application.job.apply_url, application.id)
     write_event(
         db, current_user.id, "application.status_changed",
         {"application_id": application.id, "status": "submitting"},
@@ -452,6 +435,8 @@ def extension_work_queue(
     self-draining.
     """
     _mark_extension_seen(db, current_user)
+    if not send_gate.can_send(db, current_user)[0]:  # paused: hand the driver nothing
+        return []
     rows = (
         _work_queue_query(db, current_user)
         .order_by(models.Application.created_at.asc())
@@ -547,7 +532,11 @@ def report_submission_result(
         )
 
     new_status, stamps_applied_at = _SUBMISSION_OUTCOMES[payload.outcome]
-    application.status = new_status
+    if new_status == models.ApplicationStatus.approved and application.status == models.ApplicationStatus.submitting:
+        # A claimed form that "failed" may still have gone through: the user re-approves,
+        # never an automatic retry (send_gate.ALLOWED_TRANSITIONS).
+        new_status = models.ApplicationStatus.ready_for_review
+    send_gate.transition(application, new_status)
     if stamps_applied_at:
         application.applied_at = datetime.utcnow()
     if payload.reason:
@@ -557,7 +546,7 @@ def report_submission_result(
     # form went through or will be retried, so stale questions must not linger.
     # Deduped by question, order kept. Demographic questions (label or options) are
     # dropped here — never answerable, so asking the user for one is a trap.
-    # Consent is kept: _split_pending shows it as the user's own step.
+    # Consent is kept: send_gate.split_pending shows it as the user's own step.
     questions: dict[str, dict] = {}
     for item in payload.unanswered_questions if payload.outcome == "needs_human" else []:
         q, opts = (item, []) if isinstance(item, str) else (item.question, item.options)
@@ -601,7 +590,11 @@ def update_application(
     if payload.status:
         S = models.ApplicationStatus
         was = app_row.status
-        app_row.status = payload.status
+        if payload.status == S.approved and was != S.approved:
+            ok, reasons = send_gate.can_send(db, current_user, app_row)
+            if not ok:
+                raise HTTPException(409, "Not approved: " + " ".join(reasons))
+        send_gate.transition(app_row, payload.status)
         if payload.status == S.applied and not app_row.applied_at:
             app_row.applied_at = datetime.utcnow()
         # Undo of "I've sent it": back to a not-yet-sent status means it wasn't sent.
@@ -1622,7 +1615,7 @@ def get_application_detail(
         .filter(models.Match.profile_id == row.profile_id, models.Match.job_id == row.job_id)
         .first()
     )
-    pending, options, consent, _ = _split_pending(db, row.profile_id, row.pending_questions)
+    pending, options, consent, _ = send_gate.split_pending(db, row.profile_id, row.pending_questions)
     return schemas.ApplicationDetailOut(
         id=row.id, status=row.status.value, job=job, portal=row.portal,
         match_score=float(match.score) if match else None,

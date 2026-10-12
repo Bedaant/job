@@ -20,7 +20,7 @@ M = models
 _BY_APPLICATION = [M.FillSnapshot]
 _BY_PROFILE = [M.Outreach, M.Contact, M.Suppression, M.Application, M.Match, M.Campaign,
                M.ResumeFact, M.ResumeUpload, M.AnswerBank]
-_BY_USER = [M.Profile, M.Event, M.Notification, M.GmailCredential]
+_BY_USER = [M.Profile, M.Event, M.Notification, M.GmailCredential, M.SentLog]
 COVERED_TABLES = [m.__tablename__ for m in _BY_APPLICATION + _BY_PROFILE + _BY_USER] + ["users"]
 
 

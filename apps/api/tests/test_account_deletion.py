@@ -15,7 +15,8 @@ from database import Base, get_db
 PASSWORD = "correct horse battery staple"
 
 # Global tables: shared by every user and holding no personal data.
-GLOBAL_TABLES = {"jobs", "title_verdicts", "connector_runs", "form_plans", "form_plan_versions", "ats_controls"}
+GLOBAL_TABLES = {"jobs", "title_verdicts", "connector_runs", "form_plans", "form_plan_versions", "ats_controls",
+                 "app_flags"}
 
 
 @pytest.fixture()
@@ -64,6 +65,7 @@ def _seed(db, email, job):
         models.Event(user_id=user.id, type="match.new", payload={}),
         models.Notification(user_id=user.id, trigger="weekly_digest", channel="email", template="t"),
         models.GmailCredential(user_id=user.id, refresh_token_encrypted="x", scopes=[]),
+        models.SentLog(user_id=user.id, kind="email", recipient="hr@acme.com", application_id=application.id),
     ])
     db.commit()
     return user.id

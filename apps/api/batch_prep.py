@@ -7,6 +7,7 @@ application — this function is the actual unit of work.
 from sqlalchemy.orm import Session
 
 import models
+import send_gate
 from events.outbox import write_event
 from tailoring.engine import tailor_application
 
@@ -33,7 +34,7 @@ def prepare_application_for_review(db: Session, application: models.Application)
     application.tailored_cover_letter = result["cover_letter"]
     application.flagged_unsupported_claims = result["flagged_unsupported_claims"]
     application.advisory_claims = result.get("advisory_claims") or []
-    application.status = models.ApplicationStatus.ready_for_review
+    send_gate.transition(application, models.ApplicationStatus.ready_for_review)
 
     write_event(
         db, profile.user_id, "application.ready_for_review",
