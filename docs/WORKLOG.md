@@ -6581,6 +6581,18 @@ and enforcement on the truth-check.
 
 **Skipped on purpose.** A per-campaign LLM spend cap: spend is already bounded by `daily_cap` x prep, plus the new retry cap and the guard's global daily USD cap. Recipient domain checks: no rule that would not also refuse real recruiters. A new end-to-end test: `test_apply_email.py` already covers campaign → auto-approve → email.
 
+### 2026-10-12 (later still) — Neon at 0039; the Data Analyst, Bengaluru yield run passed
+
+**What changed.** Neon migrated `0033` → `0039`: 0034 (send pause, `sent_log`, `app_flags`), 0035 (privacy consent), 0038 (outcome capture, digest opt-out), 0039 (`prep_attempts`). There is no 0036 or 0037. The owner's gitignored `apps/api/.env` now holds a real random `JWT_SECRET` (value never printed); the placeholder had blocked every `alembic` command because `env.py` loads `Settings`. Nothing in git changed.
+
+**Verified (live Neon, read back).** `alembic_version` = `0039`. `sent_log` and `app_flags` tables exist; `users.sends_paused`, `users.privacy_consent_at`, `users.digest_opted_out_at`, `applications.outcome`, `applications.outcome_at`, `applications.prep_attempts` all exist.
+
+**Yield run (real, `measure_campaign_yield.py --yes`, about $0.10, saved nothing to the DB).** Data Analyst / Bengaluru: LinkedIn jobs 25, LinkedIn hiring posts 15, JobSpy/Glassdoor 20 fetched, no source errors. 58 unique, all 58 Indian, **38 relevant** (judged by `role_judge`) against a bar of 20: **met**. Relevant titles are real Data Analyst variants (Senior, I, Power BI, Tableau, Snowflake, GCP BigQuery, Operations, and an HR Data Analyst).
+
+**Not verified.** One role, one city, one run: it shows the search can clear the bar, not that every campaign will. Relevance is a model's judgment of titles, not a human reading. Whether those 38 jobs are applyable (apply URL type, ATS) was not measured. The new code on this branch is still not deployed: the worker and scheduler run only while this machine is on.
+
+**Next.** Owner decisions: open a PR from `feat/next-work-plan` to `main` (none open, nothing pushed); rewrite git history for the old `facts.json`. Then the remaining code items: proof of submission, RLS on contacts/outreach/gmail_credentials/fill_snapshots, extension upload of the tailored resume and cover letter.
+
 ## Entry template
 
 Copy this for each change.
