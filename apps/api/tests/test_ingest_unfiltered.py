@@ -19,8 +19,8 @@ never collected for them, and no amount of matching quality could fix it.
 | workday | cheap list + one EXPENSIVE detail call per job | **no** — must filter before hydration, or Adobe alone is 526 detail requests per run |
 | remotive / reed | the keyword IS the query parameter | **no** — there is no unfiltered fetch to make |
 
-So `FEED_KEYWORDS` still gates Workday (a cost necessity, documented in its
-connector) and `REMOTIVE_KEYWORDS`/`REED_KEYWORDS` remain query parameters. The
+So a keyword list still gates Workday (a cost necessity, documented in its
+connector) and remains the Remotive/Reed query; since P0 #6 both are active campaign roles. The
 bulk of the pool becomes user-agnostic, which is the point.
 
 **Freshness gets strictly better, not worse.** ADR-017 recorded a hazard:
@@ -115,6 +115,7 @@ def test_workday_still_filters_before_hydrating():
     526 extra requests for Adobe alone. The filter there is a cost control."""
     from connectors import workday
 
-    assert workday.KEYWORDS, (
-        "workday must keep a keyword filter; see its module docstring for why"
-    )
+    # The terms are active campaign roles now (P0 #6); no terms hydrates nothing, never everything.
+    assert workday._matches("Data Analyst II", ["data analyst"])
+    assert not workday._matches("Staff Accountant", ["data analyst"])
+    assert not workday._matches("Data Analyst II", [])

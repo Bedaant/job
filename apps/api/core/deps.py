@@ -6,7 +6,7 @@ from sqlalchemy import event, text
 from sqlalchemy.orm import Session
 
 import models
-from core.security import decode_access_token
+from core.security import ACCESS_TOKEN_TYPE, decode_access_token
 from database import get_db
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -20,6 +20,8 @@ def get_current_user(
         payload = decode_access_token(token)
     except ValueError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
+    if payload.get("typ") != ACCESS_TOKEN_TYPE:  # a reset or OAuth-state token is not a login
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
 
     user = db.query(models.User).filter(models.User.id == payload.get("sub")).first()
     if not user:
@@ -31,10 +33,16 @@ def get_current_user(
     # Stored on the session and re-applied by _reapply_tenant at the start of
     # EVERY transaction — the setting is transaction-local, so without that a
     # read after db.commit() ran with no tenant and RLS hid the row just written.
-    db.info["current_user_id"] = user.id
-    _reapply_tenant(db, None, db.connection())
+    set_tenant(db, user.id)
 
     return user
+
+
+def set_tenant(db: Session, user_id: str) -> None:
+    """Bind this session to one user for RLS. Also for a path that authenticated the
+    user some other way than a JWT (the Gmail OAuth callback's signed state)."""
+    db.info["current_user_id"] = user_id
+    _reapply_tenant(db, None, db.connection())
 
 
 _SET_TENANT = text("SELECT set_config('app.current_user_id', :uid, true)")

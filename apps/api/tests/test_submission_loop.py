@@ -10,7 +10,7 @@ straight to `applied` *before* the native form submit fired. A form that then
 failed left the user believing they had applied when they had not. `submitting`
 names that window; `POST /submission-result` closes it exactly one of three ways:
   submitted   -> applied          (terminal, the real send happened)
-  failed      -> approved         (retryable: the form never went through)
+  failed      -> ready_for_review (the user re-approves; never an automatic retry)
   needs_human -> ready_for_review (lands in the existing review queue)
 """
 from fastapi.testclient import TestClient
@@ -41,6 +41,15 @@ def _client():
     return TestClient(main.app), TestSessionLocal
 
 
+def grounded(db, profile_id) -> dict:
+    """Application kwargs that pass send_gate.can_send: a fact and one bullet citing it.
+    For other tests' fixtures that send an application."""
+    fact = models.ResumeFact(profile_id=profile_id, category="experience", achievement="Built a ledger")
+    db.add(fact)
+    db.flush()
+    return {"tailored_resume_json": {"bullets": [{"text": "Built a ledger", "source_fact_ids": [fact.id]}]}}
+
+
 def _auth(client, email):
     client.post("/auth/signup", json={"email": email, "password": "correct horse battery staple"})
     token = client.post(
@@ -49,7 +58,7 @@ def _auth(client, email):
     return {"Authorization": f"Bearer {token}"}
 
 
-def _seed(client, headers, statuses, apply_url="https://acme.example/apply"):
+def _seed(client, headers, statuses, apply_url="https://acme.example/apply", tailored=True):
     """Returns (profile_id, [application_id...]) with one job per application."""
     profile = client.post("/profiles", headers=headers, json={"persona": "developer"}).json()
     _, SessionLocal = client._jc_session
@@ -62,7 +71,8 @@ def _seed(client, headers, statuses, apply_url="https://acme.example/apply"):
         )
         db.add(job)
         db.commit()
-        application = models.Application(profile_id=profile["id"], job_id=job.id, status=status)
+        application = models.Application(profile_id=profile["id"], job_id=job.id, status=status,
+                                         **(grounded(db, profile["id"]) if tailored else {}))
         db.add(application)
         db.commit()
         ids.append(application.id)
@@ -205,7 +215,7 @@ def test_reporting_submitted_finalises_as_applied_and_stamps_applied_at():
     assert applied_at is not None
 
 
-def test_reporting_failed_returns_it_to_approved_so_it_can_be_retried():
+def test_reporting_failed_after_a_claim_returns_it_to_review_not_approved():
     client, SessionLocal = _client()
     _bind(client, SessionLocal)
     headers = _auth(client, "sub-fail@example.com")
@@ -217,11 +227,12 @@ def test_reporting_failed_returns_it_to_approved_so_it_can_be_retried():
     assert resp.status_code == 200
 
     status, applied_at, notes = _status(SessionLocal, app_id)
-    assert status == models.ApplicationStatus.approved, "the form never went through; it is work again"
+    # P0 #1: submitting -> approved is refused (send_gate.ALLOWED_TRANSITIONS). A claimed form
+    # that "failed" may still have gone through, so the user re-approves; no automatic retry.
+    assert status == models.ApplicationStatus.ready_for_review
     assert applied_at is None
     assert "no form found on page" in (notes or ""), "a silent failure is the thing we are fixing"
-    # and it is genuinely picked up again
-    assert len(client.get("/extension/work-queue", headers=headers).json()) == 1
+    assert client.get("/extension/work-queue", headers=headers).json() == []
 
 
 def test_reporting_needs_human_lands_in_the_existing_review_queue():
@@ -325,7 +336,7 @@ def test_a_successful_submission_queues_outreach():
     _, (app_id,) = _seed(client, headers, [models.ApplicationStatus.approved])
     client.post(f"/applications/{app_id}/claim-submission", headers=headers)
 
-    with patch("main.get_queue") as queue:
+    with patch("routes.applications.get_queue") as queue:
         r = client.post(
             f"/applications/{app_id}/submission-result",
             headers=headers, json={"outcome": "submitted"},
@@ -346,7 +357,7 @@ def test_an_outcome_that_never_sent_does_not_queue_outreach():
     headers = _auth(client, "outreachnotrigger@example.com")
     _, (app_id,) = _seed(client, headers, [models.ApplicationStatus.approved])
 
-    with patch("main.get_queue") as queue:
+    with patch("routes.applications.get_queue") as queue:
         r = client.post(
             f"/applications/{app_id}/submission-result",
             headers=headers, json={"outcome": "failed", "reason": "no form"},
@@ -368,7 +379,7 @@ def test_a_broken_queue_does_not_lose_the_submission_result():
     _, (app_id,) = _seed(client, headers, [models.ApplicationStatus.approved])
     client.post(f"/applications/{app_id}/claim-submission", headers=headers)
 
-    with patch("main.get_queue", side_effect=RuntimeError("redis down")):
+    with patch("routes.applications.get_queue", side_effect=RuntimeError("redis down")):
         r = client.post(
             f"/applications/{app_id}/submission-result",
             headers=headers, json={"outcome": "submitted"},

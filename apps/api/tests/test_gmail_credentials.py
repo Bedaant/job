@@ -396,6 +396,17 @@ def test_the_authorize_response_names_the_uri_that_must_be_registered(db):
     """
     from outreach import gmail as g
 
-    out = g.gmail_authorize(user_id=_user(db).id)
+    from fastapi import Response
+
+    out = g.gmail_authorize(Response(), user_id=_user(db).id)
     assert out["redirect_uri"] == g._redirect_uri()
     assert out["authorize_url"].startswith("https://accounts.google.com/")
+
+
+def test_callback_runs_as_the_state_user_so_rls_lets_it_write(db):
+    """The callback has no JWT, so get_current_user never set the RLS tenant. Without
+    this, migration 0040's policy refuses the upsert on the app role (WITH CHECK)."""
+    u = _user(db)
+    with patch("outreach.gmail.httpx.post", return_value=_Resp(json_body=_token_response())):
+        gmail.handle_callback(db, gmail._state_for(u.id), "auth-code")
+    assert db.info["current_user_id"] == u.id

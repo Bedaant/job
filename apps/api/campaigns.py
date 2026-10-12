@@ -11,6 +11,7 @@ UTC), never from a counter column and never from a campaign_runs table. A
 denormalized counter would drift from what actually went out; the rows are the
 only number that can't.
 """
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -20,12 +21,19 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 import models
+import send_gate
 from batch_prep import prepare_application_for_review
 from events.outbox import write_event
 from matching.filters import CITY_COUNTRY, LOCATION_ALIASES, remote_open_to
+from providers.guard import ProviderRefused
+from untrusted import looks_like_instructions
+
+logger = logging.getLogger(__name__)
 
 # Per-job "Skipped X" rows per run; the rest are only counted in the summary row.
 SKIP_EVENT_LIMIT = 20
+# A prep that failed this many times is handed to the user instead of retried every run.
+MAX_PREP_ATTEMPTS = 3
 
 # PATCH /campaigns/{id} is the only way status moves. Archived is terminal —
 # DELETE lands there, and an archived campaign is history, not a draft.
@@ -337,6 +345,12 @@ def send_if_mailto(db: Session, application: models.Application) -> None:
         apply_email.enqueue_send(db, application)
 
 
+def _needs_human(db: Session, application: models.Application, reason: str) -> None:
+    write_event(db, application.profile.user_id, "application.needs_human", {
+        "application_id": application.id, "status": application.status.value, "reason": reason,
+    })
+
+
 def run_campaign(db: Session, campaign: models.Campaign) -> dict:
     """One campaign run: pick candidates inside the approved bounds, create at
     most `remaining_quota` applications, then prepare each one (tailor +
@@ -377,6 +391,7 @@ def run_campaign(db: Session, campaign: models.Campaign) -> dict:
         models.Application.campaign_id == campaign.id,
         models.Application.status == models.ApplicationStatus.saved,
         models.Application.tailored_resume_json.is_(None),
+        models.Application.prep_attempts < MAX_PREP_ATTEMPTS,
         models.Application.id.notin_([a.id for a in created]),
     ).all()
     if remaining <= 0 and not stuck:
@@ -387,17 +402,32 @@ def run_campaign(db: Session, campaign: models.Campaign) -> dict:
     for application in created + stuck:
         try:
             prepare_application_for_review(db, application)
-            if campaign.auto_submit:
-                # ADR-015: campaign-level approval already happened, so there is
-                # no per-item review step. Web submission is the extension's job;
-                # a mailto: job is queued for email here (send_if_mailto).
-                application.status = models.ApplicationStatus.approved
-                db.commit()
-                send_if_mailto(db, application)
+            # A blocked application (a hard flag, no grounded bullet, an open question)
+            # stays in review even in auto mode: send_gate.can_send is the one gate.
+            if campaign.auto_submit and send_gate.can_send(db, campaign.profile.user, application)[0]:
+                if looks_like_instructions(application.job.description):
+                    # A human may still approve it; only the unattended path stops.
+                    _needs_human(db, application, "This posting contains text that tries to instruct "
+                                                  "the AI, so it was not sent automatically. Review it yourself.")
+                    db.commit()
+                else:
+                    # ADR-015: campaign-level approval already happened, so there is
+                    # no per-item review step. Web submission is the extension's job;
+                    # a mailto: job is queued for email here (send_if_mailto).
+                    send_gate.transition(application, models.ApplicationStatus.approved)
+                    db.commit()
+                    send_if_mailto(db, application)
             prepared += 1
-        except Exception:
+        except Exception as exc:
             db.rollback()
             failed.append(application.id)
+            logger.exception("prep failed for application %s", application.id)
+            if not isinstance(exc, ProviderRefused):
+                application.prep_attempts += 1
+                if application.prep_attempts >= MAX_PREP_ATTEMPTS:
+                    _needs_human(db, application, f"Preparing this application failed {MAX_PREP_ATTEMPTS} "
+                                                  "times, so it will not be retried automatically.")
+                db.commit()
 
     return {"skipped": False, "campaign_id": campaign.id, "created": len(created),
             "prepared": prepared, "failed": failed}

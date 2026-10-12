@@ -47,7 +47,9 @@ def test_map_form_fields_passes_through_high_confidence_mapping(mock_call_llm):
     )
     fields = [{"field_id": "f1", "label_text": "Years of experience", "input_type": "text"}]
 
-    result = map_form_fields(fields, {"email": "jane@example.com"})
+    # The value must be the user's own data (NEXT-WORK-PLAN 4.3); with only an email
+    # it is a fabrication and is flagged (test_formfill_probes.py).
+    result = map_form_fields(fields, {"email": "jane@example.com", "headline": "5 years"})
 
     assert result[0]["maps_to"] == "resume_fact:experience"
     assert result[0]["confidence"] == 0.95
@@ -112,7 +114,7 @@ def test_map_form_fields_sends_only_unresolved_fields_to_the_llm(mock_call_llm):
         {"field_id": "f1", "label_text": "Email", "input_type": "email", "autocomplete": "email"},
         {"field_id": "f2", "label_text": "Years of experience", "input_type": "text"},
     ]
-    profile_summary = {"email": "a@b.com"}
+    profile_summary = {"email": "a@b.com", "headline": "5 years"}
 
     result = map_form_fields(fields, profile_summary)
 

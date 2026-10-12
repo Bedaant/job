@@ -79,7 +79,7 @@ def test_full_upload_review_confirm_flow(client):
     profile_id = _create_profile(SessionLocal, "resume-flow@example.com")
     headers = {"Authorization": f"Bearer {token}"}
 
-    with patch("main.extract_facts_from_text", return_value=MOCK_FACTS):
+    with patch("routes.profiles.extract_facts_from_text", return_value=MOCK_FACTS):
         resp = test_client.post(
             f"/profiles/{profile_id}/resume",
             headers=headers,
@@ -156,7 +156,7 @@ def test_facts_bulk_never_auto_persists_from_parsing_alone(client):
     profile_id = _create_profile(SessionLocal, "trust-check@example.com")
     headers = {"Authorization": f"Bearer {token}"}
 
-    with patch("main.extract_facts_from_text", return_value=MOCK_FACTS):
+    with patch("routes.profiles.extract_facts_from_text", return_value=MOCK_FACTS):
         test_client.post(
             f"/profiles/{profile_id}/resume",
             headers=headers,
@@ -177,7 +177,7 @@ def test_a_failed_parse_never_shows_the_raw_provider_error(client):
     profile_id = _create_profile(SessionLocal, "resume-fail@example.com")
     raw = "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'API key is invalid.'}}"
 
-    with patch("main.extract_facts_from_text", side_effect=RuntimeError(raw)):
+    with patch("routes.profiles.extract_facts_from_text", side_effect=RuntimeError(raw)):
         resp = test_client.post(
             f"/profiles/{profile_id}/resume",
             headers={"Authorization": f"Bearer {token}"},

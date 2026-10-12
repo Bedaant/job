@@ -283,7 +283,7 @@ describe("rejectedFileMessage", () => {
       "That file is over 5 MB. Try a smaller PDF or Word file.",
     );
     expect(rejectedFileMessage("File type must be application/pdf,.pdf")).toBe(
-      "That file isn't a PDF or Word (.docx) file.",
+      "That file isn't a PDF, Word (.docx) or LinkedIn export (.zip) file.",
     );
     expect(rejectedFileMessage("Too many files")).toBe("Drop one file at a time.");
   });

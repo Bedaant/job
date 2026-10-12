@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ApplicationCard } from "@/components/review/ApplicationCard";
 import { SendCard } from "@/components/review/SendCard";
 import type { ReviewApplication } from "@/lib/api";
-import { EXTENSION_NOTE, needsYouOnly, undoMessage, UNDO_MS, type SendAction } from "@/lib/assisted";
+import { batchSelectable, EXTENSION_NOTE, needsYouOnly, undoMessage, UNDO_MS, type SendAction } from "@/lib/assisted";
 
 type Pending = { application: ReviewApplication; action: SendAction };
 
@@ -154,10 +154,11 @@ export default function ReviewPage() {
   const readyList = readyAll.filter((a) => a.id !== pending?.application.id);
   // A prepared application shows once, as ready to send — not again below.
   const queue = needsYouOnly(queueQuery.data ?? [], readyAll);
-  const allSelected = queue.length > 0 && selected.size === queue.length;
+  const selectable = batchSelectable(queue);
+  const allSelected = selectable.length > 0 && selected.size === selectable.length;
 
   function toggleAll(checked: boolean) {
-    setSelected(checked ? new Set(queue.map((a) => a.id)) : new Set());
+    setSelected(checked ? new Set(selectable.map((a) => a.id)) : new Set());
   }
 
   function toggleOne(id: string, checked: boolean) {
@@ -271,7 +272,7 @@ export default function ReviewPage() {
           <div className="sticky top-16 z-30 mb-5 flex items-center gap-3 rounded-2xl border bg-card/90 p-3 pl-4 shadow-sm backdrop-blur-xl">
             <Checkbox checked={allSelected} onCheckedChange={(c) => toggleAll(c === true)} aria-label="Select all" />
             <span className="text-sm text-muted-foreground">
-              {selected.size} of {queue.length} selected
+              {selected.size} of {selectable.length} selected
             </span>
             <Button
               size="sm"

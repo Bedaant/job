@@ -33,8 +33,8 @@ def test_relay_once_publishes_unpublished_events_and_marks_them():
     redis = MagicMock()
     published = relay_once(db, redis)
 
-    assert published == 2
-    assert redis.publish.call_count == 2
+    assert published == 3  # two match.new and one funnel.first_match
+    assert redis.publish.call_count == 3
     assert db.query(models.Event).filter(models.Event.published_at.is_(None)).count() == 0
 
 
@@ -49,7 +49,7 @@ def test_relay_once_does_not_republish_already_published_rows():
     published_again = relay_once(db, redis)
 
     assert published_again == 0
-    assert redis.publish.call_count == 1
+    assert redis.publish.call_count == 2  # the match.new and its funnel.first_match
 
 
 def test_relay_once_publishes_to_per_user_redis_channel():

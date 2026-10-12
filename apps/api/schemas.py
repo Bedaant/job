@@ -8,7 +8,8 @@ from models import ApplicationStatus
 
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(min_length=8)  # the signup page says "At least 8 characters."
+    privacy_consent: bool = False  # the signup checkbox; True stamps users.privacy_consent_at
 
 
 class ForgotPasswordIn(BaseModel):
@@ -352,6 +353,18 @@ class NotificationUpdate(BaseModel):
     status: str
 
 
+class OutcomeIn(BaseModel):
+    """POST /applications/{id}/outcome — the one-tap "Heard back?" answer (outcomes.py)."""
+    outcome: Literal["interview", "rejected", "no_reply"]
+
+
+class OutcomePromptOut(BaseModel):
+    application_id: str
+    day: int
+    job_title: str
+    company: str
+
+
 class FieldDescriptorIn(BaseModel):
     field_id: str
     label_text: Optional[str] = None
@@ -366,6 +379,8 @@ class FieldDescriptorIn(BaseModel):
     autocomplete: Optional[str] = None
     name: Optional[str] = None
     dom_id: Optional[str] = None
+    # Workday's data-automation-id (formfill/ats_schemas.py), bounded like ats_type.
+    automation_id: Optional[str] = Field(None, max_length=128)
 
 
 class MapFieldsRequest(BaseModel):

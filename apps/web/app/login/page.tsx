@@ -17,6 +17,7 @@ export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [consent, setConsent] = useState(false);
   const [expired, setExpired] = useState(false);
   const [wasReset, setWasReset] = useState(false);
   const signup = mode === "signup";
@@ -36,7 +37,7 @@ export default function LoginPage() {
     setError(null);
     setBusy(true);
     try {
-      if (signup) await api.signup(email, password);
+      if (signup) await api.signup(email, password, consent);
       const { access_token } = await api.login(email, password);
       setToken(access_token);
       // A new account has nothing yet — onboarding is where it starts.
@@ -119,6 +120,26 @@ export default function LoginPage() {
               </Link>
             )}
           </div>
+
+          {signup && (
+            <div className="flex items-start gap-3">
+              <input
+                id="privacy-consent"
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                required
+                className="mt-1 size-4 shrink-0"
+              />
+              <Label htmlFor="privacy-consent" className="font-normal leading-5">
+                I have read the{" "}
+                <Link href="/privacy" className="font-medium text-primary hover:underline">
+                  privacy notice
+                </Link>{" "}
+                and agree to ApplyScout using my data as it describes.
+              </Label>
+            </div>
+          )}
 
           {error && (
             <p role="alert" className="rounded-xl bg-destructive/10 px-3.5 py-2.5 text-sm font-medium text-destructive">

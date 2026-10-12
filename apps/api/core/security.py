@@ -8,6 +8,7 @@ from jose import JWTError, jwt
 from core.config import get_settings
 
 _hasher = PasswordHasher()
+ACCESS_TOKEN_TYPE = "access"
 
 
 def hash_password(password: str) -> str:
@@ -24,7 +25,8 @@ def verify_password(password: str, hashed: str) -> bool:
 def create_access_token(subject: str) -> str:
     settings = get_settings()
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expires_minutes)
-    payload = {"sub": subject, "exp": expires_at}
+    # `typ` is what core/deps.py checks: reset and OAuth-state tokens share the secret.
+    payload = {"sub": subject, "exp": expires_at, "typ": ACCESS_TOKEN_TYPE}
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 

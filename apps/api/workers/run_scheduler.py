@@ -13,9 +13,11 @@ from rq_scheduler import Scheduler
 
 from digest import daily_digest_task
 from observability import canary_task, check_and_alert_task
+from supervisor import SUPERVISE_INTERVAL_SECONDS, supervise_task
 from workers.jobs import (
     BACKGROUND_QUEUE,
     CAMPAIGN_SWEEP_INTERVAL_SECONDS,
+    CAMPAIGN_SWEEP_TIMEOUT_SECONDS,
     DISCOVERY_TIMEOUT_SECONDS,
     EMBED_BACKLOG_INTERVAL_SECONDS,
     discover_jobs_task,
@@ -47,6 +49,8 @@ def start_scheduler() -> Scheduler:
         canary_task: DIGEST_INTERVAL_SECONDS,
         # Each active campaign's own titles, searched again daily (they start on activation).
         refresh_campaign_searches_task: DIGEST_INTERVAL_SECONDS,
+        # Closes `submitting` rows a crash left open (supervisor.py).
+        supervise_task: SUPERVISE_INTERVAL_SECONDS,
     }
     now = datetime.utcnow()
     digest_at = now.replace(hour=0, minute=5, second=0, microsecond=0)
@@ -58,8 +62,10 @@ def start_scheduler() -> Scheduler:
         if job.func_name in names:
             scheduler.cancel(job)
 
+    timeouts = {discover_jobs_task: DISCOVERY_TIMEOUT_SECONDS, refresh_campaign_searches_task: DISCOVERY_TIMEOUT_SECONDS,
+                sweep_campaigns_task: CAMPAIGN_SWEEP_TIMEOUT_SECONDS}
     background = {discover_jobs_task, embed_backlog_task, sweep_form_plans_task, check_and_alert_task, canary_task,
-                  refresh_campaign_searches_task}
+                  refresh_campaign_searches_task, supervise_task}
     for func, interval in recurring.items():
         scheduler.schedule(
             scheduled_time=first_run.get(func, now),
@@ -67,7 +73,7 @@ def start_scheduler() -> Scheduler:
             interval=interval,
             repeat=None,  # repeat forever
             queue_name=BACKGROUND_QUEUE if func in background else "default",
-            timeout=DISCOVERY_TIMEOUT_SECONDS if func in (discover_jobs_task, refresh_campaign_searches_task) else None,
+            timeout=timeouts.get(func),
         )
     return scheduler
 

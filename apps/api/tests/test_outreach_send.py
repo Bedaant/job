@@ -280,3 +280,37 @@ def test_a_public_base_url_lets_a_real_recipient_through(db_session, monkeypatch
     monkeypatch.setattr(get_settings(), "api_base_url", "https://api.applyscout.in", raising=False)
     assert claim_outreach(db_session, o.id, p.id) is None
     get_settings.cache_clear()
+
+
+# ---------- per-recipient lock (the cross-user cap under concurrency) ----------
+
+def test_recipient_lock_is_a_postgres_advisory_lock_and_a_no_op_on_sqlite():
+    from unittest.mock import MagicMock
+    from outreach.send import lock_recipient
+
+    pg = MagicMock()
+    pg.get_bind.return_value.dialect.name = "postgresql"
+    lock_recipient(pg, "Recruiter@Acme.com")
+    stmt, params = pg.execute.call_args.args
+    assert "pg_advisory_xact_lock(hashtext(:k))" in str(stmt)
+    assert params == {"k": "recruiter@acme.com"}  # one key whatever the case
+
+    sqlite = MagicMock()
+    sqlite.get_bind.return_value.dialect.name = "sqlite"
+    lock_recipient(sqlite, "recruiter@acme.com")
+    sqlite.execute.assert_not_called()
+
+
+def test_claim_takes_the_recipient_lock_before_counting(db_session, monkeypatch):
+    import outreach.send as send
+
+    p = _profile(db_session)
+    o = _outreach(db_session, p)
+    calls = []
+    monkeypatch.setattr(send, "lock_recipient", lambda db, email: calls.append(("lock", email)))
+    real_count = send.recipient_sends_today
+    monkeypatch.setattr(send, "recipient_sends_today",
+                        lambda db, email: calls.append(("count", email)) or real_count(db, email))
+
+    assert send.claim_outreach(db_session, o.id, p.id) is None
+    assert calls == [("lock", "b@acme.com"), ("count", "b@acme.com")]

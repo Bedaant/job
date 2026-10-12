@@ -30,11 +30,16 @@ apps/extension/node_modules
 **/node_modules
 tools/.venv-jobspy
 
-# The harnesses are deliberately NOT in the image (Chromium is the ~2GB the deferral
-# saves), so excluding them keeps the context small too.
+# The harnesses stay out of the context, except the few files the Dockerfile's `planner`
+# target (worker-background only) needs to run the form planner.
 tools/stagehand-harness
 tools/browser-use-harness
 tools/.venv-agent-reach
+!tools/stagehand-harness/package.json
+!tools/stagehand-harness/package-lock.json
+!tools/stagehand-harness/plan.mjs
+!tools/browser-use-harness/check_form.py
+!tools/browser-use-harness/guard.py
 
 # --- caches and build output ---
 **/__pycache__

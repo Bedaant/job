@@ -24,20 +24,23 @@ surface and is a fixed, hand-built dict. Errors log the exception TYPE only, bec
 provider's reply body can echo what was sent.
 """
 import base64
+import hashlib
+import hmac
 import logging
+import secrets
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Response
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 import crypto
 import models
 from core.config import get_settings
-from core.deps import get_current_user
+from core.deps import get_current_user, set_tenant
 from database import get_db
 
 logger = logging.getLogger(__name__)
@@ -52,6 +55,7 @@ SCOPES = ("openid", "email", models.GMAIL_SEND_SCOPE)
 TIMEOUT = 20
 _STATE_PURPOSE = "gmail_oauth"
 _STATE_MINUTES = 15
+_NONCE_COOKIE = "gmail_oauth_nonce"
 
 
 class GmailNotConfigured(RuntimeError):
@@ -105,24 +109,28 @@ def _redirect_uri() -> str:
 
 # ---------- the signed state parameter ----------
 
-def _state_for(user_id: str) -> str:
+def _nonce_hash(nonce: str) -> str:
+    return hashlib.sha256(nonce.encode()).hexdigest()
+
+
+def _state_for(user_id: str, nonce: str | None = None) -> str:
     """Signed, short-lived, and purpose-tagged, reusing the JWT discipline in
     `core/security.py`: a login token must not be usable as an OAuth state and vice
     versa. Signing it is what stops someone attaching their own Google account to
-    another user's row."""
+    another user's row. `nonce` (hashed here, raw in the browser's cookie) binds the
+    state to the browser that started the flow."""
     s = get_settings()
-    return jwt.encode(
-        {
-            "sub": user_id,
-            "purpose": _STATE_PURPOSE,
-            "exp": datetime.now(timezone.utc) + timedelta(minutes=_STATE_MINUTES),
-        },
-        s.jwt_secret,
-        algorithm=s.jwt_algorithm,
-    )
+    claims = {
+        "sub": user_id,
+        "purpose": _STATE_PURPOSE,
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=_STATE_MINUTES),
+    }
+    if nonce:
+        claims["nonce"] = _nonce_hash(nonce)
+    return jwt.encode(claims, s.jwt_secret, algorithm=s.jwt_algorithm)
 
 
-def _user_from_state(state: str) -> str:
+def _state_payload(state: str) -> dict:
     s = get_settings()
     try:
         payload = jwt.decode(state, s.jwt_secret, algorithms=[s.jwt_algorithm])
@@ -130,12 +138,24 @@ def _user_from_state(state: str) -> str:
         raise ValueError("invalid or expired OAuth state") from exc
     if payload.get("purpose") != _STATE_PURPOSE:
         raise ValueError("not an OAuth state token")
-    return payload["sub"]
+    return payload
+
+
+def _user_from_state(state: str) -> str:
+    return _state_payload(state)["sub"]
+
+
+def _check_same_browser(state: str, cookie_nonce: str | None) -> None:
+    """Refuse a callback whose state was issued to another browser. Without this, a
+    leaked state plus the attacker's own code attaches THEIR Gmail to the victim's row."""
+    expected = _state_payload(state).get("nonce")
+    if not cookie_nonce or not expected or not hmac.compare_digest(expected, _nonce_hash(cookie_nonce)):
+        raise ValueError("This Gmail connection was started in another browser. Start again from settings.")
 
 
 # ---------- connect ----------
 
-def authorize_url(user_id: str) -> str:
+def authorize_url(user_id: str, nonce: str | None = None) -> str:
     client_id, _ = _client()
     return AUTH_URL + "?" + urlencode({
         "client_id": client_id,
@@ -148,7 +168,7 @@ def authorize_url(user_id: str) -> str:
         "access_type": "offline",
         "prompt": "consent",
         "include_granted_scopes": "true",
-        "state": _state_for(user_id),
+        "state": _state_for(user_id, nonce),
     })
 
 
@@ -203,6 +223,9 @@ def handle_callback(db: Session, state: str, code: str) -> models.GmailCredentia
         )
 
     granted = [s for s in (payload.get("scope") or "").split() if s]
+    # No JWT on this route: the signed state is the authentication. Set here, after the
+    # Google call, so no DB transaction is held open across it (RLS, migration 0040).
+    set_tenant(db, user_id)
     cred = db.query(models.GmailCredential).filter_by(user_id=user_id).first()
     if cred is None:
         cred = models.GmailCredential(user_id=user_id)
@@ -365,8 +388,10 @@ router = APIRouter(prefix="/gmail", tags=["gmail"])
 
 
 @router.get("/authorize")
-def gmail_authorize(user_id: str = Depends(current_user_id)):
-    """Returns the consent URL, and the redirect URI it was built with.
+def gmail_authorize(response: Response, user_id: str = Depends(current_user_id)):
+    """Returns the consent URL, and the redirect URI it was built with. Also sets the
+    nonce cookie the callback requires, so only this browser can finish the flow. A web
+    page calling this cross-origin must use `credentials: "include"` for the cookie to stick.
 
     The redirect URI is reported deliberately (DEPLOY-A.5): it is derived from
     `api_base_url`, so it CHANGES on deploy, and Google requires an exact match — a
@@ -374,17 +399,27 @@ def gmail_authorize(user_id: str = Depends(current_user_id)):
     connect, long after the console entry was typed. Returning the exact string makes
     that self-diagnosing instead of a reconstruction exercise.
     """
+    nonce = secrets.token_urlsafe(32)
     try:
-        return {"authorize_url": authorize_url(user_id), "redirect_uri": _redirect_uri()}
+        out = {"authorize_url": authorize_url(user_id, nonce), "redirect_uri": _redirect_uri()}
     except GmailNotConfigured as exc:
         raise HTTPException(503, str(exc)) from None
+    # Lax, not Strict: Google's redirect back is a cross-site top-level GET, which Lax allows.
+    host = urlparse(get_settings().api_base_url).hostname
+    response.set_cookie(
+        _NONCE_COOKIE, nonce, max_age=_STATE_MINUTES * 60, path="/gmail", httponly=True,
+        samesite="lax", secure=host not in ("localhost", "127.0.0.1"),
+    )
+    return out
 
 
 @router.get("/callback")
 def gmail_callback(
+    response: Response,
     state: str = Query(...),
     code: str | None = Query(None),
     error: str | None = Query(None),
+    nonce: str | None = Cookie(None, alias=_NONCE_COOKIE),
     db: Session = Depends(get_db),
 ):
     """A denied consent is a clean outcome, not an error to retry — the user said no."""
@@ -393,11 +428,13 @@ def gmail_callback(
     if not code:
         raise HTTPException(400, "Missing authorization code.")
     try:
+        _check_same_browser(state, nonce)
         cred = handle_callback(db, state, code)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from None
     except (GmailConnectFailed, GmailNotConfigured, crypto.EncryptionUnavailable) as exc:
         raise HTTPException(503, str(exc)) from None
+    response.delete_cookie(_NONCE_COOKIE, path="/gmail")  # one use
     return {"connected": True, "email_address": cred.email_address,
             "usable": cred.is_usable, "missing_scopes": cred.missing_scopes}
 

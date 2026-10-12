@@ -10,17 +10,17 @@ applies while nothing happened. The extension's own calls
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
-import main
+from routes import extension
 import models
 from tests.test_submission_loop import _auth, _bind, _client, _seed
 
 
 def test_connected_window_decision():
     now = datetime(2026, 9, 27, 12, 0, 0)
-    assert main.extension_connected(None, now) is False
-    assert main.extension_connected(now, now) is True
-    assert main.extension_connected(now - main.EXTENSION_CONNECTED_WINDOW, now) is True
-    assert main.extension_connected(now - main.EXTENSION_CONNECTED_WINDOW - timedelta(seconds=1), now) is False
+    assert extension.extension_connected(None, now) is False
+    assert extension.extension_connected(now, now) is True
+    assert extension.extension_connected(now - extension.EXTENSION_CONNECTED_WINDOW, now) is True
+    assert extension.extension_connected(now - extension.EXTENSION_CONNECTED_WINDOW - timedelta(seconds=1), now) is False
 
 
 def test_status_is_disconnected_until_the_extension_calls_in():
@@ -71,7 +71,7 @@ def test_map_fields_marks_the_extension_connected():
     headers = _auth(client, "ext-mf@example.com")
     pid, _ = _seed(client, headers, [])
 
-    with patch("main.map_form_fields", return_value=[]):
+    with patch("routes.extension.map_form_fields", return_value=[]):
         resp = client.post(
             "/extension/map-fields", headers=headers,
             json={"profile_id": pid, "url": "https://boards.greenhouse.io/acme/jobs/1", "fields": []},

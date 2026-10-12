@@ -16,9 +16,10 @@ exist and be tested before REACH-A's Gmail credential does.
 import logging
 from datetime import datetime
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_, text
 
 import models
+import send_gate
 from campaigns import utc_day_start
 from outreach.suppression import is_suppressed
 
@@ -31,8 +32,36 @@ DAILY_CAP = 10
 # One ceiling per user across both irreversible email channels (outreach + apply-by-email),
 # each of which also keeps its own 10: without it the two sum to 20 from one Gmail account.
 ACCOUNT_DAILY_CAP = 15
+# One recruiter, all users together (P1 #17): several users finding the same person on the
+# same day must not turn into a pile of cold notes from ApplyScout in one inbox.
+RECIPIENT_DAILY_CAP = 2
 # RQ queue for irreversible sends, so they never wait behind tailoring or discovery.
 EFFECTS_QUEUE = "effects"
+
+
+def lock_recipient(db, email: str) -> None:
+    """The user lock does not serialise claims across users, so two could both count cap-1.
+    Transaction-scoped; taken last in `claim_outreach`, one per transaction, so no cycle."""
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": (email or "").lower()})
+
+
+def recipient_sends_today(db, email: str) -> int:
+    """Cold notes to this address today or in flight, from every user (contacts are per profile).
+    Callers hold `lock_recipient`."""
+    return (
+        db.query(models.Outreach)
+        .join(models.Contact, models.Outreach.contact_id == models.Contact.id)
+        .filter(
+            func.lower(models.Contact.email) == (email or "").lower(),
+            or_(
+                (models.Outreach.status == models.OutreachStatus.sent)
+                & (models.Outreach.sent_at >= utc_day_start()),
+                models.Outreach.status == models.OutreachStatus.sending,
+            ),
+        )
+        .count()
+    )
 
 
 def email_applications_today(db, user_id: str) -> int:
@@ -129,6 +158,10 @@ def claim_outreach(db, outreach_id: str, profile_id: str) -> str | None:
     if row.status is not models.OutreachStatus.approved:
         return "not_approved"
 
+    # Paused (send_gate.can_send): held `approved`, like the cap, so it goes once unpaused.
+    if not send_gate.can_send(db, row.profile.user)[0]:
+        return "paused"
+
     # Re-checked here and not only at drafting time: the gap between the two is minutes
     # at best, and an opt-out that loses that race is not an opt-out.
     contact = row.contact
@@ -155,6 +188,9 @@ def claim_outreach(db, outreach_id: str, profile_id: str) -> str | None:
     lock_user(db, user_id)
     if sent_today(db, profile_id) >= DAILY_CAP or account_sends_today(db, user_id) >= ACCOUNT_DAILY_CAP:
         return "daily_cap"
+    lock_recipient(db, contact.email)
+    if recipient_sends_today(db, contact.email) >= RECIPIENT_DAILY_CAP:
+        return "recipient_cap"
 
     row.status = models.OutreachStatus.sending
     return None
@@ -197,6 +233,7 @@ def send_outreach(db, row: models.Outreach, sender) -> bool:
     row.status = models.OutreachStatus.sent
     row.sent_at = datetime.utcnow()
     row.gmail_message_id = str(message_id)
+    send_gate.log_sent(db, row.profile.user_id, "outreach_email", to, row.application_id)
     return True
 
 

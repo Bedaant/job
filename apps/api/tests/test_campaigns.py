@@ -20,6 +20,7 @@ from sqlalchemy.pool import StaticPool
 import campaigns as campaigns_mod
 import main
 import models
+from tests.test_submission_loop import grounded
 from database import Base, get_db
 
 
@@ -360,6 +361,7 @@ def test_run_campaign_leaves_applications_ready_for_review_when_auto_submit_fals
 def test_run_campaign_marks_approved_when_auto_submit_true(mock_prepare):
     def fake_prepare(db, application):
         application.status = models.ApplicationStatus.ready_for_review
+        application.tailored_resume_json = grounded(db, profile.id)["tailored_resume_json"]
         db.commit()
         return application
 
@@ -601,7 +603,7 @@ def test_run_campaign_endpoint_enqueues_and_returns_a_job_id():
     fake_job = MagicMock()
     fake_job.id = "rq-job-1"
     fake_job.get_status.return_value = "queued"
-    with patch("main.get_queue") as mock_queue, patch("main._workers_online", return_value=True):
+    with patch("routes.campaigns.get_queue") as mock_queue, patch("routes.campaigns._workers_online", return_value=True):
         mock_queue.return_value.enqueue.return_value = fake_job
         response = client.post(f"/campaigns/{campaign_id}/run", headers=headers)
 
@@ -638,7 +640,7 @@ def test_enqueued_job_ids_are_valid_rq_ids():
     fake_job = MagicMock()
     fake_job.id = "x"
     fake_job.get_status.return_value = "queued"
-    with patch("main.get_queue") as mock_queue, patch("main._workers_online", return_value=True):
+    with patch("routes.campaigns.get_queue") as mock_queue, patch("routes.campaigns._workers_online", return_value=True):
         mock_queue.return_value.enqueue.return_value = fake_job
         client.post(f"/campaigns/{campaign_id}/run", headers=headers)
         client.post("/discover/run", headers=headers)
@@ -657,7 +659,7 @@ def test_run_says_so_when_no_worker_is_listening():
     profile = client.post("/profiles", headers=headers, json={"persona": "developer"}).json()
     campaign_id = client.post("/campaigns", headers=headers,
                               json={"profile_id": profile["id"], "name": "PM"}).json()["id"]
-    with patch("main.get_queue") as mock_queue, patch("main._workers_online", return_value=False):
+    with patch("routes.campaigns.get_queue") as mock_queue, patch("routes.campaigns._workers_online", return_value=False):
         for path in (f"/campaigns/{campaign_id}/run", "/discover/run"):
             response = client.post(path, headers=headers)
             assert response.status_code == 503

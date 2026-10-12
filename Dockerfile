@@ -6,8 +6,9 @@
 #
 # WHAT IS DELIBERATELY ABSENT, because it is what keeps this under ~1GB instead of ~3GB:
 #
-#   * Chromium and tools/stagehand-harness. Form planning stays on the owner's machine by
-#     decision. Everything that must run UNATTENDED — discovery, embedding, matching,
+#   * Chromium and tools/stagehand-harness — from THIS (default) image. They live in the
+#     `planner` target at the bottom, which only worker-background builds (P0 #8).
+#     Everything that must run UNATTENDED — discovery, embedding, matching,
 #     tailoring, truth-check, outreach, the digest — is here.
 #   * tools/browser-use-harness, same reason.
 #   * spaCy's en_core_web_lg (~400MB). PLAN-DEPLOY first claimed the API could not start
@@ -29,14 +30,29 @@ RUN apt-get update \
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    # Not boilerplate — earned. Two builds failed here with
+    # "Could not find a version that satisfies the requirement X (from versions: none)"
+    # on a DIFFERENT package each time (sqlalchemy, then uvicorn), both of which install
+    # fine in a bare container. A random package failing per run is intermittent DNS or
+    # index flakiness inside the build network, not a bad pin — and the default 5
+    # retries with a 15s timeout is not enough to ride it out. The misleading part is
+    # the message: "from versions: none" reads like the version does not exist.
+    PIP_RETRIES=10 \
+    PIP_TIMEOUT=120
 
 WORKDIR /app
 
 # Requirements first, so a code change does not reinstall the dependency tree.
 COPY apps/api/requirements.txt /app/apps/api/requirements.txt
-RUN pip install -r /app/apps/api/requirements.txt
+# BuildKit cache mount, and `PIP_NO_CACHE_DIR` is deliberately NOT set so it is usable.
+# A third build failed here with a ReadTimeoutError from files.pythonhosted.org 437s in,
+# after two earlier failures on a different package each. With no cache every retry
+# re-downloads the whole tree — scikit-learn, numpy and pandas are most of it — so a slow
+# link can never finish. The mount persists between attempts, so each build resumes
+# instead of starting over. It is build-time only and adds nothing to the image.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r /app/apps/api/requirements.txt
 
 # The second venv for JobSpy. It MUST be isolated: python-jobspy hard-pins
 # numpy==1.26.3, which conflicts with pgvector/scikit-learn's numpy 2.x and broke a real
@@ -50,8 +66,9 @@ RUN pip install -r /app/apps/api/requirements.txt
 # >=1.3.0 is not cosmetic: on the previously pinned 1.1.82, ZipRecruiter AND Glassdoor
 # both answered HTTP 403. 1.3.0 is what makes Glassdoor work, and Glassdoor is the only
 # site in JOBSPY_SITES.
-RUN python -m venv /app/tools/.venv-jobspy \
- && /app/tools/.venv-jobspy/bin/pip install --no-cache-dir "python-jobspy>=1.3.0"
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m venv /app/tools/.venv-jobspy \
+ && /app/tools/.venv-jobspy/bin/pip install "python-jobspy>=1.3.0"
 
 # Layout is load-bearing. `connectors/jobspy_connector.py` resolves tools/ as
 # ../../../tools from apps/api/connectors/, and formplans.py does the same with
@@ -74,3 +91,33 @@ WORKDIR /app/apps/api
 # reloader has no business in a deployed image anyway.
 EXPOSE 8000
 CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# --- planner: `base` plus what tools/stagehand-harness/plan.mjs needs (NEXT-WORK-PLAN P0 #8) ---
+# Only worker-background (which runs plan_form_task) builds this target, so the API, the
+# other workers and the scheduler keep the slim image above. Without it every swept job
+# ended `failed` on a missing `node`. Stagehand 3.7 needs Node ^20.19 || >=22.12, newer
+# than Debian's, so node and the npm tree come from the official image.
+FROM node:22-slim AS planner-deps
+WORKDIR /harness
+COPY tools/stagehand-harness/package.json tools/stagehand-harness/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
+
+FROM base AS planner
+USER root
+# chromium: Stagehand's LOCAL env launches it through chrome-launcher, which reads CHROME_PATH.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends chromium \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=planner-deps /usr/local/bin/node /usr/local/bin/node
+COPY --from=planner-deps --chown=app:app /harness/node_modules /app/tools/stagehand-harness/node_modules
+COPY --chown=app:app tools/stagehand-harness/plan.mjs /app/tools/stagehand-harness/plan.mjs
+# plan.mjs reads its DOM snapshot script out of check_form.py (one source of truth).
+COPY --chown=app:app tools/browser-use-harness/check_form.py tools/browser-use-harness/guard.py \
+     /app/tools/browser-use-harness/
+# Non-root in a container has no user namespace for Chromium's sandbox; the container is the boundary.
+ENV CHROME_PATH=/usr/bin/chromium \
+    CHROMIUM_FLAGS=--no-sandbox
+USER app
+
+# Last stage = the default `docker build` target: keep that the slim image.
+FROM base AS app

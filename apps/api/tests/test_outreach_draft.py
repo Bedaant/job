@@ -149,17 +149,7 @@ def test_a_mutual_signal_prompt_grants_permission_instead():
     assert "CRITICAL" not in p1.call_args.args[0]
 
 
-# ---------- no signal ----------
-
-def test_no_signal_still_produces_a_usable_draft():
-    result, _, p1 = _run(NO_SIGNAL, body="I applied for the PM role and would value your view.")
-    assert result["subject"] and result["body"]
-    assert result["flagged_unsupported_claims"] == []
-
-
-def test_no_signal_tells_the_model_not_to_invent_one():
-    _, p1, _ = _run(NO_SIGNAL)
-    assert "none established. Do not invent one" in p1.call_args.args[1]
+# No signal is refused before any model call: see tests/test_referral_rules.py.
 
 
 # ---------- pass 2's hard/advisory split is inherited, not re-decided ----------

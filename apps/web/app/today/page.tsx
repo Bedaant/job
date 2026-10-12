@@ -1,7 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronRightIcon,
   CircleCheckIcon,
@@ -16,7 +17,7 @@ import {
   TriangleAlertIcon,
   type LucideIcon,
 } from "lucide-react";
-import { api, ApiError, type ActivityItem, type Campaign } from "@/lib/api";
+import { api, ApiError, type ActivityItem, type Campaign, type Outcome, type OutcomePrompt } from "@/lib/api";
 import { statusView } from "@/lib/campaign-form";
 import {
   activityLink,
@@ -153,6 +154,59 @@ function ActivityList({ items }: { items: ActivityItem[] }) {
   );
 }
 
+const OUTCOME_CHOICES: { value: Outcome; label: string }[] = [
+  { value: "interview", label: "Interview" },
+  { value: "rejected", label: "Rejected" },
+  { value: "no_reply", label: "No reply yet" },
+];
+
+/** One-tap "Heard back?" 7 and 14 days after a send. The digest email deep-links to #outcome-<id>. */
+function HeardBack({ prompts }: { prompts: OutcomePrompt[] }) {
+  const queryClient = useQueryClient();
+  // The list renders after a fetch, so the browser's own jump to the digest's #outcome-<id> has already missed.
+  useEffect(() => {
+    if (window.location.hash.startsWith("#outcome-")) document.getElementById(window.location.hash.slice(1))?.scrollIntoView();
+  }, []);
+  const record = useMutation({
+    mutationFn: ({ id, outcome }: { id: string; outcome: Outcome }) => api.recordOutcome(id, outcome),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["outcome-prompts"] }),
+  });
+  return (
+    <section aria-labelledby="heard-back-heading" className="space-y-3">
+      <h2 id="heard-back-heading" className="text-xl font-semibold tracking-tight">
+        Heard back?
+      </h2>
+      {record.isError && (
+        <p role="alert" className="rounded-xl bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+          Couldn&apos;t save that: {errorText(record.error)}
+        </p>
+      )}
+      <ol className="divide-y rounded-2xl border bg-card shadow-sm">
+        {prompts.map((p) => (
+          <li key={p.application_id} id={`outcome-${p.application_id}`} className="scroll-mt-20 space-y-2 px-4 py-3.5 sm:px-5">
+            <p className="font-medium">
+              {p.job_title} at {p.company}
+              <span className="font-normal text-muted-foreground"> · sent {p.day} days ago</span>
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {OUTCOME_CHOICES.map((c) => (
+                <Button
+                  key={c.value}
+                  variant="outline"
+                  disabled={record.isPending}
+                  onClick={() => record.mutate({ id: p.application_id, outcome: c.value })}
+                >
+                  {c.label}
+                </Button>
+              ))}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 const EMPTY: Record<string, string> = {
   waiting:
     "Maggie is waiting on her first search. Sending applications also needs the ApplyScout browser extension connected.",
@@ -166,6 +220,7 @@ export default function TodayPage() {
   const campaignsQuery = useQuery({ queryKey: ["campaigns"], queryFn: api.listCampaigns, enabled: ready });
   const todayQuery = useQuery({ queryKey: ["today"], queryFn: () => api.getToday(), enabled: ready });
   const activityQuery = useQuery({ queryKey: ["activity"], queryFn: () => api.getActivity(50), enabled: ready });
+  const promptsQuery = useQuery({ queryKey: ["outcome-prompts"], queryFn: api.listOutcomePrompts, enabled: ready });
 
   if (!ready) return null;
 
@@ -221,6 +276,7 @@ export default function TodayPage() {
 
       {!loading && campaign && (
         <div className="space-y-8">
+          {promptsQuery.data && promptsQuery.data.length > 0 && <HeardBack prompts={promptsQuery.data} />}
           <MaggieStatus campaign={campaign} />
 
           {counts && (

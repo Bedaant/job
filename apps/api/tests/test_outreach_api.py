@@ -21,7 +21,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import models
-from database import Base, get_db
+from database import Base, get_db, get_owner_db
 from outreach import api as outreach_api
 
 
@@ -37,6 +37,7 @@ def ctx():
     app = FastAPI()
     app.include_router(outreach_api.router)
     app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_owner_db] = lambda: db
 
     users = {}
 

@@ -16,8 +16,9 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 import models
+import send_gate
 from core.deps import get_current_user, resolve_profile_ownership
-from database import get_db
+from database import get_db, get_owner_db
 from outreach import optout
 
 logger = logging.getLogger(__name__)
@@ -179,6 +180,9 @@ def approve_outreach(
     if row.flagged_unsupported_claims:
         # ADR-006. The check is a gate, not a label: edit the note or skip it.
         raise HTTPException(409, "This note makes a claim your facts don't support. Edit it first.")
+    ok, reasons = send_gate.can_send(db, user)
+    if not ok:
+        raise HTTPException(409, "Not sent: " + " ".join(reasons))
 
     row.status = models.OutreachStatus.approved
     row.approved_by = "user"
@@ -228,13 +232,16 @@ _OPT_OUT_PAGE = (
 
 
 @router.get("/outreach/unsubscribe/{token}", response_class=HTMLResponse)
-def unsubscribe(token: str, db: Session = Depends(get_db)):
+def unsubscribe(token: str, db: Session = Depends(get_owner_db)):
     """Unauthenticated by necessity: the recipient has no account here and must never
     need one to be left alone.
 
     **Answers identically whether or not it wrote a row.** A different response for a
     real id would turn this into an id oracle, letting anyone walk the id space — and
     the page never echoes the address, so a leaked token is not a disclosure either.
+
+    Owner role (RLS bypass, migration 0040): there is no tenant to set, and the HMAC
+    token is what authorises reading this one row.
     """
     outreach_id = optout.verify_token(token)
     if outreach_id:

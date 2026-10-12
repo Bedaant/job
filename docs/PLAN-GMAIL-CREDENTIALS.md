@@ -1,6 +1,8 @@
 # Plan: Gmail credentials (REACH-A)
 
-**Status:** not started. This is the prerequisite for `docs/PLAN-OUTREACH.md` — no
+**Status (2026-10-12):** built (REACH-A): encrypted credential storage (`crypto.py`, `outreach/gmail.py`) and the OAuth flow exist, and `gmail_credentials` is under RLS (migration 0040). The callback upsert under `WITH CHECK` has not been run against live Neon. Real use needs the owner's Google Cloud OAuth client; sending to arbitrary people needs Google's OAuth verification. The text below is the original plan.
+
+*Original status line:* not started. This is the prerequisite for `docs/PLAN-OUTREACH.md` — no
 outreach work can begin until it lands, because ADR-003 requires the OAuth refresh
 token encrypted at rest and there is currently no working encryption key.
 

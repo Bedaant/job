@@ -61,6 +61,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: planner  # runs plan_form_task, so it needs node + Chromium (Dockerfile)
     restart: unless-stopped
     env_file: [apps/api/.env]
     volumes:

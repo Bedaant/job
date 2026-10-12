@@ -188,7 +188,7 @@ def test_no_grounded_bullets_is_refused(db_session):
     a.tailored_resume_json = {"bullets": [{"text": "Invented", "source_fact_ids": ["nope"]}]}
     db_session.commit()
     sender, calls = _capture()
-    assert _send(db_session, a, sender) == "no_resume"
+    assert _send(db_session, a, sender) == "blocked"  # send_gate refuses it before rendering
     assert calls == []
 
 
@@ -229,9 +229,11 @@ def test_campaign_auto_submit_sends_mailto_jobs_only(db_session):
 def test_run_campaign_auto_submit_triggers_the_email(mock_prepare):
     import campaigns
     from tests.test_campaigns import _campaign, _job, _match, _profile as _cprofile, _session
+    from tests.test_submission_loop import grounded
 
     def fake_prepare(db, application):
         application.status = models.ApplicationStatus.ready_for_review
+        application.tailored_resume_json = grounded(db, profile.id)["tailored_resume_json"]
         db.commit()
 
     mock_prepare.side_effect = fake_prepare
@@ -248,7 +250,7 @@ def test_run_campaign_auto_submit_triggers_the_email(mock_prepare):
 
 
 def test_batch_approve_enqueues_mailto_and_leaves_web_jobs_to_the_extension():
-    from tests.test_submission_loop import _auth, _bind, _client
+    from tests.test_submission_loop import _auth, _bind, _client, grounded
     client, SessionLocal = _client()
     _bind(client, SessionLocal)
     headers = _auth(client, "ba@example.com")
@@ -261,7 +263,8 @@ def test_batch_approve_enqueues_mailto_and_leaves_web_jobs_to_the_extension():
         db.add(job)
         db.flush()
         app = models.Application(profile_id=profile["id"], job_id=job.id,
-                                 status=models.ApplicationStatus.ready_for_review)
+                                 status=models.ApplicationStatus.ready_for_review,
+                                 **grounded(db, profile["id"]))
         db.add(app)
         db.commit()
         ids[n] = app.id

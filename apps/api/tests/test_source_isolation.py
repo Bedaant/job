@@ -97,8 +97,7 @@ def test_a_raising_source_does_not_throw_away_the_other_sources(mock_upsert):
         fetch_remotive_jobs=MagicMock(side_effect=RuntimeError("remotive 503")),
         fetch_greenhouse_jobs=MagicMock(return_value=_board(PM)),
     ), patch("workers.jobs.conn_config.GREENHOUSE_BOARD_TOKENS", ["acme"]), \
-         patch("workers.jobs.conn_config.FEED_KEYWORDS", ["product manager"]), \
-         patch("workers.jobs.conn_config.REMOTIVE_KEYWORDS", ["product manager"]):
+         patch("workers.jobs._campaign_keywords", lambda: ["product manager"]):
         result = wj.discover_inline()
 
     assert [j["title"] for j in mock_upsert.call_args.args[1]] == [PM]
@@ -132,9 +131,7 @@ def test_every_source_writes_a_connector_run_row(_upsert, db):
         fetch_greenhouse_jobs=MagicMock(return_value=_board(PM)),
         fetch_remotive_jobs=MagicMock(side_effect=RuntimeError("remotive 503")),
     ), patch("workers.jobs.conn_config.GREENHOUSE_BOARD_TOKENS", ["acme"]), \
-         patch("workers.jobs.conn_config.FEED_KEYWORDS", ["product manager"]), \
-         patch("workers.jobs.conn_config.REMOTIVE_KEYWORDS", ["product manager"]), \
-         patch("workers.jobs.conn_config.REED_KEYWORDS", []):
+         patch("workers.jobs._campaign_keywords", lambda: ["product manager"]):
         wj.discover_inline()
 
     runs = _runs(db)
@@ -169,11 +166,8 @@ def test_requests_inside_one_source_are_paced(db):
          patch("workers.jobs.conn_config.GREENHOUSE_BOARD_TOKENS", ["a", "b", "c"]), \
          patch("workers.jobs.conn_config.LEVER_COMPANY_TOKENS", []), \
          patch("workers.jobs.conn_config.ASHBY_ORG_TOKENS", []), \
-         patch("workers.jobs.conn_config.REMOTIVE_KEYWORDS", []), \
-         patch("workers.jobs.conn_config.REED_KEYWORDS", []), \
+         patch("workers.jobs._campaign_keywords", lambda: []), \
          patch("workers.jobs.conn_config.WORKDAY_BOARDS", {}), \
-         patch("workers.jobs.conn_config.JOBSPY_KEYWORDS", []), \
-         patch("workers.jobs.conn_config.LINKEDIN_JOB_KEYWORDS", []), \
          patch("workers.jobs.conn_config.LINKEDIN_POST_QUERIES", []), \
          patch("workers.jobs.upsert_jobs", MagicMock(return_value=(0, 0, 0))), \
          patch("workers.jobs.HOST_PACING_SECONDS", 0.25), \
@@ -192,11 +186,8 @@ def test_pacing_is_configurable_and_skipped_for_a_single_request(db):
          patch("workers.jobs.conn_config.GREENHOUSE_BOARD_TOKENS", ["only"]), \
          patch("workers.jobs.conn_config.LEVER_COMPANY_TOKENS", []), \
          patch("workers.jobs.conn_config.ASHBY_ORG_TOKENS", []), \
-         patch("workers.jobs.conn_config.REMOTIVE_KEYWORDS", []), \
-         patch("workers.jobs.conn_config.REED_KEYWORDS", []), \
+         patch("workers.jobs._campaign_keywords", lambda: []), \
          patch("workers.jobs.conn_config.WORKDAY_BOARDS", {}), \
-         patch("workers.jobs.conn_config.JOBSPY_KEYWORDS", []), \
-         patch("workers.jobs.conn_config.LINKEDIN_JOB_KEYWORDS", []), \
          patch("workers.jobs.conn_config.LINKEDIN_POST_QUERIES", []), \
          patch("workers.jobs.upsert_jobs", MagicMock(return_value=(0, 0, 0))), \
          patch("workers.jobs.time.sleep") as sleep:
@@ -259,7 +250,7 @@ def test_sources_only_advertises_sources_discovery_actually_fetches():
     to be given a label, and a label can't outlive its fetcher.
     """
     from connectors import config as conn_config
-    from main import _SOURCE_LABELS
+    from routes.feed import _SOURCE_LABELS
 
     fetched = (
         {"remotive", "reed", "greenhouse", "lever", "ashby", "workday"}

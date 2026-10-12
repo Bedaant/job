@@ -236,6 +236,18 @@ export interface CampaignStats {
   last_run_at: string | null;
 }
 
+export interface SendSafety {
+  paused: boolean;
+  paused_globally: boolean;
+}
+
+export interface SentLogEntry {
+  kind: "submission" | "email" | "outreach_email";
+  recipient: string;
+  application_id: string | null;
+  created_at: string;
+}
+
 export interface ExtensionStatus {
   connected: boolean;
   last_seen_at: string | null;
@@ -264,6 +276,15 @@ export interface TodayCounts {
   unconfirmed_today?: number;
   needs_you: number;
   new_matches_today: number;
+}
+
+export type Outcome = "interview" | "rejected" | "no_reply";
+
+export interface OutcomePrompt {
+  application_id: string;
+  day: number;
+  job_title: string;
+  company: string;
 }
 
 class ApiError extends Error {
@@ -319,11 +340,15 @@ export const api = {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
     });
   },
-  signup: (email: string, password: string) =>
+  signup: (email: string, password: string, privacyConsent: boolean) =>
     request<{ id: string; email: string }>("/auth/signup", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, privacy_consent: privacyConsent }),
     }),
+  /** Deletes the account and everything it owns. Irreversible. */
+  deleteAccount: async () => {
+    await send("/account", { method: "DELETE" });
+  },
   forgotPassword: (email: string) =>
     request<{ ok: boolean }>("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
   resetPassword: (token: string, password: string) =>
@@ -389,6 +414,11 @@ export const api = {
       body: JSON.stringify({ status: "applied" }),
       keepalive: true,
     }),
+  getSendSafety: () => request<SendSafety>("/send-safety"),
+  /** The user's own "pause all sends". */
+  setSendsPaused: (paused: boolean) =>
+    request<SendSafety>("/send-safety", { method: "PUT", body: JSON.stringify({ paused }) }),
+  listSentLog: () => request<SentLogEntry[]>("/sent-log"),
   batchApprove: (applicationIds: string[]) =>
     request<{ approved: string[] }>("/applications/batch-approve", {
       method: "POST",
@@ -414,6 +444,13 @@ export const api = {
   /** `tz` makes the counters use the viewer's local day, same as the activity list. */
   getToday: (tz = Intl.DateTimeFormat().resolvedOptions().timeZone) =>
     request<TodayCounts>(`/today?tz=${encodeURIComponent(tz)}`),
+  /** "Heard back?" prompts, 7 and 14 days after a send (apps/api/outcomes.py). */
+  listOutcomePrompts: () => request<OutcomePrompt[]>("/outcome-prompts"),
+  recordOutcome: (applicationId: string, outcome: Outcome) =>
+    request<{ application_id: string; outcome: Outcome }>(`/applications/${applicationId}/outcome`, {
+      method: "POST",
+      body: JSON.stringify({ outcome }),
+    }),
   getBasics: (profileId: string) => request<ApplicantBasics>(`/profiles/${profileId}/basics`),
   putBasics: (profileId: string, basics: ApplicantBasics) =>
     request<ApplicantBasics>(`/profiles/${profileId}/basics`, {

@@ -136,6 +136,20 @@ def test_plan_job_without_a_report_is_a_failed_row(_run, db_session):
     assert row.status == "failed" and "Error: boom" in row.error
 
 
+@patch("formplans.subprocess.run", side_effect=FileNotFoundError(2, "No such file or directory", "node"))
+def test_missing_node_binary_leaves_the_job_unplanned_not_failed(_run, db_session):
+    # P0 #8: an image without node used to mark every swept job `failed` forever.
+    assert formplans.plan_job(db_session, _job(db_session, n=11)) is None
+    assert db_session.query(models.FormPlan).count() == 0
+
+
+@patch("formplans.subprocess.run", return_value=MagicMock(returncode=1, stdout=b"", stderr=(
+    b"Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@browserbasehq/stagehand' imported from /app/plan.mjs")))
+def test_missing_planner_modules_leave_the_job_unplanned_not_failed(_run, db_session):
+    assert formplans.plan_job(db_session, _job(db_session, n=12)) is None
+    assert db_session.query(models.FormPlan).count() == 0
+
+
 @patch("formplans.subprocess.run")
 def test_plan_job_writes_one_ok_row_and_a_failed_replan_keeps_it(mock_run, db_session):
     job = _job(db_session)
@@ -254,7 +268,7 @@ def _job_id(SessionLocal, application_id):
         db.close()
 
 
-@patch("main.map_form_fields", return_value=[])
+@patch("routes.extension.map_form_fields", return_value=[])
 def test_map_fields_passes_the_stored_plan(mock_map):
     client, SessionLocal = _client()
     _bind(client, SessionLocal)
@@ -308,11 +322,49 @@ def test_sweep_enqueues_unplanned_jobs_only(mock_scope, mock_queue, mock_redis, 
     db_session.commit()
     enqueue = _wire(db_session, mock_scope, mock_queue, mock_redis)
 
-    assert jobs.sweep_form_plans_task() == {"enqueued": [unplanned.id]}
+    with patch("formplans.planner_missing", return_value=None):
+        assert jobs.sweep_form_plans_task() == {"enqueued": [unplanned.id]}
     call = enqueue.call_args
     assert call.args[0] is jobs.plan_form_task
     assert call.kwargs == {"job_id": f"plan-{unplanned.id}", "unique": True, "job_timeout": 600,
                            "kwargs": {"job_id": unplanned.id}}
+
+
+@patch("workers.jobs.get_redis_connection")
+@patch("workers.jobs.get_queue")
+@patch("workers.jobs.session_scope")
+def test_sweep_skips_and_logs_once_when_the_planner_is_missing(mock_scope, mock_queue, mock_redis,
+                                                               db_session, caplog):
+    user = models.User(email="nb@x.com", password_hash="x")
+    db_session.add(user)
+    db_session.commit()
+    profile = models.Profile(user_id=user.id, persona=models.Persona.developer)
+    db_session.add(profile)
+    db_session.commit()
+    job = _job(db_session, n=21)
+    db_session.add(models.Application(profile_id=profile.id, job_id=job.id,
+                                      status=models.ApplicationStatus.approved))
+    db_session.commit()
+    enqueue = _wire(db_session, mock_scope, mock_queue, mock_redis)
+
+    with patch("formplans.planner_missing", return_value="node not on PATH"), caplog.at_level("WARNING"):
+        result = jobs.sweep_form_plans_task()
+    assert result == {"enqueued": [], "skipped": "node not on PATH"}
+    enqueue.assert_not_called()
+    assert db_session.query(models.FormPlan).count() == 0  # still pending, picked up once node exists
+    assert sum("planner unavailable" in r.message for r in caplog.records) == 1
+
+
+def test_planner_missing_names_what_is_absent(tmp_path):
+    with patch("formplans.shutil.which", return_value=None):
+        assert "node" in formplans.planner_missing()
+    with patch("formplans.shutil.which", return_value="/usr/bin/node"), \
+            patch("formplans.PLANNER", tmp_path / "plan.mjs"):
+        assert "plan.mjs" in formplans.planner_missing()
+        (tmp_path / "plan.mjs").write_text("")
+        assert "node_modules" in formplans.planner_missing()
+        (tmp_path / "node_modules").mkdir()
+        assert formplans.planner_missing() is None
 
 
 @patch("workers.run_scheduler.get_redis_connection")

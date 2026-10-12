@@ -68,9 +68,15 @@ class User(Base):
     password_hash = Column(String, nullable=True)  # null when Google-only (later)
     created_at = Column(DateTime, default=datetime.utcnow)
     deleted_at = Column(DateTime, nullable=True)
+    # When the user accepted the privacy notice at signup; NULL = never recorded (0035).
+    privacy_consent_at = Column(DateTime, nullable=True)
     # Last time the browser extension called in (work-queue / map-fields). Under
     # ADR-015 nothing is submitted without it, so the web app shows it (0016).
     extension_last_seen_at = Column(DateTime, nullable=True)
+    # The user's own "pause all sends" (send_gate.can_send, 0034).
+    sends_paused = Column(Boolean, nullable=False, default=False, server_default=sqlalchemy.false())
+    # Set by the digest email's signed opt-out link; the daily digest skips the user (0038).
+    digest_opted_out_at = Column(DateTime, nullable=True)
 
     profiles = relationship("Profile", back_populates="user", cascade="all, delete-orphan")
 
@@ -270,6 +276,13 @@ class Application(Base):
     role_key = Column(String, nullable=True)
     applied_at = Column(DateTime, nullable=True)
     next_follow_up_at = Column(DateTime, nullable=True)
+    # The user's answer to "Heard back?" (outcomes.py): interview | rejected | no_reply (0038).
+    # Separate from `status` on purpose: it is what the user told us, not a send transition.
+    outcome = Column(String, nullable=True)
+    outcome_at = Column(DateTime, nullable=True)
+    # Failed tailoring passes (0039). campaigns.run_campaign retries a stuck prep each run and
+    # stops at MAX_PREP_ATTEMPTS; a provider outage the guard refused does not count.
+    prep_attempts = Column(Integer, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -699,3 +712,25 @@ class GmailCredential(Base):
     def is_usable(self) -> bool:
         """Live and sufficiently scoped. Checked before drafting, not at send time."""
         return self.revoked_at is None and not self.missing_scopes
+
+
+class AppFlag(Base):
+    """Runtime switches an owner flips without a redeploy; `pause_all_sends` (send_gate)."""
+    __tablename__ = "app_flags"
+
+    name = Column(String, primary_key=True)
+    enabled = Column(Boolean, nullable=False, default=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SentLog(Base):
+    """One row per thing that left for an employer or recruiter: an email (application or
+    outreach) or a form submission (written at the claim). GET /sent-log, the user's own only."""
+    __tablename__ = "sent_log"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind = Column(String, nullable=False)  # submission | email | outreach_email
+    recipient = Column(String, nullable=False)  # email address, or the form URL
+    application_id = Column(UUID(as_uuid=False), ForeignKey("applications.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

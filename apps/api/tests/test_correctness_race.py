@@ -6,6 +6,7 @@ then deleted.
 """
 import threading
 import time
+from datetime import datetime
 from unittest.mock import patch
 
 import pytest
@@ -99,3 +100,52 @@ def test_two_workers_at_the_cap_send_only_one(_pg_engine, monkeypatch):
         assert len(_race(Session, app_ids)) == 1
     finally:
         _cleanup(Session, user_id, job_ids)
+
+
+def test_two_users_racing_to_one_recipient_at_cap_minus_one_claim_only_once(_pg_engine, monkeypatch):
+    """RECIPIENT_DAILY_CAP spans users, so the per-user row lock cannot serialise this."""
+    from core.config import get_settings
+    from outreach.send import RECIPIENT_DAILY_CAP, claim_outreach
+    from tests.test_outreach_send import _outreach, _profile
+
+    monkeypatch.setattr(get_settings(), "api_base_url", "https://api.applyscout.in", raising=False)
+    Session = sessionmaker(bind=_pg_engine)
+    db = Session()
+    tag = time.time_ns()
+    users, jobs, racers = [], [], []
+    for i in range(RECIPIENT_DAILY_CAP + 1):  # cap-1 already sent, then two racers
+        p = _profile(db, f"r{i}-{tag}@example.com")
+        if i < RECIPIENT_DAILY_CAP - 1:
+            o = _outreach(db, p, status=models.OutreachStatus.sent, email=f"r-{tag}@acme.com",
+                          sent_at=datetime.utcnow())
+        else:
+            # same address in a different case: the job external_id embeds the email, so it must differ
+            o = _outreach(db, p, email=f"R-{tag}@Acme.com" if not racers else f"r-{tag}@ACME.com")
+            racers.append((o.id, p.id))
+        users.append(p.user_id)
+        jobs.append(db.get(models.Application, o.application_id).job_id)
+    db.commit()
+    db.close()
+
+    results, barrier = [], threading.Barrier(2)
+
+    def worker(outreach_id, profile_id):
+        s = Session()
+        try:
+            barrier.wait()
+            results.append(claim_outreach(s, outreach_id, profile_id))
+            time.sleep(0.3)  # hold the transaction across the other worker's count
+            s.commit()
+        finally:
+            s.close()
+
+    try:
+        threads = [threading.Thread(target=worker, args=r) for r in racers]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(30)
+        assert sorted(results, key=str) == [None, "recipient_cap"]
+    finally:
+        for u in users:  # jobs go with the last user: earlier users' applications still reference them
+            _cleanup(Session, u, jobs if u == users[-1] else [])

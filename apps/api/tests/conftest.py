@@ -5,6 +5,8 @@ import os
 # runs before anything imports core.config. Tests that need another provider
 # patch it explicitly.
 os.environ["LLM_PROVIDER"] = "anthropic"
+# Settings refuses short or placeholder JWT secrets at boot. Suite-only value, signs nothing real.
+os.environ["JWT_SECRET"] = "Hn4vQ8rZ2kLw7Ys1Bd5Jx9Pc3Mf6Tg0Ue"
 
 from pathlib import Path
 
@@ -108,7 +110,7 @@ def no_live_apply_target_resolution():
     """`GET /extension/work-queue` resolves each aggregator `apply_url` to its
     real ATS (ADR-015 Phase 2), which costs an HTTP round trip. The whole suite
     must stay offline, so the default here is a no-op pass-through. Tests that
-    care about resolution patch `main.resolve_apply_target` themselves and that
+    care about resolution patch `routes.extension.resolve_apply_target` themselves and that
     inner patch wins.
     """
     from unittest.mock import patch
@@ -116,7 +118,7 @@ def no_live_apply_target_resolution():
     def passthrough(url: str) -> dict:
         return {"final_url": url, "ats_type": None, "board_token": None, "resolved": False}
 
-    with patch("main.resolve_apply_target", side_effect=passthrough):
+    with patch("routes.extension.resolve_apply_target", side_effect=passthrough):
         yield
 
 

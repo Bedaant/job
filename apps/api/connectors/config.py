@@ -1,34 +1,14 @@
 # Edit this to match what you're targeting.
 
-REMOTIVE_KEYWORDS = ["product manager", "associate product manager", "APM"]
-
-# --- ADR-015 multi-source discovery ------------------------------------------
-# FEED_KEYWORDS NO LONGER GATES INGEST (ADR-021, 2026-10-05). It used to filter
-# both the keyless feeds and the ATS boards, which made it a GLOBAL ingest gate:
-# a user's own description (campaign roles/locations, résumé-fact centroid,
-# prefs) only filtered what this one hardcoded list had already collected. For a
-# product the PRD calls multi-tenant, discovery was single-tenant. Measured
-# before the change: 1,758 live jobs, 309 product roles, and only 6 SRE roles —
-# while four campaigns asked for SRE, searching a pool never collected for them.
+# --- search terms come from campaigns (NEXT-WORK-PLAN P0 #6) ------------------
+# There are no fixed title lists here any more. Remotive and Reed are queried with, and
+# Workday's pre-hydration filter matches on, the roles of every ACTIVE campaign
+# (workers/jobs.py::_campaign_keywords). LinkedIn and JobSpy title searches run per campaign
+# (campaign_search_task, refresh_campaign_searches_task). The fixed product-manager lists
+# meant a Data Analyst campaign searched a PM pool.
 #
-# Discovery now stores whole boards and filtering happens per user at MATCH time
-# (matching/service.py::build_matches, campaigns.py::_in_bounds).
-#
-# WHAT THIS LIST STILL DOES, and it is the only thing:
-#   connectors/workday.py filters on it BEFORE hydrating each job. Workday's
-#   list endpoint is cheap but every posting needs its own detail request, so
-#   storing a whole board there would be ~526 extra requests for Adobe alone.
-#   That is a cost control, not an inconsistency — see that module's docstring.
-#
-# So editing this list changes WORKDAY coverage only — but **widen it freely and
-# never narrow it casually.** Workday's payload is keyword-filtered, so removing
-# a term drops matching jobs out of the payload. Workday was taken out of
-# `SWEEPABLE_SOURCES` (workers/jobs.py) precisely so that can no longer tombstone
-# live Adobe/Cisco roles, which is what would have happened on the next run.
-#
-# REMOTIVE_KEYWORDS and REED_KEYWORDS above/below are separate again: there the
-# keyword IS the query parameter, so there is no unfiltered fetch to make.
-FEED_KEYWORDS: list[str] = ["product manager", "product owner", "product lead", "head of product"]
+# Workday still filters before hydrating — a cost control (one detail request per posting),
+# see that module's docstring — and with no active campaign it hydrates nothing.
 
 # Which feeds run. Comment a line out to drop that source without touching code.
 ENABLED_FEEDS = [
@@ -55,7 +35,6 @@ ENABLED_FEEDS = [
 # one back; the numbers above are pinned in tests/test_jobspy_connector.py.
 # LinkedIn stays out regardless (ADR-015 parks it as a special case).
 JOBSPY_SITES = ["glassdoor"]
-JOBSPY_KEYWORDS = ["product manager", "associate product manager", "product owner"]
 
 # CITY-QUALIFIED, and that is load-bearing rather than tidiness: `location="India"`
 # returns **Indianapolis** jobs, because Glassdoor prefix-matches the string. A
@@ -76,12 +55,7 @@ JOBSPY_KEYWORDS = ["product manager", "associate product manager", "product owne
 #
 # This is the only source that reaches the companies GAPS 3.1 lists as having no
 # greenhouse/lever/ashby board at all — PhonePe showed up in the first 15 rows.
-LINKEDIN_JOB_KEYWORDS = ["product manager", "associate product manager"]
 LINKEDIN_JOB_LOCATIONS = ["India"]
-# Per keyword per location. ~$0.0015/row measured, so 50 rows is roughly $0.08 a pass and
-# the whole default config is ~$0.15 — against a $5/month plan allowance. Raise
-# deliberately, not hopefully.
-LINKEDIN_JOB_ROWS = 50
 
 # Hiring POSTS (connectors/linkedin_posts.py), not job listings: "we're hiring, apply here or
 # email your CV". $0.002/post plus one LLM call for each post that carries an apply route.
@@ -104,9 +78,6 @@ JOBSPY_LOCATIONS = [
     "Gurgaon, India",
 ]
 
-# Reed (PRD.md §6 Tier 2) — no-ops without REED_API_KEY set in .env
-REED_KEYWORDS = ["product manager", "associate product manager"]
-
 # Greenhouse and Lever require a company's "board token" — find it by visiting
 # https://boards.greenhouse.io/<token> or https://jobs.lever.co/<token>
 # Add the startups you're targeting here (seed-Series B companies you like).
@@ -120,10 +91,6 @@ REED_KEYWORDS = ["product manager", "associate product manager"]
 # Its jobs do go stale rather than disappearing — nothing delists them once we
 # stop asking — which is the deliberate trade (ADR-017: stale beats tombstoning
 # live jobs).
-#
-# Still true, and NOT fixed by board_token: narrowing FEED_KEYWORDS tombstones
-# stored jobs whose titles no longer match, because they drop out of the
-# keyword-filtered payload the sweep compares against. Widening is safe.
 # 2026-10-03 (Phase 2 item 4b): 117 candidate slugs probed live across all three
 # platforms; 42 had a live board, and these are the ones with a PM-track role
 # actually reachable from India. THREE PLAUSIBLE SLUGS WERE A DIFFERENT COMPANY
