@@ -278,6 +278,15 @@ export interface TodayCounts {
   new_matches_today: number;
 }
 
+export type Outcome = "interview" | "rejected" | "no_reply";
+
+export interface OutcomePrompt {
+  application_id: string;
+  day: number;
+  job_title: string;
+  company: string;
+}
+
 class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -435,6 +444,13 @@ export const api = {
   /** `tz` makes the counters use the viewer's local day, same as the activity list. */
   getToday: (tz = Intl.DateTimeFormat().resolvedOptions().timeZone) =>
     request<TodayCounts>(`/today?tz=${encodeURIComponent(tz)}`),
+  /** "Heard back?" prompts, 7 and 14 days after a send (apps/api/outcomes.py). */
+  listOutcomePrompts: () => request<OutcomePrompt[]>("/outcome-prompts"),
+  recordOutcome: (applicationId: string, outcome: Outcome) =>
+    request<{ application_id: string; outcome: Outcome }>(`/applications/${applicationId}/outcome`, {
+      method: "POST",
+      body: JSON.stringify({ outcome }),
+    }),
   getBasics: (profileId: string) => request<ApplicantBasics>(`/profiles/${profileId}/basics`),
   putBasics: (profileId: string, basics: ApplicantBasics) =>
     request<ApplicantBasics>(`/profiles/${profileId}/basics`, {

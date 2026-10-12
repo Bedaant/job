@@ -27,7 +27,7 @@ def test_write_event_creates_unpublished_event_row():
     event = write_event(db, user.id, "match.new", {"match_id": "m1"})
     db.commit()
 
-    assert db.query(models.Event).count() == 1
+    assert db.query(models.Event).filter_by(type="match.new").count() == 1  # plus the first_match funnel row
     assert event.user_id == user.id
     assert event.type == "match.new"
     assert event.payload == {"match_id": "m1"}
