@@ -47,6 +47,17 @@ def get_db():
         db.close()
 
 
+def get_owner_db():
+    """FastAPI dependency on the OWNER role, which bypasses RLS. Only for an
+    unauthenticated route that must find a row by a signed id before any tenant is
+    known (the outreach unsubscribe link). Never for a route with a logged-in user."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 @contextmanager
 def session_scope():
     """For use outside a request (startup hooks, RQ workers, scripts).

@@ -40,7 +40,7 @@ from sqlalchemy.orm import Session
 import crypto
 import models
 from core.config import get_settings
-from core.deps import get_current_user
+from core.deps import get_current_user, set_tenant
 from database import get_db
 
 logger = logging.getLogger(__name__)
@@ -223,6 +223,9 @@ def handle_callback(db: Session, state: str, code: str) -> models.GmailCredentia
         )
 
     granted = [s for s in (payload.get("scope") or "").split() if s]
+    # No JWT on this route: the signed state is the authentication. Set here, after the
+    # Google call, so no DB transaction is held open across it (RLS, migration 0040).
+    set_tenant(db, user_id)
     cred = db.query(models.GmailCredential).filter_by(user_id=user_id).first()
     if cred is None:
         cred = models.GmailCredential(user_id=user_id)

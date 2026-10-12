@@ -33,10 +33,16 @@ def get_current_user(
     # Stored on the session and re-applied by _reapply_tenant at the start of
     # EVERY transaction — the setting is transaction-local, so without that a
     # read after db.commit() ran with no tenant and RLS hid the row just written.
-    db.info["current_user_id"] = user.id
-    _reapply_tenant(db, None, db.connection())
+    set_tenant(db, user.id)
 
     return user
+
+
+def set_tenant(db: Session, user_id: str) -> None:
+    """Bind this session to one user for RLS. Also for a path that authenticated the
+    user some other way than a JWT (the Gmail OAuth callback's signed state)."""
+    db.info["current_user_id"] = user_id
+    _reapply_tenant(db, None, db.connection())
 
 
 _SET_TENANT = text("SELECT set_config('app.current_user_id', :uid, true)")
