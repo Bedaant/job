@@ -784,14 +784,30 @@ def embed_backlog_task() -> dict:
 SWEEP_JUDGE_LIMIT = 100
 
 
-def sweep_campaigns_task() -> dict:
-    """Scheduled (workers/run_scheduler.py): for every active campaign, rebuild
-    its profile's matches and enqueue a run. Runs on the owner role with no
-    request, so there is no RLS tenant — every query here and downstream is
-    scoped by campaign.id / profile_id explicitly.
+# P1 #16: the sweep only lists campaigns; each campaign's judge + match + run is its own job, so one
+# slow or broken campaign times out or fails alone. A run tailors up to daily_cap applications.
+CAMPAIGN_SWEEP_TIMEOUT_SECONDS = 5 * 60
+CAMPAIGN_JOB_TIMEOUT_SECONDS = 30 * 60
 
-    Each campaign gets its own session and try/except: one user's bad data
-    must never stop everyone else's run.
+
+def sweep_campaign_task(campaign_id: str, run_id: str) -> dict:
+    """One active campaign's scheduled pass: judge new titles, rebuild matches, run it."""
+    # Cached verdicts make this cheap after the first pass; bounded so a pass stays short.
+    judge_campaign_titles(campaign_id, limit=SWEEP_JUDGE_LIMIT, scope=session_scope)
+    with session_scope() as db:
+        campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
+        if campaign is None:
+            return {"skipped": True, "reason": "campaign not found"}
+        # No facts, or no job embeddings (no VOYAGE_API_KEY) → [] and the
+        # run works from the matches that already exist.
+        build_matches(db, campaign.profile)
+    return run_campaign_task(campaign_id, run_id=run_id, scheduled=True)
+
+
+def sweep_campaigns_task() -> dict:
+    """Scheduled (workers/run_scheduler.py): enqueue one sweep_campaign_task per active
+    campaign. Runs on the owner role with no request, so there is no RLS tenant — every
+    query here and downstream is scoped by campaign.id / profile_id explicitly.
     """
     bucket = int(time.time() // CAMPAIGN_SWEEP_INTERVAL_SECONDS)
     with session_scope() as db:
@@ -801,26 +817,18 @@ def sweep_campaigns_task() -> dict:
 
     enqueued, failed = [], []
     for campaign_id in campaign_ids:
+        # rq 2.x ids: [A-Za-z0-9_-] only. "sweep" keeps these apart from manual run ids.
+        run_id = f"campaign-{campaign_id}-sweep-{bucket}"
         try:
-            # Cached verdicts make this cheap after the first pass; bounded so a sweep stays short.
-            judge_campaign_titles(campaign_id, limit=SWEEP_JUDGE_LIMIT, scope=session_scope)
-            with session_scope() as db:
-                campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
-                # No facts, or no job embeddings (no VOYAGE_API_KEY) → [] and the
-                # run works from the matches that already exist.
-                build_matches(db, campaign.profile)
-            # rq 2.x ids: [A-Za-z0-9_-] only. "sweep" keeps these apart from manual run ids.
-            run_id = f"campaign-{campaign_id}-sweep-{bucket}"
-            try:
-                get_queue().enqueue(
-                    run_campaign_task, job_id=run_id, unique=True,
-                    kwargs={"campaign_id": campaign_id, "run_id": run_id, "scheduled": True},
-                )
-            except DuplicateJobError:
-                pass  # already queued in this window
+            get_queue().enqueue(
+                sweep_campaign_task, job_id=run_id, unique=True, job_timeout=CAMPAIGN_JOB_TIMEOUT_SECONDS,
+                kwargs={"campaign_id": campaign_id, "run_id": run_id},
+            )
             enqueued.append(campaign_id)
+        except DuplicateJobError:
+            enqueued.append(campaign_id)  # already queued in this window
         except Exception:
-            logger.exception("scheduled sweep failed for campaign %s", campaign_id)
+            logger.exception("scheduled sweep failed to enqueue campaign %s", campaign_id)
             failed.append(campaign_id)
     return {"enqueued": enqueued, "failed": failed}
 

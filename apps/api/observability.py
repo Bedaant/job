@@ -40,15 +40,18 @@ def _redis():
 
 
 def _queue_stats(redis) -> tuple[dict, datetime | None]:
-    """Depth and failure count per queue, plus when discovery last failed."""
+    """Depth, failure count and oldest waiting job's age per queue, plus when discovery last failed."""
     from rq import Queue
     from rq.job import Job
 
-    stats, last_failed = {}, None
+    stats, last_failed, now = {}, None, datetime.utcnow()
     for name in QUEUES:
         queue = Queue(name, connection=redis)
         registry = queue.failed_job_registry
-        stats[name] = {"queued": queue.count, "failed": registry.count}
+        head = Job.fetch_many(queue.get_job_ids(0, 1), connection=redis)  # index 0 = oldest
+        enqueued = _utc_naive(head[0].enqueued_at) if head and head[0] else None
+        stats[name] = {"queued": queue.count, "failed": registry.count,
+                       "oldest_queued_age_seconds": round((now - enqueued).total_seconds()) if enqueued else None}
         ids = registry.get_job_ids(0, _RECENT_FAILURES - 1, desc=True, cleanup=False)
         for job in Job.fetch_many(ids, connection=redis):
             if job and (job.func_name or "").endswith("discover_jobs_task") and job.ended_at:

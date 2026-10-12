@@ -57,6 +57,35 @@ def test_health_reports_latest_run_per_source_and_queue_depths(db_session, monke
     assert snap["discovery_failed"] is False
 
 
+def test_queue_stats_report_the_oldest_queued_job_age(monkeypatch):
+    """P1 #16 / plan §6: depth alone hides a stuck queue; the head job's age shows it."""
+    import rq
+    from rq.job import Job
+
+    now = datetime.utcnow()
+    heads = {"default": ["j1"], "background": [], "effects": ["j3"]}
+    enqueued = {"j1": now - timedelta(seconds=600), "j3": None}
+
+    class FakeQueue:
+        def __init__(self, name, connection):
+            self.name, self.count = name, len(heads[name])
+            self.failed_job_registry = type("R", (), {"count": 0, "get_job_ids": lambda *a, **k: []})()
+
+        def get_job_ids(self, offset=0, length=-1):
+            assert (offset, length) == (0, 1)  # the head of the list is the oldest job
+            return heads[self.name]
+
+    monkeypatch.setattr(rq, "Queue", FakeQueue)
+    monkeypatch.setattr(Job, "fetch_many", classmethod(
+        lambda cls, ids, connection: [type("J", (), {"enqueued_at": enqueued[i]})() for i in ids]))
+
+    stats, _ = observability._queue_stats(redis=None)
+
+    assert 595 <= stats["default"]["oldest_queued_age_seconds"] <= 610
+    assert stats["background"]["oldest_queued_age_seconds"] is None
+    assert stats["effects"]["oldest_queued_age_seconds"] is None
+
+
 def test_health_flags_a_discovery_failure_newer_than_the_last_save(db_session, monkeypatch):
     _run(db_session, "greenhouse", 90)
     monkeypatch.setattr(observability, "_queue_stats",

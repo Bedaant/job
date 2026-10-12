@@ -76,8 +76,9 @@ def test_the_sweep_judges_with_the_workers_session(db_session):
     scope = MagicMock()
     scope.return_value.__enter__.return_value = db_session
     scope.return_value.__exit__.return_value = False
-    with patch("workers.jobs.session_scope", scope), patch("workers.jobs.judge_campaign_titles") as judge,             patch("workers.jobs.build_matches"), patch("workers.jobs.get_queue"):
-        wj.sweep_campaigns_task()
+    with patch("workers.jobs.session_scope", scope), patch("workers.jobs.judge_campaign_titles") as judge, \
+            patch("workers.jobs.build_matches"), patch("workers.jobs.run_campaign_task"):
+        wj.sweep_campaign_task(c.id, run_id="r1")
     judge.assert_called_once_with(c.id, limit=wj.SWEEP_JUDGE_LIMIT, scope=scope)
 
 
